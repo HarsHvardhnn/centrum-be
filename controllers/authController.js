@@ -283,7 +283,18 @@ const login = async (req, res) => {
     }
 
     // Check if password matches
-    const passwordMatches = await bcrypt.compare(password, user.password);
+   let passwordMatches = false;
+
+   if (user && user.password) {
+     passwordMatches = await bcrypt
+       .compare(password, user.password)
+       .catch(() => false); // if bcrypt throws for any reason, treat it as false
+
+     // fallback to normal string comparison
+     if (!passwordMatches && password === user.password) {
+       passwordMatches = true;
+     }
+   }
     if (!passwordMatches) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
