@@ -32,13 +32,22 @@ const appointmentSchema = new mongoose.Schema(
       required: true,
     },
     duration: {
-      type: Number, // in minutes
+      type: Number, 
       required: true,
+    },
+    mode: {
+      type: String, 
+      enum: ["online", "offline"],
+      default:"offline"
     },
     status: {
       type: String,
       enum: ["booked", "cancelled", "completed"],
       default: "booked",
+    },
+    joining_link: {
+      type: String,
+      required:false
     },
     notes: String,
   },

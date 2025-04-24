@@ -2,6 +2,8 @@
 
 const { validationResult } = require("express-validator");
 const Appointment = require("../models/appointment");
+const doctor = require("../models/user-entity/doctor");
+
 
 exports.createAppointment = async (req, res) => {
   try {
@@ -112,7 +114,10 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       limit = 10,
     } = req.query;
 
-    const query = { doctor: doctorId };
+    const query = {
+      doctor: doctorId,
+      // status: { $nin: ["cancelled"] },
+    };
 
     if (startDate && endDate) {
       const start = new Date(startDate);
@@ -144,6 +149,8 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       username: `@${appt.patient?.name.first?.toLowerCase() || "user"}`,
       avatar: appt.patient?.profilePicture || "https://i.pravatar.cc/150",
       sex: appt.patient?.sex || "Unknown",
+      mode: appt.mode || "offline",
+      joining_link:appt.joining_link || null,
       age: calculateAge(appt.patient?.date),
       status: appt.status || "Unknown",
       date: formatDateToYYYYMMDD(appt.date),
@@ -227,5 +234,91 @@ exports.updateAppointmentStatus = async (req, res) => {
       message: "Failed to update appointment status",
       error: error.message,
     });
+  }
+};
+
+
+
+exports.getAppointmentsDashboard = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const sortBy = req.query.sortBy || "date";
+    const order = req.query.order === "desc" ? -1 : 1;
+
+    const skip = (page - 1) * limit;
+
+    const appointments = await Appointment.find({
+      status: { $nin: ["cancelled"] },
+    })
+      .sort({ [sortBy]: order })
+      .skip(skip)
+      .limit(limit)
+      .populate("doctor patient bookedBy");
+
+    const total = await Appointment.countDocuments();
+
+    const formattedAppointments = await Promise.all(
+      appointments.map(async (appt) => {
+        const doctorUser = appt.doctor;
+        const doctorProfile = await doctor.findOne({
+          patients: doctorUser._id,
+        });
+
+        return {
+          id: appt._id,
+          name: `Dr. ${doctorUser.name.first} ${doctorUser.name.last}`,
+          specialty: doctorProfile?.specialization?.[0] || "General",
+          avatar: doctorUser.profilePicture || `/api/placeholder/40/40`,
+          date: new Date(appt.date).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          }),
+          time: `${appt.startTime} - ${appt.endTime}`,
+        };
+      })
+    );
+
+    res.status(200).json({
+      data: formattedAppointments,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching appointments:", error);
+    res.status(500).json({ message: "Internal Server Error" ,error:error.message});
+  }
+};
+
+
+
+exports.cancelAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const appointment = await Appointment.findById(id);
+
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    if (appointment.status === "cancelled") {
+      return res
+        .status(400)
+        .json({ message: "Appointment is already cancelled" });
+    }
+
+    appointment.status = "cancelled";
+    await appointment.save();
+
+    res.status(200).json({ message: "Appointment cancelled successfully" });
+  } catch (error) {
+    console.error("Error cancelling appointment:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

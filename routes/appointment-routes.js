@@ -5,6 +5,7 @@ const router = express.Router();
 const { check } = require("express-validator");
 const appointmentController = require("../controllers/appointmentController");
 const authorizeRoles = require("../middlewares/authenticateRole");
+const { bookAppointment } = require("../controllers/gmeetController");
 
 
 // @route   POST /api/appointments
@@ -39,7 +40,7 @@ router.get(
 // @access  Private
 router.get(
   "/patient/:patientId",
-  authorizeRoles(["doctor", "receptionist", "admin"]),
+  authorizeRoles(["doctor", "receptionist", "admin","patient"]),
   appointmentController.getAppointmentsByPatient
 );
 
@@ -51,5 +52,18 @@ router.patch(
   authorizeRoles(["doctor", "receptionist", "admin"]),
   appointmentController.updateAppointmentStatus
 );
+
+router.get(
+  "/dashboard/",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getAppointmentsDashboard
+);
+router.patch(
+  "/cancel/:id",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.cancelAppointment
+);
+
+router.post("/book", bookAppointment);
 
 module.exports = router;

@@ -21,6 +21,7 @@ const addDoctor = async (req, res) => {
       },
       email: doctorData.email,
       phone: doctorData.phone,
+      department:doctorData.department,
       password: doctorData.password, // In production, this should be hashed
       role: "doctor", // This triggers the discriminator
       signupMethod: doctorData.signupMethod || "email",
@@ -87,18 +88,57 @@ const addDoctor = async (req, res) => {
  */
 const getAllDoctors = async (req, res) => {
   try {
-    // Find all users with role 'doctor'
-    const doctors = await User.find({ role: "doctor" });
+    // Extract query parameters
+    const {
+      department,
+      page = 1,
+      limit = 10,
+      sortBy = "name.first",
+      sortOrder = "asc",
+    } = req.query;
+
+    // Convert page and limit to integers
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    // Calculate skip value for pagination
+    const skip = (pageNum - 1) * limitNum;
+
+    // Create base query for doctors
+    let query = { role: "doctor" };
+
+    // Add department filter if provided
+    if (department) {
+      // Update this line to search in the new department field instead of specialization
+      query = {
+        role: "doctor",
+        department: department, // Exact match on the department field
+      };
+    }
+
+    // Create sort configuration
+    const sortConfig = {};
+    sortConfig[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+    // Count total documents for pagination metadata
+    const totalDocs = await User.countDocuments(query);
+
+    // Find doctors based on query with pagination and sorting
+    const doctors = await User.find(query)
+      .sort(sortConfig)
+      .skip(skip)
+      .limit(limitNum);
 
     const formattedDoctors = doctors.map((doc) => ({
-      _id:doc._id,
+      _id: doc._id,
       id: doc.d_id,
       name: `${doc.name.first} ${doc.name.last}`,
       specialty:
         doc.specialization && doc.specialization[0]
           ? doc.specialization[0]
           : "",
-      available: doc.isAvailable, // Virtual property
+      department: doc.department || "", // Include the department in the response
+      available: doc.isAvailable,
       status: doc.isAvailable ? "Available" : "Unavailable",
       experience: doc.experience ? `${doc.experience} years` : "0 years",
       image: doc.profilePicture,
@@ -110,10 +150,25 @@ const getAllDoctors = async (req, res) => {
       consultationFee: doc.consultationFee || 0,
     }));
 
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalDocs / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+
     res.status(200).json({
       success: true,
       count: doctors.length,
       doctors: formattedDoctors,
+      pagination: {
+        total: totalDocs,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+        hasNextPage,
+        hasPrevPage,
+        nextPage: hasNextPage ? pageNum + 1 : null,
+        prevPage: hasPrevPage ? pageNum - 1 : null,
+      },
     });
   } catch (error) {
     console.error("Error fetching doctors:", error);
@@ -163,7 +218,7 @@ const getDoctorById = async (req, res) => {
 
 const getWeeklyShifts = async (req, res) => {
   try {
-    const doctorId = req.params.doctorId || req.user.id;
+    const doctorId = req.query.doctorId || req.user.id;
 
     const doctor = await Doctor.findById(doctorId);
     if (!doctor) {
@@ -188,7 +243,9 @@ const getWeeklyShifts = async (req, res) => {
 // Update doctor's weekly shifts
 const updateWeeklyShifts = async (req, res) => {
   try {
-    const doctorId = req.params.doctorId || req.user.id;
+    const doctorId = req.query.doctorId || req.user.id;
+    const isAdminApproval = req.user.role === "admin";
+
     const { shifts } = req.body;
 
     if (!Array.isArray(shifts)) {
@@ -198,19 +255,22 @@ const updateWeeklyShifts = async (req, res) => {
       });
     }
 
-    // Validate shifts format
-    for (const shift of shifts) {
+    // Validate and enrich shifts
+    const enrichedShifts = shifts.map((shift) => {
       if (!shift.dayOfWeek || !shift.startTime || !shift.endTime) {
-        return res.status(400).json({
-          success: false,
-          message: "Each shift must include dayOfWeek, startTime, and endTime",
-        });
+        throw new Error(
+          "Each shift must include dayOfWeek, startTime, and endTime"
+        );
       }
-    }
+      return {
+        ...shift,
+        status: isAdminApproval ? "approved" : "pending",
+      };
+    });
 
     const doctor = await Doctor.findByIdAndUpdate(
       doctorId,
-      { $set: { weeklyShifts: shifts } },
+      { $set: { weeklyShifts: enrichedShifts } },
       { new: true, runValidators: true }
     );
 
@@ -229,11 +289,11 @@ const updateWeeklyShifts = async (req, res) => {
     console.error("Error updating weekly shifts:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating weekly shifts",
-      error: error.message,
+      message: error.message || "Server error while updating weekly shifts",
     });
   }
 };
+
 
 // Get doctor's off schedule
 const getOffSchedule = async (req, res) => {

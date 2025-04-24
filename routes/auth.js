@@ -13,8 +13,12 @@ const {
   toggleSingleSessionMode,
   resendOtp,
   getUserPublicInfo,
+  getProfile,
+  updateProfile,
 } = require("../controllers/authController");
 const authorizeRoles = require("../middlewares/authenticateRole");
+const upload = require("../middlewares/cloudinaryUpload");
+const { getGoogleAuthUrl, handleGoogleCallback } = require("../controllers/googleController");
 
 router.post("/signup", signup);
 router.post("/verify-otp", verifyOTP);
@@ -30,5 +34,24 @@ router.post("/reset-password", resetPassword);
 
 router.post("/resend-otp", resendOtp);
 router.get("/profile", authorizeRoles([]), getUserPublicInfo);
+
+router.get("/profile/user",authorizeRoles(["admin","doctor","receptionist"]), getProfile);
+router.put(
+  "/profile",
+  upload.single("file"),
+  authorizeRoles(["admin", "doctor", "receptionist"]),
+  updateProfile
+);
+
+
+
+router.get("/google/auth-url", authorizeRoles("admin","patient"), getGoogleAuthUrl);
+
+// OAuth callback route
+router.get(
+  "/oauth2callback",
+  authorizeRoles("admin", "patient"),
+  handleGoogleCallback
+);
 
 module.exports = router;

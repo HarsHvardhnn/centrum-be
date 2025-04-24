@@ -128,7 +128,6 @@ exports.getAllPatients = async (req, res) => {
   }
 };
 
-// Get a patient by ID
 exports.getPatientById = async (req, res) => {
   try {
     const info = await patient.findOne({ patientId: req.params.id }).lean();
@@ -166,7 +165,7 @@ exports.getPatientsList = async (req, res) => {
       doctor,
       sex,
       minAge,
-      maxAge
+      maxAge,
     } = req.query;
 
     // Build the filter query
@@ -274,7 +273,7 @@ exports.getPatientsList = async (req, res) => {
         disease: patient.mainComplaint || "Not specified",
         status: patient.status || "in-treatment",
         doctor: doctorName,
-        _id: patient._id // Include the MongoDB ID for reference
+        _id: patient._id 
       };
     });
 

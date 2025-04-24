@@ -22,7 +22,7 @@ router.get("/:id", getDoctorById);
 
 router.get(
   "/schedule/shifts/",
-  authorizeRoles(["doctor"]),
+  authorizeRoles(["doctor","admin"]),
 
   getWeeklyShifts
 );
@@ -34,8 +34,8 @@ router.get(
 
 // Update doctor's schedule
 router.put(
-  "/schedule/shifts/",
-  authorizeRoles(["doctor"]),
+  "/schedule/shifts",
+  authorizeRoles(["doctor","admin"]),
   updateWeeklyShifts
 );
 router.post(
@@ -52,8 +52,10 @@ router.delete(
 // Get available slots
 router.get(
   "/schedule/available-slots/:id",
-  authorizeRoles(["doctor"]),
+  authorizeRoles(["doctor","admin"]),
   getAvailableSlots
 );
+
+
 
 module.exports = router;

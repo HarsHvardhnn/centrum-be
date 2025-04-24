@@ -7,6 +7,7 @@ const OTP = require("../models/otp");
 const nodemailer = require("nodemailer");
 const sendEmail = require("../utils/mailer");
 const createChatRoom = require("../utils/createChatroom");
+const user = require("../models/user-entity/user");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -730,6 +731,89 @@ const getUserPublicInfo = async (req, res) => {
   }
 };
 
+
+// controllers/userController.js
+
+// Get user profile
+const getProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Find user by id but exclude sensitive information
+    const userData = await user.findById(userId).select('-password -refreshTokens');
+    
+    if (!userData) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    res.status(200).json({ success: true, data: userData });
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching profile',
+      error: error.message 
+    });
+  }
+};
+
+// Update user profile
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { 
+      first, 
+      last, 
+      email, 
+      phone, 
+      sex,  
+    } = req.body;
+    
+    // Build update object with only provided fields
+    const updateData = {};
+    
+    if (first !== undefined || last !== undefined) {
+      updateData.name = {};
+      if (first !== undefined) updateData.name.first = first;
+      if (last !== undefined) updateData.name.last = last;
+    }
+    
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (sex !== undefined) updateData.sex = sex;
+    if (req?.file?.path) updateData.profilePicture = req.file.path;
+    
+    // Find and update user
+    const updatedUser = await user.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select('-password -refreshTokens');
+    
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    res.status(200).json({ success: true, data: updatedUser });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    
+    // Handle duplicate email error
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email already in use' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error updating profile',
+      error: error.message 
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifyOTP,
@@ -743,4 +827,7 @@ module.exports = {
   toggleSingleSessionMode,
   resendOtp,
   getUserPublicInfo,
+  getProfile,
+  updateProfile
 };
+

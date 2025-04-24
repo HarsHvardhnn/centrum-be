@@ -5,8 +5,8 @@ const cloudinary = require("../utils/cloudinary");
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: "hospital_app", 
-    allowed_formats: ["jpg", "jpeg", "png"],
+    folder: "hospital_app",
+    allowed_formats: ["jpg", "jpeg", "png", "pdf", "webp"],
     transformation: [{ width: 500, height: 500, crop: "limit" }],
   },
 });

@@ -24,6 +24,15 @@ const shiftSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
   },
   { _id: false }
 );
@@ -57,10 +66,33 @@ const doctorSchema = new mongoose.Schema({
   experience: Number,
   bio: String,
   consultationFee: Number,
-  patients: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-  }],
+  patients: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  ],
+
+  department: {
+    type: String,
+    enum: [
+      "Cardiology",
+      "Dermatology",
+      "Neurology",
+      "Orthopedics",
+      "Pediatrics",
+      "Psychiatry",
+      "Obstetrics & Gynecology",
+      "Oncology",
+      "Ophthalmology",
+      "Urology",
+      "Endocrinology",
+      "Gastroenterology",
+      "Pulmonology",
+      "Nephrology",
+      "Rheumatology",
+    ],
+  },
 
   weeklyShifts: [shiftSchema],
 
