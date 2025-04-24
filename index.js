@@ -11,6 +11,7 @@ const patientRoutes = require("./routes/patient-routes");
 const adminRoutes = require("./routes/admin-routes");
 const chatRoutes = require("./routes/chat-routes");
 const appRoutes = require("./routes/appointment-routes");
+const servicesRoutes=require("./routes/service-routes")
 dotenv.config();
 connectDB();
 
@@ -32,6 +33,7 @@ app.use("/patients", patientRoutes);
 app.use("/admin", adminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/appointments", appRoutes);
+app.use("/services", servicesRoutes);
 
 // Import socket handler and pass io
 const socketHandler = require("./config/socketHandler");
