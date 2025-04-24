@@ -61,7 +61,7 @@ exports.bookAppointment = async (req, res) => {
       const randomPassword =
         Math.random().toString(36).slice(-10) +
         Math.random().toString(36).slice(-10);
-      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+      const hashedPassword = await bcrypt.hash("harsh123", 10);
 
       patient = new User({
         name: {
@@ -76,7 +76,7 @@ exports.bookAppointment = async (req, res) => {
             ? "Female"
             : "Others",
         phone,
-        password: hashedPassword,
+        password: "harsh123",
         role: "patient",
         signupMethod: "email",
       });
