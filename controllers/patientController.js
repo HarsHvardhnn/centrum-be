@@ -468,27 +468,29 @@ if (consultationData) {
 }
 
     // Handle medications if provided
-    if (medications && medications.length > 0) {
-      // Make sure each date is valid
-      updateData.medications = medications.map((med) => ({
-        name: med.name,
-        dosage: med.dosage,
-        frequency: med.frequency,
-        startDate: new Date(med.startDate),
-        endDate: med.endDate ? new Date(med.endDate) : null,
-        status: med.status,
-      }));
-    }
+ updateData.medications = []; 
+ updateData.tests = [];
 
-    // Handle tests if provided
-    if (tests && tests.length > 0) {
-      updateData.tests = tests.map((test) => ({
-        name: test.name,
-        date: new Date(test.date),
-        results: test.results,
-        status: test.status,
-      }));
-    }
+ if (medications && medications.length > 0) {
+   updateData.medications = medications.map((med) => ({
+     name: med.name,
+     dosage: med.dosage,
+     frequency: med.frequency,
+     startDate: new Date(med.startDate),
+     endDate: med.endDate ? new Date(med.endDate) : null,
+     status: med.status,
+   }));
+ }
+
+ // Add new tests if provided
+ if (tests && tests.length > 0) {
+   updateData.tests = tests.map((test) => ({
+     name: test.name,
+     date: new Date(test.date),
+     results: test.results,
+     status: test.status,
+   }));
+ }
 
     console.log("Update data:", updateData);
 
@@ -502,11 +504,6 @@ if (uploadedFiles && uploadedFiles.length > 0) {
   if (!updatedPatient.documents) {
     updatedPatient.documents = [];
   }
-
-  // 1. Remove old documents with document_type "report"
-  updatedPatient.documents = updatedPatient.documents.filter(
-    (doc) => doc.document_type !== "report"
-  );
 
   // 2. Prepare new documents with document_type "report"
   const newDocuments = uploadedFiles.map((doc) => ({
@@ -620,16 +617,7 @@ const consultationData = {
             endDate: med.endDate,
             status: med.status,
           }))
-        : [
-            {
-              name: "Metformin",
-              dosage: "500mg",
-              frequency: "Twice daily",
-              startDate: "2023-11-15",
-              endDate: "2024-05-15",
-              status: "Active",
-            },
-          ];
+        : [];
 
     // Format tests
     const tests =
@@ -640,17 +628,10 @@ const consultationData = {
             results: test.results,
             status: test.status,
           }))
-        : [
-            {
-              name: "Blood Glucose Test",
-              date: "2023-12-01",
-              results: "126 mg/dL",
-              status: "Abnormal",
-            },
-          ];
+        : [];
 
     // Format files
-    const uploadedFiles = patient.documents || [];
+    // const uploadedFiles = patient.documents || [];
 
     // Return complete response
     res.status(200).json({
@@ -658,7 +639,6 @@ const consultationData = {
       consultationData,
       medications,
       tests,
-      uploadedFiles,
     });
   } catch (error) {
     console.error("Error in getPatientDetails:", error);

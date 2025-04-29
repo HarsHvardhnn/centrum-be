@@ -247,11 +247,13 @@ if (fs.existsSync(logoPath)) {
   cloudinary.uploader.upload(
     tempFilePath,
     {
-      folder: "hospital_app/visit_cards",
+      folder: "hospital_app/images",
       resource_type: "raw", // required for non-image files like PDFs
       type: "upload",       // ensures it's treated as an uploaded file
       use_filename: true,
       unique_filename: true,
+      access_mode:"public",
+      public_id: filename.replace(".pdf", ""), // remove .pdf for public_id
       format: "pdf",        // not needed if it's already a .pdf file
     },
     (error, result) => {
