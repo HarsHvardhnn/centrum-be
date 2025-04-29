@@ -4,7 +4,7 @@ const router = express.Router();
 const authorizeRoles = require("../middlewares/authenticateRole");
 const user = require("../models/user-entity/user");
 const chatRoom = require("../models/chatRoom");
-const upload = require("../middlewares/cloudinaryUpload");
+const { upload } = require("../middlewares/cloudinaryUpload");
 
 // Get chat for regular user
 router.get("/user-chat", authorizeRoles(["admin","doctor","receptionist"]), async (req, res) => {

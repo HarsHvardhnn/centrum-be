@@ -3,6 +3,7 @@ const User = require("../models/user-entity/user");
 const Doctor = require("../models/user-entity/doctor"); // This is the discriminator model
 const { format, startOfDay, endOfDay } = require("date-fns");
 const appointment = require("../models/appointment");
+const user = require("../models/user-entity/user");
 
 /**
  * Add a new doctor to the database
@@ -21,7 +22,7 @@ const addDoctor = async (req, res) => {
       },
       email: doctorData.email,
       phone: doctorData.phone,
-      department:doctorData.department,
+      specializations: doctorData.specializations,
       password: doctorData.password, // In production, this should be hashed
       role: "doctor", // This triggers the discriminator
       signupMethod: doctorData.signupMethod || "email",
@@ -90,7 +91,7 @@ const getAllDoctors = async (req, res) => {
   try {
     // Extract query parameters
     const {
-      department,
+      specialization,
       page = 1,
       limit = 10,
       sortBy = "name.first",
@@ -108,13 +109,12 @@ const getAllDoctors = async (req, res) => {
     let query = { role: "doctor" };
 
     // Add department filter if provided
-    if (department) {
-      // Update this line to search in the new department field instead of specialization
-      query = {
-        role: "doctor",
-        department: department, // Exact match on the department field
-      };
-    }
+    if (specialization) {
+    
+        query = {
+          role: "doctor",
+          specialization: { $in: [specialization] },
+        };}
 
     // Create sort configuration
     const sortConfig = {};
@@ -124,7 +124,7 @@ const getAllDoctors = async (req, res) => {
     const totalDocs = await User.countDocuments(query);
 
     // Find doctors based on query with pagination and sorting
-    const doctors = await User.find(query)
+    const doctors = await User.find(query).populate("specialization")
       .sort(sortConfig)
       .skip(skip)
       .limit(limitNum);
@@ -136,7 +136,7 @@ const getAllDoctors = async (req, res) => {
       specialty:
         doc.specialization && doc.specialization[0]
           ? doc.specialization[0]
-          : "",
+          : "General",
       department: doc.department || "", // Include the department in the response
       available: doc.isAvailable,
       status: doc.isAvailable ? "Available" : "Unavailable",
@@ -191,7 +191,7 @@ const getDoctorById = async (req, res) => {
 
     const doctor = await Doctor.findOne({ d_id: id })
       .select("-password -refreshTokens -__v")
-      .populate("hospital");
+      .populate("hospital specialization");
     if (!doctor) {
       return res.status(404).json({
         success: false,
@@ -212,9 +212,6 @@ const getDoctorById = async (req, res) => {
     });
   }
 };
-
-
-
 
 const getWeeklyShifts = async (req, res) => {
   try {
@@ -293,7 +290,6 @@ const updateWeeklyShifts = async (req, res) => {
     });
   }
 };
-
 
 // Get doctor's off schedule
 const getOffSchedule = async (req, res) => {
@@ -442,7 +438,7 @@ const removeOffTime = async (req, res) => {
 const getAvailableSlots = async (req, res) => {
   try {
     const doctorId = req.params.id;
-    console.log("doctor",doctorId)
+    console.log("doctor", doctorId);
     const date = req.query.date || new Date();
 
     if (!date) {
@@ -452,7 +448,7 @@ const getAvailableSlots = async (req, res) => {
       });
     }
 
-    const doctor = await Doctor.findById(doctorId);
+    const doctor = await user.findById(doctorId);
     if (!doctor) {
       return res
         .status(404)
@@ -480,14 +476,16 @@ const getAvailableSlots = async (req, res) => {
     );
 
     // Get booked appointments for the requested date
-    const appointments = await appointment.find({
-      doctor: doctorId,
-      date: {
-        $gte: startOfDay(requestedDate),
-        $lte: endOfDay(requestedDate),
-      },
-      status: "booked",
-    }).sort({ startTime: 1 });
+    const appointments = await appointment
+      .find({
+        doctor: doctorId,
+        date: {
+          $gte: startOfDay(requestedDate),
+          $lte: endOfDay(requestedDate),
+        },
+        status: "booked",
+      })
+      .sort({ startTime: 1 });
 
     // Generate all slots based on shift time (using 30-minute intervals as default)
     const slotDuration = 30; // in minutes
@@ -618,8 +616,6 @@ const getAvailableSlots = async (req, res) => {
     });
   }
 };
-
-
 
 module.exports = {
   addDoctor,

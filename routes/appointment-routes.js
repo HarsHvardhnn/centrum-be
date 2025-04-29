@@ -64,6 +64,12 @@ router.patch(
   appointmentController.cancelAppointment
 );
 
+router.patch(
+  "/check-in/:id",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.completeCheckIn
+);
+
 router.post("/book", bookAppointment);
 
 module.exports = router;

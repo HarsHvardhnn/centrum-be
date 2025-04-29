@@ -3,6 +3,7 @@
 const { validationResult } = require("express-validator");
 const Appointment = require("../models/appointment");
 const doctor = require("../models/user-entity/doctor");
+const user = require("../models/user-entity/user");
 
 
 exports.createAppointment = async (req, res) => {
@@ -29,34 +30,56 @@ exports.createAppointment = async (req, res) => {
       enableRepeats,
     } = req.body;
 
-    // Calculate duration in minutes
+    // 1️⃣ Check if patient exists
+    const patientDetails = await user.findById(patient);
+    if (!patientDetails) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Patient not found" });
+    }
+
+    // 2️⃣ Check if appointment already exists at the same time
+    const existingAppointment = await Appointment.findOne({
+      doctor: doctor,
+      patient: patient,
+      date: new Date(date),
+      $or: [
+        {
+          startTime: { $lt: endTime },
+          endTime: { $gt: startTime },
+        },
+      ],
+    });
+
+    if (existingAppointment) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Appointment already exists for this patient at this time",
+        });
+    }
+
+    // ✅ Calculate duration
     const calculateDuration = (start, end) => {
       const [startHour, startMinute] = start.split(":").map(Number);
       const [endHour, endMinute] = end.split(":").map(Number);
-
-      // Convert to minutes since midnight
-      const startMinutes = startHour * 60 + startMinute;
-      const endMinutes = endHour * 60 + endMinute;
-
-      // Calculate duration
-      return endMinutes - startMinutes;
+      return endHour * 60 + endMinute - (startHour * 60 + startMinute);
     };
 
     const duration = calculateDuration(startTime, endTime);
 
-    // Create new appointment
+    // ✅ Create new appointment
     const newAppointment = new Appointment({
       doctor,
       patient,
-      bookedBy: req.user.id, 
+      bookedBy: req.user.id,
       date: new Date(date),
       startTime,
       endTime,
       duration,
       notes,
-      // Set initial status
       status: markAsArrived ? "completed" : "booked",
-      // Additional fields can be added as metadata if needed
       metadata: {
         patientSource,
         visitType,
@@ -67,9 +90,13 @@ exports.createAppointment = async (req, res) => {
       },
     });
 
+    // ✅ Update patient consulting doctor
+    patientDetails.consultingDoctor = doctor;
+    await patientDetails.save();
+
     await newAppointment.save();
 
-    // Populate doctor and patient details for the response
+    // ✅ Populate doctor and patient details
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("doctor", "name email")
       .populate("patient", "name email")
@@ -88,6 +115,7 @@ exports.createAppointment = async (req, res) => {
     });
   }
 };
+
 
 const calculateAge = (dob) => {
   if (!dob) return null;
@@ -145,7 +173,8 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       id: appt._id.toString(),
       name: `${appt.patient?.name.first || ""} ${
         appt.patient?.name.last || ""
-      }`,
+        }`,
+      patient_id: appt.patient?._id || null,
       username: `@${appt.patient?.name.first?.toLowerCase() || "user"}`,
       avatar: appt.patient?.profilePicture || "https://i.pravatar.cc/150",
       sex: appt.patient?.sex || "Unknown",
@@ -248,15 +277,23 @@ exports.getAppointmentsDashboard = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    const appointments = await Appointment.find({
+    // Get today's date at 00:00:00
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Query only upcoming appointments
+    const filter = {
       status: { $nin: ["cancelled"] },
-    })
+      date: { $gte: today },
+    };
+
+    const appointments = await Appointment.find(filter)
       .sort({ [sortBy]: order })
       .skip(skip)
       .limit(limit)
       .populate("doctor patient bookedBy");
 
-    const total = await Appointment.countDocuments();
+    const total = await Appointment.countDocuments(filter);
 
     const formattedAppointments = await Promise.all(
       appointments.map(async (appt) => {
@@ -291,9 +328,12 @@ exports.getAppointmentsDashboard = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching appointments:", error);
-    res.status(500).json({ message: "Internal Server Error" ,error:error.message});
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
+
 
 
 
@@ -319,6 +359,36 @@ exports.cancelAppointment = async (req, res) => {
     res.status(200).json({ message: "Appointment cancelled successfully" });
   } catch (error) {
     console.error("Error cancelling appointment:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+
+
+exports.completeCheckIn = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {patientId} = req.body; // Assuming you want to update the patientId as well
+
+    const appointment = await Appointment.findOne({_id: id, patient: patientId});
+
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    if (appointment.status === "completed") {
+      return res
+        .status(400)
+        .json({ message: "Appointment is already completed" });
+    }
+
+    appointment.status = "completed";
+    await appointment.save();
+
+    res.status(200).json({ message: "Appointment completed successfully" });
+  } catch (error) {
+    console.error("Error completing appointment:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

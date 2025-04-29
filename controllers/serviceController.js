@@ -2,13 +2,13 @@ const Service = require("../models/services");
 
 exports.createService = async (req, res) => {
   try {
-    const { title, icon, shortDescription, description, bulletPoints } =
+    const { title, price, shortDescription, description, bulletPoints } =
       req.body;
     const images = req.files.map((file) => file.path);
 
     const service = new Service({
       title,
-      icon,
+      price,
       shortDescription,
       description,
       bulletPoints: JSON.parse(bulletPoints),

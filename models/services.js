@@ -2,15 +2,19 @@ const mongoose = require("mongoose");
 
 const serviceSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  icon: { type: String, required: true }, // Store icon name or class (e.g., "FaStethoscope")
-  shortDescription: { type: String, required: true },
-  description: { type: String, required: true },
-  images: [{ type: String }], // Array of image URLs
+  icon: { type: String, required: false }, 
+  shortDescription: { type: String, required: false },
+  description: { type: String, required: false },
+  images: [{ type: String }],
   bulletPoints: [{ type: String }],
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
+  },
+  price:{
+    type: String,
+    default:0
   },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   isDeleted: { type: Boolean, default: false },

@@ -11,7 +11,7 @@ const {
   addOffTime,
   getAvailableSlots,
 } = require("../controllers/doctorController");
-const upload = require("../middlewares/cloudinaryUpload");
+const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
 
 router.post("/", upload.single("file"), addDoctor);

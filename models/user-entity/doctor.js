@@ -61,7 +61,12 @@ const offScheduleSchema = new mongoose.Schema(
 
 const doctorSchema = new mongoose.Schema({
   d_id: String,
-  specialization: [String],
+  specialization: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Specialization",
+    },
+  ],
   qualifications: [String],
   experience: Number,
   bio: String,

@@ -2,6 +2,10 @@ const bcrypt = require("bcrypt");
 const patient = require("../models/user-entity/patient");
 const { default: mongoose } = require("mongoose");
 const doctor = require("../models/user-entity/doctor");
+const user = require("../models/user-entity/user");
+const Specialization = require("../models/specialization");
+const { ObjectId } = mongoose.Types;
+
 
 // Create a new patient
 exports.createPatient = async (req, res) => {
@@ -33,7 +37,7 @@ exports.createPatient = async (req, res) => {
       ivrLanguage,
       mainComplaint,
       reviewNotes,
-      consultingDepartment,
+      consultingSpecialization,
       consultingDoctor,
       photo,
       otherHospitalIds,
@@ -58,6 +62,9 @@ exports.createPatient = async (req, res) => {
         patient: existingPatient,
       });
     }
+    const consultSpec = await Specialization.findOne({
+      _id: consultingSpecialization,
+    });
 
     const newPatient = new patient({
       name: {
@@ -65,7 +72,7 @@ exports.createPatient = async (req, res) => {
         last: fullName.split(" ").slice(1).join(" "),
       },
       email: req.body.email,
-      patientId:`P-${new Date().getTime()}`,
+      patientId: `P-${new Date().getTime()}`,
       phone: req.body.mobileNumber,
       password: "defaultPassword123",
       role: "patient",
@@ -95,8 +102,8 @@ exports.createPatient = async (req, res) => {
       ivrLanguage,
       mainComplaint,
       reviewNotes,
-      consultingDepartment,
-      consultingDoctor:new mongoose.Types.ObjectId(consultingDoctor),
+      consultingSpecialization: consultSpec.name || "General",
+      consultingDoctor: new mongoose.Types.ObjectId(consultingDoctor),
       photo,
       otherHospitalIds,
       referrerName,
@@ -120,7 +127,13 @@ exports.createPatient = async (req, res) => {
 // Get all patients
 exports.getAllPatients = async (req, res) => {
   try {
-    const patients = await patient.find().populate("doctor", "name id");
+const patients = await patient
+  .find()
+  .populate({
+    path: "doctor",
+    select: "name _id",
+    options: { strictPopulate: false },
+  });
     res.status(200).json(patients);
   } catch (error) {
     console.error("Error fetching patients:", error);
@@ -267,7 +280,11 @@ exports.getPatientsList = async (req, res) => {
           "Unknown",
         username: patient.username ? `@${patient.username}` : "",
         date: patientDate,
+        email: patient.email || "Not specified",
+        phone: patient.phone || "Not specified",
         sex: patient.sex || "Not specified",
+        isCheckedIn:patient.checkedIn || false,
+        dateOfBirth: patient.dateOfBirth || "Not specified",
         age,
         avatar: patient?.profilePicture || "",
         disease: patient.mainComplaint || "Not specified",
@@ -336,5 +353,641 @@ exports.getPatientsByDoctorId = async (req, res) => {
       message: "Failed to fetch patients by doctor ID",
       error: error.message,
     });
+  }
+};
+
+
+
+exports.updatePatientDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate MongoDB ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid patient ID format" });
+    }
+
+    const {
+      patientData,
+      consultationData,
+      medications,
+      tests,
+      uploadedFiles,
+      notifyPatient,
+    } = req.body;
+
+    // Prepare update data
+    const updateData = {};
+ 
+
+    // Update basic patient info if provided
+    if (patientData) {
+      // Properly handle name
+      // if (patientData.name) {
+      //   const nameParts = patientData.name.split(" ");
+      //   updateData["name.first"] = nameParts[0];
+      //   updateData["name.last"] = nameParts.slice(1).join(" ");
+      // }
+
+      // if (patientData.gender) updateData.sex = patientData.gender;
+      // if (patientData.email) updateData.email = patientData.email;
+      // if (patientData.phone) updateData.phone = patientData.phone;
+      // if (patientData.birthDate)
+      //   updateData.dateOfBirth = new Date(patientData.birthDate);
+      if (patientData.disease) updateData.mainComplaint = patientData.disease;
+      if (patientData.isInternationalPatient !== undefined)
+        updateData.isInternationalPatient = patientData.isInternationalPatient;
+      if (patientData.reviewNotes)
+        updateData.reviewNotes = patientData.reviewNotes;
+
+      // Map UI fields to schema structure
+      if (patientData.roomNumber) {
+        updateData["currentStatus.roomNumber"] = patientData.roomNumber;
+      }
+
+      if (patientData.riskStatus) {
+        updateData["currentStatus.isRisky"] =
+          patientData.riskStatus === "Risky";
+      }
+
+      if (patientData.treatmentStatus) {
+        updateData["currentStatus.treatmentStatus"] =
+          patientData.treatmentStatus;
+      }
+
+      // Health data fields
+      if (patientData.bloodPressure) {
+        updateData["healthData.bloodPressure.value"] =
+          patientData.bloodPressure;
+      }
+
+      if (patientData.temperature) {
+        updateData["healthData.bloodPressure.temperature"] = parseFloat(
+          patientData.temperature.replace("°C", "")
+        );
+      }
+
+      if (patientData.weight) {
+        updateData["healthData.bodyWeight.value"] = parseFloat(
+          patientData.weight.replace("kg", "")
+        );
+      }
+
+      if (patientData.height) {
+        updateData["healthData.bodyHeight.value"] = patientData.height;
+      }
+    }
+
+    // Handle consultation data if provided
+if (consultationData) {
+  // Create a new consultation object with valid date
+  const consultDate = new Date(consultationData.date);
+  const notes = consultationData.notes || "No notes provided";
+  updateData.reviewNotes = notes;
+  const newConsultation = {
+    consultationType: consultationData.consultationType,
+    consultationNotes: consultationData.notes,
+    consultationTime: consultationData.time,
+    treatmentCategory: consultationData?.treatmentCategory || "",
+    description: consultationData.description,
+    // Use current date if invalid
+    consultationDate: !isNaN(consultDate.getTime()) ? consultDate : new Date(),
+    consultationStatus: "Scheduled",
+    isOnline: consultationData.isOnline || false,
+    // New fields
+    interview: consultationData.interview || "",
+    physicalExamination: consultationData.physicalExamination || "",
+    treatment: consultationData.treatment || "",
+    recommendations: consultationData.recommendations || "",
+  };
+  // Add to consultations array with $push operator
+  updateData.$push = updateData.$push || {};
+  updateData.consultations = newConsultation;
+}
+
+    // Handle medications if provided
+    if (medications && medications.length > 0) {
+      // Make sure each date is valid
+      updateData.medications = medications.map((med) => ({
+        name: med.name,
+        dosage: med.dosage,
+        frequency: med.frequency,
+        startDate: new Date(med.startDate),
+        endDate: med.endDate ? new Date(med.endDate) : null,
+        status: med.status,
+      }));
+    }
+
+    // Handle tests if provided
+    if (tests && tests.length > 0) {
+      updateData.tests = tests.map((test) => ({
+        name: test.name,
+        date: new Date(test.date),
+        results: test.results,
+        status: test.status,
+      }));
+    }
+
+    console.log("Update data:", updateData);
+
+    // Update using patient model to ensure proper schema validation
+    const updatedPatient = await patient.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+    });
+if (uploadedFiles && uploadedFiles.length > 0) {
+  // Ensure patient.documents is initialized
+  if (!updatedPatient.documents) {
+    updatedPatient.documents = [];
+  }
+
+  // 1. Remove old documents with document_type "report"
+  updatedPatient.documents = updatedPatient.documents.filter(
+    (doc) => doc.document_type !== "report"
+  );
+
+  // 2. Prepare new documents with document_type "report"
+  const newDocuments = uploadedFiles.map((doc) => ({
+    ...doc,
+    document_type: "report", // Always hardcoded here
+  }));
+
+  // 3. Push new report documents
+  updatedPatient.documents.push(...newDocuments);
+
+  // 4. Save updated patient
+  await updatedPatient.save();
+}
+
+
+    if (!updatedPatient) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Patient not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedPatient,
+      message: "Patient updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating patient:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update patient details",
+      error: error.message,
+    });
+  }
+};
+
+exports.getPatientDetails = async (req, res) => {
+  try {
+    const patientId = req.params.id;
+
+    // Get patient with all embedded data
+    const patient = await user
+      .findById(patientId)
+      .populate("consultingDoctor", "name.first name.last")
+      .lean();
+
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found" });
+    }
+
+    // Format response to match frontend expectations
+    const patientData = {
+      id: patient._id,
+      name: `${patient.name.first || ""} ${patient.name.last || ""}`,
+      age: calculateAge(patient.birthDate),
+      gender: patient.sex,
+      email: patient.email,
+      phone: patient.phone,
+      birthDate: patient.birthDate,
+      disease: patient.disease || "",
+      avatar:
+        patient.profilePicture ||
+        "https://randomuser.me/api/portraits/men/75.jpg",
+      isInternationalPatient: patient.isInternationalPatient || false,
+      notes: patient.notes || "",
+      roomNumber: patient.currentStatus?.roomNumber || "",
+      riskStatus: patient.currentStatus?.riskStatus || "Risky",
+      treatmentStatus:
+        patient.currentStatus?.treatmentStatus || "Under Treatment",
+      bloodPressure: patient.bloodPressure?.value || "141/90 mmHg",
+      temperature: patient.bloodPressure?.temperature || "29°C",
+      weight: patient.bodyWeight?.value || "78kg",
+      height: patient.bodyHeight?.value || "5'6\" inc",
+    };
+
+    // Get latest consultation if exists
+    const latestConsultation =
+      patient.consultations;
+    console.log("Latest consultation:", latestConsultation);
+
+
+    // Consultation data
+const consultationData = {
+  doctor:
+    patient.consultingDoctor.name.first +
+    " " +
+    patient.consultingDoctor.name.last,
+  consultationType: latestConsultation?.consultationType,
+  locationType: latestConsultation?.locationType,
+  time: latestConsultation?.consultationTime,
+  date: latestConsultation?.consultationDate,
+  treatmentCategory: latestConsultation?.treatmentCategory,
+  description: latestConsultation?.description,
+  notes: patient?.notes || patient?.reviewNotes || "",
+  isOnline: latestConsultation?.isOnline || false,
+  // New fields
+  interview: latestConsultation?.interview || "",
+  physicalExamination: latestConsultation?.physicalExamination || "",
+  treatment: latestConsultation?.treatment || "",
+  recommendations: latestConsultation?.recommendations || "",
+};
+
+    // Format medications
+    const medications =
+      patient?.medications && patient.medications.length > 0
+        ? patient.medications.map((med) => ({
+            name: med.name,
+            dosage: med.dosage,
+            frequency: med.frequency,
+            startDate: med.startDate,
+            endDate: med.endDate,
+            status: med.status,
+          }))
+        : [
+            {
+              name: "Metformin",
+              dosage: "500mg",
+              frequency: "Twice daily",
+              startDate: "2023-11-15",
+              endDate: "2024-05-15",
+              status: "Active",
+            },
+          ];
+
+    // Format tests
+    const tests =
+      patient?.tests && patient.tests.length > 0
+        ? patient.tests.map((test) => ({
+            name: test.name,
+            date: test.date,
+            results: test.results,
+            status: test.status,
+          }))
+        : [
+            {
+              name: "Blood Glucose Test",
+              date: "2023-12-01",
+              results: "126 mg/dL",
+              status: "Abnormal",
+            },
+          ];
+
+    // Format files
+    const uploadedFiles = patient.documents || [];
+
+    // Return complete response
+    res.status(200).json({
+      patientData,
+      consultationData,
+      medications,
+      tests,
+      uploadedFiles,
+    });
+  } catch (error) {
+    console.error("Error in getPatientDetails:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Helper function to calculate age from birth date
+function calculateAge(birthDate) {
+  if (!birthDate) return 0;
+
+  const today = new Date();
+  const dob = new Date(birthDate);
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age--;
+  }
+
+  return age;
+}
+
+
+
+
+
+exports.getPatientDetailsAndReports = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    console.log("Received patientId:", patientId);
+
+    // Find patient by ID, hospId, or username
+   const patient = await user
+     .findById(patientId)
+     .populate("consultingDoctor", "name.first name.last")
+      .lean();
+    console.log("Patient details:", patient);
+
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found" });
+    }
+
+    // Get basic user data (since Patient extends User)
+    // const userData = await user.findById(patient._id);
+    // if (!userData) {
+    //   return res.status(404).json({ message: "User data not found" });
+    // }
+
+    // Format last checked date
+    let lastChecked = "Not available";
+    if (patient.consultations && patient.consultations.consultationDate) {
+      const doctor = patient.consultingDoctor
+        ? `Dr. ${patient.consultingDoctor.name.first} ${patient.consultingDoctor.name.last}`
+        : "Unknown doctor";
+      const date = new Date(
+        patient.consultations.consultationDate
+      ).toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      lastChecked = `${doctor} on ${date}`;
+    }
+
+    // Format blood pressure
+    const bp =
+      patient.healthData && patient.healthData.bloodPressure
+        ? patient.healthData.bloodPressure.value
+        : "Not recorded";
+
+    // Get weight
+    const weight =
+      patient.healthData && patient.healthData.bodyWeight
+        ? `${patient.healthData.bodyWeight.value} kg`
+        : "Not recorded";
+
+    // Format medications
+    const medications = patient.medications
+      ? patient.medications.map((med) => ({
+          name: med.name,
+          dosage: med.dosage,
+          frequency: med.frequency,
+          duration: med.endDate
+            ? `X ${Math.ceil(
+                (new Date(med.endDate) - new Date(med.startDate)) /
+                  (1000 * 60 * 60 * 24)
+              )} Days`
+            : "As prescribed",
+        }))
+      : [];
+
+    // Format reports (in this case, we're creating mock data based on tests)
+const reports = (patient.documents || []).filter(
+  (doc) => doc.document_type === "report"
+);
+
+    // If patient has test results, try to map them to the reports
+    if (patient.tests && patient.tests.length > 0) {
+      patient.tests.forEach((test) => {
+        if (test.name.toLowerCase().includes("blood") && test.results) {
+          reports.blood = { ...reports.blood, ...test.results };
+        }
+      });
+    }
+
+    // Format final response
+    const formattedPatient = {
+      name: patient.name || "Unknown",
+      patientId:
+        patient.patientId ||
+        patient.hospId ||
+        `#${patient._id.toString().slice(-8)}`,
+      avatar: patient.profilePicture || "/path/to/patient-avatar.jpg",
+      email: patient.email,
+      phone: patient.phone || patient.phoneFormatted || "Not available",
+      lastChecked,
+      prescription: patient.consultations
+        ? `#${Date.now().toString().slice(-8)}`
+        : "Not available",
+      weight,
+      bp,
+      pulseRate: "Normal", // This doesn't seem to be in your model, so using a default
+      observation: patient.consultations
+        ? patient.consultations.consultationNotes
+        : "No observations recorded",
+      medications,
+      reports,
+    };
+
+    return res.status(200).json(formattedPatient);
+  } catch (error) {
+    console.error("Error fetching patient details:", error);
+    return res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+};
+
+
+
+exports.getPatientMedicalDetails = async (req, res) => {
+  const { id } = req.user;
+
+  console.log("Received patient ID:", id);
+  try {
+    const patient = await user.findById(id).select(
+      "medications tests consultations documents"
+    ).lean();
+    console.log("Patient medical details:", patient);
+
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found" });
+    }
+
+    return res.status(200).json({
+      medications: patient.medications || [],
+      tests: patient.tests || [],
+      consultation: patient.consultations || {},
+      documents: patient.documents || [],
+    });
+  } catch (error) {
+    console.error("Error fetching patient details:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+exports.updatePatient = async (req, res) => {
+  try {
+    const patientId = req.params.id;
+
+
+    const {
+      fullName,
+      fatherName,
+      email,
+      motherName,
+      spouseName,
+      sex,
+      dateOfBirth,
+      birthWeight,
+      maritalStatus,
+      motherTongue,
+      religion,
+      ethnicity,
+      education,
+      occupation,
+      address,
+      city,
+      district,
+      state,
+      country,
+      pinCode,
+      alternateContact,
+      govtId,
+      isInternationalPatient,
+      ivrLanguage,
+      mainComplaint,
+      reviewNotes,
+      consultingSpecialization,
+      consultingDoctor,
+      photo,
+      otherHospitalIds,
+      referrerName,
+      referrerEmail,
+      referrerNumber,
+      referrerType,
+      consents,
+      mobileNumber,
+    } = req.body;
+
+    console.log("date of birth", dateOfBirth);
+
+    const newDocuments = (req.files || []).map((file) => ({
+      filename: file.filename,
+      path: file.path,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+    }));
+
+    // Check if another patient with the same email exists (excluding current patient)
+    if (email) {
+      const existingPatient = await patient.findOne({
+        email,
+        patientId: { $ne: patientId },
+      });
+
+      if (existingPatient) {
+        return res.status(409).json({
+          message: "Another patient with this email already exists.",
+        });
+      }
+    }
+
+    // Find the existing patient
+    const existingPatient = await patient.findOne({patientId});
+    if (!existingPatient) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
+
+    // Handle consulting specialization
+    let consultingSpecName = existingPatient.consultingSpecialization;
+    if (consultingSpecialization) {
+      const consultSpec = await Specialization.findOne({
+        _id: consultingSpecialization,
+      });
+      if (consultSpec) {
+        consultingSpecName = consultSpec.name;
+      }
+    }
+
+    // Prepare update data
+    const updateData = {
+      ...(fullName && {
+        name: {
+          first: fullName.split(" ")[0],
+          last: fullName.split(" ").slice(1).join(" "),
+        },
+      }),
+      ...(email && { email }),
+      ...(mobileNumber && { phone: mobileNumber }),
+      ...(fatherName !== undefined && { fatherName }),
+      ...(motherName !== undefined && { motherName }),
+      ...(spouseName !== undefined && { spouseName }),
+      ...(sex !== undefined && { sex }),
+      ...(dateOfBirth !== undefined && {dateOfBirth: new Date(dateOfBirth) }),
+      ...(birthWeight !== undefined && { birthWeight }),
+      ...(maritalStatus !== undefined && { maritalStatus }),
+      ...(motherTongue !== undefined && { motherTongue }),
+      ...(religion !== undefined && { religion }),
+      ...(ethnicity !== undefined && { ethnicity }),
+      ...(education !== undefined && { education }),
+      ...(occupation !== undefined && { occupation }),
+      ...(address !== undefined && { address }),
+      ...(city !== undefined && { city }),
+      ...(district !== undefined && { district }),
+      ...(state !== undefined && { state }),
+      ...(country !== undefined && { country }),
+      ...(pinCode !== undefined && { pinCode }),
+      ...(alternateContact !== undefined && { alternateContact }),
+      ...(govtId !== undefined && { govtId }),
+      ...(isInternationalPatient !== undefined && { isInternationalPatient }),
+      ...(ivrLanguage !== undefined && { ivrLanguage }),
+      ...(mainComplaint !== undefined && { mainComplaint }),
+      ...(reviewNotes !== undefined && { reviewNotes }),
+      ...(consultingSpecialization && {
+        consultingSpecialization: consultingSpecName,
+      }),
+      ...(consultingDoctor && {
+        consultingDoctor: new mongoose.Types.ObjectId(consultingDoctor),
+      }),
+      ...(photo !== undefined && { photo }),
+      ...(otherHospitalIds !== undefined && { otherHospitalIds }),
+      ...(referrerName !== undefined && { referrerName }),
+      ...(referrerEmail !== undefined && { referrerEmail }),
+      ...(referrerNumber !== undefined && { referrerNumber }),
+      ...(referrerType !== undefined && { referrerType }),
+    };
+
+    // Handle consents update
+    if (consents) {
+      updateData.consents = consents;
+    }
+
+    // Handle documents update - append new documents to existing ones
+    if (newDocuments.length > 0) {
+      updateData.$push = { documents: { $each: newDocuments } };
+    }
+
+    // Update patient with new data
+    const updatedPatient = await patient.findOneAndUpdate(
+      {patientId},
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedPatient) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
+
+    res.status(200).json({
+      message: "Patient updated successfully",
+      patient: updatedPatient,
+    });
+  } catch (error) {
+    console.error("Update patient error:", error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
   }
 };

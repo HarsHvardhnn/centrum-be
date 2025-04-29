@@ -17,7 +17,7 @@ const {
   updateProfile,
 } = require("../controllers/authController");
 const authorizeRoles = require("../middlewares/authenticateRole");
-const upload = require("../middlewares/cloudinaryUpload");
+const {upload} = require("../middlewares/cloudinaryUpload");
 const { getGoogleAuthUrl, handleGoogleCallback } = require("../controllers/googleController");
 
 router.post("/signup", signup);
@@ -35,11 +35,11 @@ router.post("/reset-password", resetPassword);
 router.post("/resend-otp", resendOtp);
 router.get("/profile", authorizeRoles([]), getUserPublicInfo);
 
-router.get("/profile/user",authorizeRoles(["admin","doctor","receptionist"]), getProfile);
+router.get("/profile/user",authorizeRoles(["admin","doctor","receptionist","patient"]), getProfile);
 router.put(
   "/profile",
   upload.single("file"),
-  authorizeRoles(["admin", "doctor", "receptionist"]),
+  authorizeRoles(["admin", "doctor", "receptionist","patient"]),
   updateProfile
 );
 
