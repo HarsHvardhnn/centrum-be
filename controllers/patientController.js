@@ -873,6 +873,7 @@ exports.updatePatient = async (req, res) => {
 
     console.log("date of birth", dateOfBirth);
 
+    console.log(":req.",req.files)
     const newDocuments = (req.files || []).map((file) => ({
       filename: file.filename,
       path: file.path,
