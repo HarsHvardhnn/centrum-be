@@ -4,7 +4,99 @@ const { validationResult } = require("express-validator");
 const Appointment = require("../models/appointment");
 const doctor = require("../models/user-entity/doctor");
 const user = require("../models/user-entity/user");
+const MessageReceipt = require("../models/smsData");
+const { sendSMS } = require("../utils/smsapi");
+const { formatDate, formatTime } = require("../utils/dateUtils");
+const { v4: uuidv4 } = require("uuid");
 
+const sendAppointmentConfirmationSMS = async (
+  appointment,
+  patientDetails,
+  doctorDetails
+) => {
+  try {
+    // Get patient's phone number
+    const phoneNumber =
+      patientDetails.phone;
+  
+
+    if (!phoneNumber) {
+      console.warn(`No phone number found for patient ${patientDetails._id}`);
+      return { success: false, error: "No phone number available" };
+    }
+
+    // Format date and time for SMS
+    const appointmentDate = formatDate(new Date(appointment.date));
+    const startTimeFormatted = formatTime(appointment.startTime);
+
+    const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
+    const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
+    // Create SMS content
+    const message = `
+Hello ${patientName},
+
+Your appointment with Dr. ${doctorName} has been successfully booked for ${appointmentDate} at ${startTimeFormatted}.
+
+Please arrive 15 minutes before your scheduled time. For rescheduling or cancellations, please contact us at least 24 hours in advance.
+
+Thank you for choosing our services - Regards,Centrum Medyczne.
+    `.trim();
+
+    // Generate batch ID for tracking
+    const batchId = uuidv4();
+
+    // Create receipt record
+    const receipt = await MessageReceipt.create({
+      content: message,
+      batchId,
+      recipient: {
+        userId: patientDetails._id.toString(),
+        phone: phoneNumber,
+      },
+      status: "PENDING",
+    });
+
+    console.log("phone", phoneNumber);
+    // Send the SMS
+    const result = await sendSMS(phoneNumber, message);
+
+    // Update receipt status based on result
+    if (result.success) {
+      await MessageReceipt.findByIdAndUpdate(receipt._id, {
+        status: "DELIVERED",
+        messageId: result.messageId,
+        sentAt: new Date(),
+        deliveredAt: new Date(),
+        providerResponse: result.providerResponse || null,
+      });
+
+      return {
+        success: true,
+        messageId: result.messageId,
+        receiptId: receipt._id,
+      };
+    } else {
+      await MessageReceipt.findByIdAndUpdate(receipt._id, {
+        status: "FAILED",
+        failedAt: new Date(),
+        error: {
+          code: result.errorCode || "UNKNOWN",
+          message: result.error?.message || result.error || "Unknown error",
+        },
+        providerResponse: result.providerResponse || null,
+      });
+
+      return {
+        success: false,
+        error: result.error || "Failed to send SMS",
+        receiptId: receipt._id,
+      };
+    }
+  } catch (error) {
+    console.error("Error sending appointment confirmation SMS:", error);
+    return { success: false, error: error.message };
+  }
+};
 
 exports.createAppointment = async (req, res) => {
   try {
@@ -38,6 +130,14 @@ exports.createAppointment = async (req, res) => {
         .json({ success: false, message: "Patient not found" });
     }
 
+    // Get doctor details for SMS
+    const doctorDetails = await user.findById(doctor);
+    if (!doctorDetails) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Doctor not found" });
+    }
+
     // 2️⃣ Check if appointment already exists at the same time
     const existingAppointment = await Appointment.findOne({
       doctor: doctor,
@@ -52,12 +152,10 @@ exports.createAppointment = async (req, res) => {
     });
 
     if (existingAppointment) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Appointment already exists for this patient at this time",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Appointment already exists for this patient at this time",
+      });
     }
 
     // ✅ Calculate duration
@@ -99,13 +197,51 @@ exports.createAppointment = async (req, res) => {
     // ✅ Populate doctor and patient details
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("doctor", "name email")
-      .populate("patient", "name email")
+      .populate("patient", "name email phone mobile")
       .populate("bookedBy", "name email");
 
-    res.status(201).json({
-      success: true,
-      data: populatedAppointment,
-    });
+    // ✅ Send confirmation SMS to patient
+    let smsResult = null;
+    try {
+      smsResult = await sendAppointmentConfirmationSMS(
+        newAppointment,
+        patientDetails,
+        doctorDetails
+      );
+
+      const notificationInfo = {
+        smsNotification: {
+          sent: smsResult.success,
+          receiptId: smsResult.receiptId,
+        },
+      };
+
+      if (!smsResult.success) {
+        notificationInfo.smsNotification.error = smsResult.error;
+        console.warn(
+          "Failed to send appointment confirmation SMS:",
+          smsResult.error
+        );
+      }
+
+      res.status(201).json({
+        success: true,
+        data: populatedAppointment,
+        notifications: notificationInfo,
+      });
+    } catch (smsError) {
+      console.error("SMS sending error:", smsError);
+      res.status(201).json({
+        success: true,
+        data: populatedAppointment,
+        notifications: {
+          smsNotification: {
+            sent: false,
+            error: smsError.message || "Failed to send SMS notification",
+          },
+        },
+      });
+    }
   } catch (error) {
     console.error("Error creating appointment:", error);
     res.status(500).json({
@@ -115,7 +251,6 @@ exports.createAppointment = async (req, res) => {
     });
   }
 };
-
 
 const calculateAge = (dob) => {
   if (!dob) return null;
@@ -161,7 +296,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const appointments = await Appointment.find(query)
-      .populate("patient", "name email profilePicture sex dob") // assuming `sex` and `dob` are in user model
+      .populate("patient", "name email profilePicture sex dob")
       .populate("doctor", "name email")
       .sort({ date: 1, startTime: 1 })
       .skip(skip)
@@ -173,13 +308,13 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       id: appt._id.toString(),
       name: `${appt.patient?.name.first || ""} ${
         appt.patient?.name.last || ""
-        }`,
+      }`,
       patient_id: appt.patient?._id || null,
       username: `@${appt.patient?.name.first?.toLowerCase() || "user"}`,
       avatar: appt.patient?.profilePicture || "https://i.pravatar.cc/150",
       sex: appt.patient?.sex || "Unknown",
       mode: appt.mode || "offline",
-      joining_link:appt.joining_link || null,
+      joining_link: appt.joining_link || null,
       age: calculateAge(appt.patient?.date),
       status: appt.status || "Unknown",
       date: formatDateToYYYYMMDD(appt.date),
@@ -201,8 +336,6 @@ exports.getAppointmentsByDoctor = async (req, res) => {
     });
   }
 };
-
-
 
 exports.getAppointmentsByPatient = async (req, res) => {
   try {
@@ -265,8 +398,6 @@ exports.updateAppointmentStatus = async (req, res) => {
     });
   }
 };
-
-
 
 exports.getAppointmentsDashboard = async (req, res) => {
   try {
@@ -334,9 +465,6 @@ exports.getAppointmentsDashboard = async (req, res) => {
   }
 };
 
-
-
-
 exports.cancelAppointment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -363,15 +491,15 @@ exports.cancelAppointment = async (req, res) => {
   }
 };
 
-
-
-
 exports.completeCheckIn = async (req, res) => {
   try {
     const { id } = req.params;
-    const {patientId} = req.body; // Assuming you want to update the patientId as well
+    const { patientId } = req.body; // Assuming you want to update the patientId as well
 
-    const appointment = await Appointment.findOne({_id: id, patient: patientId});
+    const appointment = await Appointment.findOne({
+      _id: id,
+      patient: patientId,
+    });
 
     if (!appointment) {
       return res.status(404).json({ message: "Appointment not found" });

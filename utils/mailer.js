@@ -4,13 +4,12 @@ require("dotenv").config();
 console.log("sdd", process.env.GMAIL_USER, process.env.GMAIL_PASS);
 
 const transporter = nodemailer.createTransport({
-  name: "example",
-  host: "smtp.zoho.com",
-  port: 587,
-  secure: false, // true for port 465, false for 587
+  host: "smtp.gmail.com", // This should be smtp.gmail.com, not just "gmail"
+  port: 587, // You need to specify the port
+  secure: false, // true for 465, false for other ports like 587
   auth: {
-    user: process.env.GMAIL_USER, // your Zoho email
-    pass: process.env.GMAIL_PASS, // use app password if 2FA is enabled
+    user: process.env.GMAIL_USER, // your Gmail address
+    pass: process.env.GMAIL_PASS, // your Gmail app password
   },
 });
 

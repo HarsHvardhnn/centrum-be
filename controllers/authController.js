@@ -115,8 +115,12 @@ const signup = async (req, res) => {
     await newOTP.save();
 
     // Send OTP via email
-    // await sendEmail(email, otp, "signup");
-
+    await sendEmail({
+      to: email,
+      subject: "Your OTP for Signup",
+      html: `<p>Your OTP code is: <strong>${otp}</strong></p>`,
+      text: `Your OTP code is: ${otp}`,
+    });
     res.status(200).json({
       message: "OTP sent to your email",
       email,
@@ -284,18 +288,18 @@ const login = async (req, res) => {
     }
 
     // Check if password matches
-   let passwordMatches = false;
+    let passwordMatches = false;
 
-   if (user && user.password) {
-     passwordMatches = await bcrypt
-       .compare(password, user.password)
-       .catch(() => false); // if bcrypt throws for any reason, treat it as false
+    if (user && user.password) {
+      passwordMatches = await bcrypt
+        .compare(password, user.password)
+        .catch(() => false); // if bcrypt throws for any reason, treat it as false
 
-     // fallback to normal string comparison
-     if (!passwordMatches && password === user.password) {
-       passwordMatches = true;
-     }
-   }
+      // fallback to normal string comparison
+      if (!passwordMatches && password === user.password) {
+        passwordMatches = true;
+      }
+    }
     if (!passwordMatches) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -423,13 +427,15 @@ const googleLogin = async (req, res) => {
 const requestPasswordReset = async (req, res) => {
   try {
     const { email } = req.body;
+    console.log("email", email);
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
 
     // Check if user exists
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email:email.trim() });
+    console.log("user", user);
     if (!user) {
       // For security reasons, we'll still respond with success
       // even if the user doesn't exist
@@ -450,8 +456,14 @@ const requestPasswordReset = async (req, res) => {
 
     await newOTP.save();
 
-    // Send OTP via email
-    // await sendEmail(email, otp, "password-reset");
+  const response=  await sendEmail({
+      to: email,
+      subject: "Your OTP for Password Reset",
+      html: `<p>Your OTP code is: <strong>${otp}</strong></p>`,
+      text: `Your OTP code is: ${otp}`,
+  });
+    
+    console.log("response", response);
 
     res.status(200).json({
       message: "Password reset OTP sent to your email",
@@ -466,7 +478,7 @@ const requestPasswordReset = async (req, res) => {
 // 6. Reset password with token
 const resetPassword = async (req, res) => {
   try {
-    const { resetToken, newPassword,email } = req.body;
+    const { resetToken, newPassword, email } = req.body;
 
     if (!resetToken || !newPassword) {
       return res
@@ -474,13 +486,10 @@ const resetPassword = async (req, res) => {
         .json({ message: "Reset token and new password are required" });
     }
 
-    
     let decoded;
     decoded = await OTP.findOne({ email, otp: resetToken });
     if (!decoded) {
-       return res
-         .status(401)
-         .json({ message: "otp invalid" });
+      return res.status(401).json({ message: "otp invalid" });
     }
 
     // try {
@@ -685,7 +694,12 @@ const resendOtp = async (req, res) => {
     await newOTP.save();
 
     // Send OTP via email
-    await sendEmail(email, otp, purpose);
+  const response = await sendEmail({
+    to: email,
+    subject: "Your OTP for Password Reset",
+    html: `<p>Your OTP code is: <strong>${otp}</strong></p>`,
+    text: `Your OTP code is: ${otp}`,
+  });
 
     res.status(200).json({
       message: "New OTP sent to your email",
@@ -731,28 +745,29 @@ const getUserPublicInfo = async (req, res) => {
   }
 };
 
-
 // controllers/userController.js
 
 // Get user profile
 const getProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     // Find user by id but exclude sensitive information
-    const userData = await user.findById(userId).select('-password -refreshTokens');
-    
+    const userData = await user
+      .findById(userId)
+      .select("-password -refreshTokens");
+
     if (!userData) {
       return res.status(404).json({ message: "User not found" });
     }
-    
+
     res.status(200).json({ success: true, data: userData });
   } catch (error) {
-    console.error('Error fetching user profile:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching profile',
-      error: error.message 
+    console.error("Error fetching user profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching profile",
+      error: error.message,
     });
   }
 };
@@ -761,55 +776,53 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { 
-      first, 
-      last, 
-      email, 
-      phone, 
-      sex,  
-    } = req.body;
-    
+    const { first, last, email, phone, sex } = req.body;
+
     // Build update object with only provided fields
     const updateData = {};
-    
+
     if (first !== undefined || last !== undefined) {
       updateData.name = {};
       if (first !== undefined) updateData.name.first = first;
       if (last !== undefined) updateData.name.last = last;
     }
-    
+
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
     if (sex !== undefined) updateData.sex = sex;
     if (req?.file?.path) updateData.profilePicture = req.file.path;
-    
+
     // Find and update user
-    const updatedUser = await user.findByIdAndUpdate(
-      userId,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    ).select('-password -refreshTokens');
-    
+    const updatedUser = await user
+      .findByIdAndUpdate(
+        userId,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      )
+      .select("-password -refreshTokens");
+
     if (!updatedUser) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
-    
+
     res.status(200).json({ success: true, data: updatedUser });
   } catch (error) {
-    console.error('Error updating user profile:', error);
-    
+    console.error("Error updating user profile:", error);
+
     // Handle duplicate email error
     if (error.code === 11000) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email already in use' 
+      return res.status(400).json({
+        success: false,
+        message: "Email already in use",
       });
     }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error updating profile',
-      error: error.message 
+
+    res.status(500).json({
+      success: false,
+      message: "Error updating profile",
+      error: error.message,
     });
   }
 };
@@ -828,6 +841,5 @@ module.exports = {
   resendOtp,
   getUserPublicInfo,
   getProfile,
-  updateProfile
+  updateProfile,
 };
-

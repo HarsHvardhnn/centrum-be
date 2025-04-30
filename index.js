@@ -14,6 +14,7 @@ const appRoutes = require("./routes/appointment-routes");
 const servicesRoutes = require("./routes/service-routes")
 const newsRoutes = require("./routes/news-routes");
 const visitCardRoutes = require("./routes/visit-card")
+const smsRoutes = require("./routes/sms-routes");
 dotenv.config();
 connectDB();
 
@@ -36,7 +37,8 @@ app.use("/admin", adminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/appointments", appRoutes);
 app.use("/services", servicesRoutes);
-app.use("/news",newsRoutes);
+app.use("/news", newsRoutes);
+app.use("/sms",smsRoutes);
 app.use("/visit-cards",visitCardRoutes)
 // Import socket handler and pass io
 const socketHandler = require("./config/socketHandler");
