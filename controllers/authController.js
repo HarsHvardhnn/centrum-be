@@ -280,7 +280,7 @@ const login = async (req, res) => {
     }
 
     // Find the user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email,deleted: false });
 
     // Check if user exists
     if (!user) {
