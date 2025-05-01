@@ -161,9 +161,12 @@ exports.getPatientById = async (req, res) => {
       return res.status(404).json({ message: "Patient not found" });
     }
 
+    let parsedConsents = [];
+    console.log(info.consents);
     // Parse deeply stringified consent data
-    const parsedConsents = JSON.parse(info.consents)
-    console.log("Parsed consents:", parsedConsents);
+    if (info.consents && info.consents.length > 0) {
+   parsedConsents= JSON.parse(info?.consents);
+    }
     // Transform documents
     const transformedDocuments = info?.documents?.map((docUrlOrObj) => {
       const url =
