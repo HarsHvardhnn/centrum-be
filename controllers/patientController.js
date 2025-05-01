@@ -128,7 +128,7 @@ exports.createPatient = async (req, res) => {
 exports.getAllPatients = async (req, res) => {
   try {
 const patients = await patient
-  .find()
+  .find({deleted: false})
   .populate({
     path: "doctor",
     select: "name _id",
@@ -216,7 +216,7 @@ exports.getPatientsList = async (req, res) => {
     } = req.query;
 
   
-    const query = {};
+    const query = {deleted:false};
     
     if (doctor) {
       query.consultingDoctor = doctor;
