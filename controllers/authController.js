@@ -776,15 +776,15 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { first, last, email, phone, sex } = req.body;
+    const { name, email, phone, sex } = req.body;
+    console.log("req.body", name);
 
     // Build update object with only provided fields
     const updateData = {};
 
-    if (first !== undefined || last !== undefined) {
-      updateData.name = {};
-      if (first !== undefined) updateData.name.first = first;
-      if (last !== undefined) updateData.name.last = last;
+    if (name !== undefined) {
+      updateData.name = name;
+     
     }
 
     if (email !== undefined) updateData.email = email;

@@ -53,33 +53,29 @@ const createSpecialization = (req, res) => {
       .json({ message: "Please provide name and description" });
   }
 
-  // Check if specialization already exists
   Specialization.findOne({ name })
     .then((specializationExists) => {
       if (specializationExists) {
-        return res
-          .status(400)
-          .json({ message: "Specialization already exists" });
+        res.status(400).json({ message: "Specialization already exists" });
+        return null; // stop the chain here
       }
 
-      // Create new specialization
-      return Specialization.create({
-        name,
-        description,
-      });
+      return Specialization.create({ name, description });
     })
     .then((specialization) => {
-      res.status(201).json(specialization);
+      if (specialization) {
+        res.status(201).json(specialization);
+      }
+      // else, response was already sent above
     })
     .catch((err) => {
-      res
-        .status(500)
-        .json({
-          message: "Failed to create specialization",
-          error: err.message,
-        });
+      res.status(500).json({
+        message: "Failed to create specialization",
+        error: err.message,
+      });
     });
 };
+
 
 // @desc    Update specialization
 // @route   PUT /api/specializations/:id

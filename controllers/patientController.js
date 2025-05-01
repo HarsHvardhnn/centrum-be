@@ -141,6 +141,18 @@ const patients = await patient
   }
 };
 
+function deepParse(value) {
+  let result = value;
+  try {
+    while (typeof result === "string") {
+      result = JSON.parse(result);
+    }
+  } catch (e) {
+    console.warn("Consent parse failed at level:", result);
+  }
+  return result;
+}
+
 exports.getPatientById = async (req, res) => {
   try {
     const info = await patient.findOne({ patientId: req.params.id }).lean();
@@ -149,11 +161,29 @@ exports.getPatientById = async (req, res) => {
       return res.status(404).json({ message: "Patient not found" });
     }
 
+    // Parse deeply stringified consent data
+    const parsedConsents = JSON.parse(info.consents)
+    console.log("Parsed consents:", parsedConsents);
+    // Transform documents
+    const transformedDocuments = info?.documents?.map((docUrlOrObj) => {
+      const url =
+        typeof docUrlOrObj === "string"
+          ? docUrlOrObj
+          : docUrlOrObj.url || docUrlOrObj.path;
+      const fileType = url.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
+      return {
+        id: Date.now() + Math.random(),
+        name: url.split("/").pop(),
+        type: fileType,
+        preview: fileType.startsWith("image/") ? url : null,
+        isPdf: fileType === "application/pdf",
+      };
+    });
+
     const transformedInfo = {
       ...info,
-      documents: Array.isArray(info.documents)
-        ? info.documents.map((doc) => doc.path)
-        : [],
+      consents: parsedConsents,
+      documents: transformedDocuments || [],
     };
 
     res.status(200).json(transformedInfo);
@@ -162,6 +192,7 @@ exports.getPatientById = async (req, res) => {
     res.status(500).json({ message: "Server error while fetching patient" });
   }
 };
+
 
 
 // Controller: PatientController.js
@@ -181,10 +212,14 @@ exports.getPatientsList = async (req, res) => {
       maxAge,
     } = req.query;
 
-    // Build the filter query
+  
     const query = {};
     
-    // Search by name, username, or patientId
+    if (doctor) {
+      query.consultingDoctor = doctor;
+    }
+
+   
     if (search) {
       query.$or = [
         { "name.first": { $regex: search, $options: "i" } },
@@ -195,22 +230,22 @@ exports.getPatientsList = async (req, res) => {
       ];
     }
     
-    // Filter by status if provided
+   
     if (status) {
       query.status = status;
     }
     
-    // Filter by doctor if provided
+   
     if (doctor) {
       query.consultingDoctor = doctor;
     }
     
-    // Filter by sex if provided
+   
     if (sex) {
       query.sex = sex;
     }
     
-    // Filter by age range if provided
+    
     if (minAge || maxAge) {
       const currentDate = new Date();
       
@@ -246,6 +281,7 @@ exports.getPatientsList = async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
+    console.log("Patients fetched:", patients[0].profilePicture, "from", totalCount, "total");
     // Transform the data
     const simplifiedPatients = patients.map((patient) => {
       const patientDate = patient.createdAt
@@ -264,7 +300,7 @@ exports.getPatientsList = async (req, res) => {
       if (patient.consultingDoctor?.name) {
         doctorName = `Dr. ${patient.consultingDoctor.name.first} ${patient.consultingDoctor.name.last}`;
       }
-
+      
       const dob = patient.dateOfBirth;
       const age = dob
         ? Math.floor(
@@ -542,13 +578,23 @@ if (uploadedFiles && uploadedFiles.length > 0) {
 
 exports.getPatientDetails = async (req, res) => {
   try {
-    const patientId = req.params.id;
+  const patientId = req.params.id;
+  let patient = null;
 
-    // Get patient with all embedded data
-    const patient = await user
+  if (mongoose.Types.ObjectId.isValid(patientId)) {
+    patient = await user
       .findById(patientId)
       .populate("consultingDoctor", "name.first name.last")
       .lean();
+  }
+
+  if (!patient) {
+    patient = await user
+      .findOne({ patientId })
+      .populate("consultingDoctor", "name.first name.last")
+      .lean();
+  }
+   
 
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
@@ -588,23 +634,27 @@ exports.getPatientDetails = async (req, res) => {
     // Consultation data
 const consultationData = {
   doctor:
-    patient.consultingDoctor.name.first +
-    " " +
-    patient.consultingDoctor.name.last,
-  consultationType: latestConsultation?.consultationType,
-  locationType: latestConsultation?.locationType,
-  time: latestConsultation?.consultationTime,
-  date: latestConsultation?.consultationDate,
-  treatmentCategory: latestConsultation?.treatmentCategory,
-  description: latestConsultation?.description,
+    patient?.consultingDoctor?.name?.first &&
+    patient?.consultingDoctor?.name?.last
+      ? patient.consultingDoctor.name.first +
+        " " +
+        patient.consultingDoctor.name.last
+      : "",
+
+  consultationType: latestConsultation?.consultationType || "",
+  locationType: latestConsultation?.locationType || "",
+  time: latestConsultation?.consultationTime || "",
+  date: latestConsultation?.consultationDate || "",
+  treatmentCategory: latestConsultation?.treatmentCategory || "",
+  description: latestConsultation?.description || "",
   notes: patient?.notes || patient?.reviewNotes || "",
-  isOnline: latestConsultation?.isOnline || false,
-  // New fields
+  isOnline: !!latestConsultation?.isOnline, 
   interview: latestConsultation?.interview || "",
   physicalExamination: latestConsultation?.physicalExamination || "",
   treatment: latestConsultation?.treatment || "",
   recommendations: latestConsultation?.recommendations || "",
 };
+
 
     // Format medications
     const medications =

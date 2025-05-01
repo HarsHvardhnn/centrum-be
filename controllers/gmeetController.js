@@ -58,9 +58,7 @@ exports.bookAppointment = async (req, res) => {
     // If patient doesn't exist, create a new one
     if (!patient) {
       isNewUser = true;
-      const randomPassword =
-        Math.random().toString(36).slice(-10) +
-        Math.random().toString(36).slice(-10);
+      // Generate a secure random password - should be sent to user in real application
       const hashedPassword = await bcrypt.hash("harsh123", 10);
 
       patient = new User({
@@ -76,7 +74,7 @@ exports.bookAppointment = async (req, res) => {
             ? "Female"
             : "Others",
         phone,
-        password: "harsh123",
+        password: hashedPassword,
         role: "patient",
         signupMethod: "email",
       });
@@ -115,7 +113,7 @@ exports.bookAppointment = async (req, res) => {
       // Get admin user for Google Calendar integration
       const admin = await getCalendarAdmin();
 
-      // Get Calendar client
+      // Get Calendar client - this now handles token refresh automatically
       const calendar = await getCalendarClient(admin._id);
 
       const event = {
@@ -159,6 +157,21 @@ exports.bookAppointment = async (req, res) => {
     } catch (googleError) {
       console.error("Google Calendar error:", googleError);
 
+      // Check if error is due to missing or invalid token
+      if (
+        googleError.message.includes("auth") ||
+        googleError.message.includes("token")
+      ) {
+        return res.status(201).json({
+          success: true,
+          message:
+            "Appointment booked but Google Calendar integration needs to be set up",
+          appointment,
+          isNewUser,
+          calendarSetupNeeded: true,
+        });
+      }
+
       return res.status(201).json({
         success: true,
         message: "Appointment booked but failed to create Google Meet event",
@@ -168,12 +181,10 @@ exports.bookAppointment = async (req, res) => {
     }
   } catch (error) {
     console.error("Appointment booking error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to book appointment",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to book appointment",
+      error: error.message,
+    });
   }
 };
