@@ -19,6 +19,20 @@ const sendAppointmentConfirmationSMS = async (
     const phoneNumber =
       patientDetails.phone;
   
+ let smsConsentAgreed = false;
+
+ if (patientDetails.consents && patientDetails.consents.length > 0) {
+   const parsedConsents = JSON.parse(patientDetails.consents);
+   smsConsentAgreed = parsedConsents.some(
+     (consent) =>
+       consent.text.toLowerCase().includes("sms notifications") &&
+       consent.agreed === true
+   );
+ }
+
+    if (!smsConsentAgreed) { 
+      return;
+    }
 
     if (!phoneNumber) {
       console.warn(`No phone number found for patient ${patientDetails._id}`);
