@@ -124,7 +124,7 @@ const getAllDoctors = async (req, res) => {
     const totalDocs = await User.countDocuments(query);
 
     // Find doctors based on query with pagination and sorting
-    const doctors = await User.find({ ...query, isDeleted: false })
+    const doctors = await User.find({ ...query, deleted: false })
       .populate("specialization")
       .sort(sortConfig)
       .skip(skip)
