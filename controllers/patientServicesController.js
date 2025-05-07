@@ -1,12 +1,13 @@
 const PatientService = require("../models/patientServices");
 const Service = require("../models/services");
 const User = require("../models/user-entity/user");
+const Appointment = require("../models/appointment");
 
 // Add services to a patient
 // This will append new services to existing ones
 exports.addServicesToPatient = async (req, res) => {
   try {
-    const { patientId, services } = req.body;
+    const { patientId, appointmentId, services } = req.body;
     
     if (!patientId || !services || !Array.isArray(services) || services.length === 0) {
       return res.status(400).json({ 
@@ -18,6 +19,20 @@ exports.addServicesToPatient = async (req, res) => {
     const patient = await User.findOne({  _id:patientId, role: "patient" });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
+    }
+
+    // Verify appointment if provided
+    let appointment = null;
+    if (appointmentId) {
+      appointment = await Appointment.findById(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+      
+      // Validate that appointment belongs to the patient
+      if (appointment.patient.toString() !== patientId) {
+        return res.status(400).json({ message: "Appointment does not belong to this patient" });
+      }
     }
 
     // Verify all services exist
@@ -42,10 +57,23 @@ exports.addServicesToPatient = async (req, res) => {
     }));
 
     // Find existing patient services or create new one
-    let patientService = await PatientService.findOne({ 
-      patient: patient._id,
-      isDeleted: false
-    });
+    let patientService = null;
+    
+    if (appointmentId) {
+      // If appointment is provided, find by both patient and appointment
+      patientService = await PatientService.findOne({ 
+        patient: patient._id,
+        appointment: appointmentId,
+        isDeleted: false
+      });
+    } else {
+      // Backward compatibility: find by patient only if no appointment ID
+      patientService = await PatientService.findOne({ 
+        patient: patient._id,
+        appointment: { $exists: false },
+        isDeleted: false
+      });
+    }
     
     if (patientService) {
       // Patient has existing services, append new ones
@@ -67,6 +95,7 @@ exports.addServicesToPatient = async (req, res) => {
       // Patient doesn't have services yet, create new document
       patientService = await PatientService.create({
         patient: patient._id,
+        appointment: appointmentId || undefined,
         services: formattedServices,
         assignedBy: req.user.id,
         isDeleted: false
@@ -76,7 +105,8 @@ exports.addServicesToPatient = async (req, res) => {
     await patientService.populate([
       { path: "patient", select: "name email" },
       { path: "services.service", select: "title shortDescription price" },
-      { path: "assignedBy", select: "name email" }
+      { path: "assignedBy", select: "name email" },
+      { path: "appointment", select: "date startTime" }
     ]);
 
     return res.status(200).json({
@@ -96,6 +126,7 @@ exports.addServicesToPatient = async (req, res) => {
 exports.getPatientServices = async (req, res) => {
   try {
     const { patientId } = req.params;
+    const { appointmentId } = req.query;
 
     // Verify patient exists
     console.log(patientId);
@@ -104,19 +135,32 @@ exports.getPatientServices = async (req, res) => {
       return res.status(404).json({ message: "Patient not found" });
     }
 
-    const patientServices = await PatientService.findOne({ 
+    // Prepare filter
+    const filter = { 
       patient: patient._id,
       isDeleted: false
-    }).populate([
+    };
+
+    // Add appointment filter if provided
+    if (appointmentId) {
+      filter.appointment = appointmentId;
+    }
+
+    const patientServices = await PatientService.findOne(filter).populate([
       { path: "patient", select: "name email" },
       { path: "services.service", select: "title shortDescription price icon images" },
-      { path: "assignedBy", select: "name email" }
+      { path: "assignedBy", select: "name email" },
+      { path: "appointment", select: "date startTime" }
     ]);
 
     if (!patientServices) {
       return res.status(200).json({
         message: "No services found for this patient",
-        data: { patient: patientId, services: [] }
+        data: { 
+          patient: patientId, 
+          appointment: appointmentId || null,
+          services: [] 
+        }
       });
     }
 
@@ -137,6 +181,7 @@ exports.getPatientServices = async (req, res) => {
 exports.updatePatientService = async (req, res) => {
   try {
     const { patientId, serviceId } = req.params;
+    const { appointmentId } = req.query;
     const { status, notes } = req.body;
 
     // Verify patient exists
@@ -145,11 +190,19 @@ exports.updatePatientService = async (req, res) => {
       return res.status(404).json({ message: "Patient not found" });
     }
 
-    // Find patient service record
-    const patientService = await PatientService.findOne({ 
+    // Prepare filter
+    const filter = { 
       patient: patient._id,
       isDeleted: false
-    });
+    };
+
+    // Add appointment filter if provided
+    if (appointmentId) {
+      filter.appointment = appointmentId;
+    }
+
+    // Find patient service record
+    const patientService = await PatientService.findOne(filter);
 
     if (!patientService) {
       return res.status(404).json({ message: "Patient services not found" });
@@ -178,7 +231,8 @@ exports.updatePatientService = async (req, res) => {
     await patientService.populate([
       { path: "patient", select: "name email" },
       { path: "services.service", select: "title shortDescription price" },
-      { path: "assignedBy", select: "name email" }
+      { path: "assignedBy", select: "name email" },
+      { path: "appointment", select: "date startTime" }
     ]);
 
     return res.status(200).json({
@@ -198,6 +252,7 @@ exports.updatePatientService = async (req, res) => {
 exports.deletePatientServices = async (req, res) => {
   try {
     const { patientId } = req.params;
+    const { appointmentId } = req.query;
 
     // Verify patient exists
     const patient = await User.findOne({ _id:patientId, role: "patient" });
@@ -205,9 +260,17 @@ exports.deletePatientServices = async (req, res) => {
       return res.status(404).json({ message: "Patient not found" });
     }
 
+    // Prepare filter
+    const filter = { patient: patient._id };
+    
+    // Add appointment filter if provided
+    if (appointmentId) {
+      filter.appointment = appointmentId;
+    }
+
     // Find and mark as deleted
     const result = await PatientService.findOneAndUpdate(
-      { patient: patient._id },
+      filter,
       { isDeleted: true },
       { new: true }
     );
@@ -232,53 +295,53 @@ exports.deletePatientServices = async (req, res) => {
 exports.removeServiceFromPatient = async (req, res) => {
   try {
     const { patientId, serviceId } = req.params;
+    const { appointmentId } = req.query;
 
-    console.log("service id",serviceId);
+    console.log("service id", serviceId);
     // Verify patient exists
-    const patient = await User.findOne({  patientId, role: "patient" });
+    const patient = await User.findOne({ _id:patientId, role: "patient" });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }
 
-    // Find patient service record
-    const patientService = await PatientService.findOne({ 
+    // Prepare filter
+    const filter = { 
       patient: patient._id,
       isDeleted: false
-    });
+    };
+
+    // Add appointment filter if provided
+    if (appointmentId) {
+      filter.appointment = appointmentId;
+    }
+
+    // Find patient service record
+    const patientService = await PatientService.findOne(filter);
 
     if (!patientService) {
       return res.status(404).json({ message: "Patient services not found" });
     }
 
-    console.log(patientService);
-    // Find and remove the specific service
-    const initialLength = patientService.services.length;
-    patientService.services = patientService.services.filter(
-      s => s.service.toString() !== serviceId
+    // Find the specific service in the services array
+    const serviceIndex = patientService.services.findIndex(
+      s => s.service.toString() === serviceId
     );
 
-
-    console.log("initial",initialLength);
-    if (patientService.services.length === initialLength) {
+    if (serviceIndex === -1) {
       return res.status(404).json({ message: "Service not found for this patient" });
     }
 
+    // Remove the service
+    patientService.services.splice(serviceIndex, 1);
     await patientService.save();
 
-    await patientService.populate([
-      { path: "patient", select: "name email" },
-      { path: "services.service", select: "title shortDescription price" },
-      { path: "assignedBy", select: "name email" }
-    ]);
-
     return res.status(200).json({
-      message: "Service removed successfully",
-      data: patientService
+      message: "Service removed successfully"
     });
   } catch (error) {
     console.error("Error removing service from patient:", error);
     return res.status(500).json({ 
-      message: "Failed to remove service from patient",
+      message: "Failed to remove service",
       error: error.message
     });
   }

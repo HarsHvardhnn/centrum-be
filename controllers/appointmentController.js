@@ -992,6 +992,11 @@ exports.getAppointmentDetails = async (req, res) => {
       
       // Add appointment start time to consultation data
       appointment.consultation.time = appointment.startTime || "";
+      
+      // Use appointment.date as fallback for consultationDate if it doesn't exist or is null
+      if (!appointment.consultation.consultationDate) {
+        appointment.consultation.consultationDate = appointment.date;
+      }
     } else {
       appointment.consultation = {
         consultationDoctor: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
@@ -999,7 +1004,8 @@ exports.getAppointmentDetails = async (req, res) => {
         physicalExamination: "",
         treatment: "",
         recommendations: "",
-        time: appointment.startTime || ""
+        time: appointment.startTime || "",
+        consultationDate: appointment.date
       };
     }
 

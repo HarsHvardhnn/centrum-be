@@ -2,6 +2,7 @@ const bcrypt = require("bcrypt");
 const patient = require("../models/user-entity/patient");
 const { default: mongoose } = require("mongoose");
 const doctor = require("../models/user-entity/doctor");
+const Appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const Specialization = require("../models/specialization");
 const { ObjectId } = mongoose.Types;
@@ -724,28 +725,45 @@ function calculateAge(birthDate) {
 exports.getPatientDetailsAndReports = async (req, res) => {
   try {
     const { patientId } = req.params;
-    console.log("Received patientId:", patientId);
+    const { appointmentId } = req.query; // Get appointmentId from query params
+    console.log("Received patientId:", patientId, "appointmentId:", appointmentId);
 
-    // Find patient by ID, hospId, or username
-   const patient = await user
-     .findById(patientId)
-     .populate("consultingDoctor", "name.first name.last")
+    // Find patient by ID
+    const patient = await user
+      .findById(patientId)
+      .populate("consultingDoctor", "name.first name.last")
       .lean();
-    console.log("Patient details:", patient);
-
+    
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }
 
-    // Get basic user data (since Patient extends User)
-    // const userData = await user.findById(patient._id);
-    // if (!userData) {
-    //   return res.status(404).json({ message: "User data not found" });
-    // }
+    // Find appointment by ID if provided
+    let appointment = null;
+    if (appointmentId) {
+     
+      appointment = await Appointment.findById(appointmentId)
+        .populate("doctor", "name.first name.last")
+        .lean();
+      
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+    }
 
-    // Format last checked date
+    // Format last checked date - use appointment date if available
     let lastChecked = "Not available";
-    if (patient.consultations && patient.consultations.consultationDate) {
+    if (appointment && appointment.date) {
+      const doctor = appointment.doctor
+        ? `Dr. ${appointment.doctor.name.first} ${appointment.doctor.name.last}`
+        : "Unknown doctor";
+      const date = new Date(appointment.date).toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      lastChecked = `${doctor} on ${date}`;
+    } else if (patient.consultations && patient.consultations.consultationDate) {
       const doctor = patient.consultingDoctor
         ? `Dr. ${patient.consultingDoctor.name.first} ${patient.consultingDoctor.name.last}`
         : "Unknown doctor";
@@ -759,21 +777,20 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       lastChecked = `${doctor} on ${date}`;
     }
 
+    // Get health data - prefer from appointment if available
+    const healthData = appointment?.healthData || patient.healthData || {};
+    
     // Format blood pressure
-    const bp =
-      patient.healthData && patient.healthData.bloodPressure
-        ? patient.healthData.bloodPressure.value
-        : "Not recorded";
+    const bp = healthData.bloodPressure?.value || "Not recorded";
 
     // Get weight
-    const weight =
-      patient.healthData && patient.healthData.bodyWeight
-        ? `${patient.healthData.bodyWeight.value} kg`
-        : "Not recorded";
+    const weight = healthData.bodyWeight?.value 
+      ? `${healthData.bodyWeight.value} kg` 
+      : "Not recorded";
 
-    // Format medications
-    const medications = patient.medications
-      ? patient.medications.map((med) => ({
+    // Format medications - use appointment data if available
+    const medications = appointment?.medications 
+      ? appointment.medications.map((med) => ({
           name: med.name,
           dosage: med.dosage,
           frequency: med.frequency,
@@ -784,21 +801,28 @@ exports.getPatientDetailsAndReports = async (req, res) => {
               )} Days`
             : "As prescribed",
         }))
-      : [];
+      : patient.medications
+        ? patient.medications.map((med) => ({
+            name: med.name,
+            dosage: med.dosage,
+            frequency: med.frequency,
+            duration: med.endDate
+              ? `X ${Math.ceil(
+                  (new Date(med.endDate) - new Date(med.startDate)) /
+                    (1000 * 60 * 60 * 24)
+                )} Days`
+              : "As prescribed",
+          }))
+        : [];
 
-    // Format reports (in this case, we're creating mock data based on tests)
-const reports = (patient.documents || []).filter(
-  (doc) => doc.document_type === "report"
-);
+    console.log("Appointment reports:", medications);
 
-    // If patient has test results, try to map them to the reports
-    if (patient.tests && patient.tests.length > 0) {
-      patient.tests.forEach((test) => {
-        if (test.name.toLowerCase().includes("blood") && test.results) {
-          reports.blood = { ...reports.blood, ...test.results };
-        }
-      });
-    }
+    // Format reports - use appointment reports if available
+    const reports = appointment?.reports || 
+      (patient.documents || []).filter(doc => doc.document_type === "report");
+
+    // Get consultation data from appointment if available
+    const consultation = appointment?.consultation || patient.consultations || {};
 
     // Format final response
     const formattedPatient = {
@@ -811,17 +835,16 @@ const reports = (patient.documents || []).filter(
       email: patient.email,
       phone: patient.phone || patient.phoneFormatted || "Not available",
       lastChecked,
-      prescription: patient.consultations
+      prescription: appointment?.consultation || consultation
         ? `#${Date.now().toString().slice(-8)}`
         : "Not available",
       weight,
       bp,
       pulseRate: "Normal", // This doesn't seem to be in your model, so using a default
-      observation: patient.consultations
-        ? patient.consultations.consultationNotes
-        : "No observations recorded",
+      observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "No observations recorded",
       medications,
       reports,
+      appointmentId: appointment?._id || null
     };
 
     return res.status(200).json(formattedPatient);
