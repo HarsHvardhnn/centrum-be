@@ -9,6 +9,7 @@ const { sendSMS } = require("../utils/smsapi");
 const { formatDate, formatTime } = require("../utils/dateUtils");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 
 // Helper function to generate temporary password
 const generateTemporaryPassword = () => {
@@ -603,5 +604,759 @@ exports.completeCheckIn = async (req, res) => {
   } catch (error) {
     console.error("Error completing appointment:", error);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Update appointment details including health data and reports
+exports.updateAppointmentDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      consultationData, 
+      medications, 
+      tests, 
+      healthData,
+      reports 
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid appointment ID format" 
+      });
+    }
+
+    const updateData = {};
+
+    // Handle consultation data if provided
+    if (consultationData) {
+      const consultDate = new Date(consultationData.date);
+      updateData.consultation = {
+        consultationType: consultationData.consultationType,
+        consultationNotes: consultationData.notes,
+        description: consultationData.description,
+        treatmentCategory: consultationData?.treatmentCategory || "",
+        consultationDate: !isNaN(consultDate.getTime()) ? consultDate : new Date(),
+        consultationStatus: consultationData.status || "Scheduled",
+        isOnline: consultationData.isOnline || false,
+        interview: consultationData.interview || "",
+        physicalExamination: consultationData.physicalExamination || "",
+        treatment: consultationData.treatment || "",
+        recommendations: consultationData.recommendations || "",
+        roomNumber: consultationData.roomNumber || null,
+        isRisky: consultationData.isRisky || false,
+        time: consultationData.time || ""
+      };
+    }
+
+    // Handle medications if provided
+    if (medications && medications.length > 0) {
+      updateData.medications = medications.map((med) => ({
+        name: med.name,
+        dosage: med.dosage,
+        frequency: med.frequency,
+        startDate: new Date(med.startDate),
+        endDate: med.endDate ? new Date(med.endDate) : null,
+        status: med.status,
+      }));
+    }
+
+    // Handle tests if provided
+    if (tests && tests.length > 0) {
+      updateData.tests = tests.map((test) => ({
+        name: test.name,
+        date: new Date(test.date),
+        results: test.results,
+        status: test.status,
+      }));
+    }
+    
+    // Handle health data if provided
+    if (healthData) {
+      updateData.healthData = {
+        bloodPressure: {
+          value: healthData.bloodPressure?.value || "",
+          percentage: healthData.bloodPressure?.percentage || 0,
+          temperature: healthData.bloodPressure?.temperature || 0,
+        },
+        bodyHeight: {
+          value: healthData.bodyHeight?.value || "",
+          percentage: healthData.bodyHeight?.percentage || 0,
+        },
+        bodyWeight: {
+          value: healthData.bodyWeight?.value || 0,
+          percentage: healthData.bodyWeight?.percentage || 0,
+        },
+        notes: healthData.notes || "",
+        recordedAt: new Date()
+      };
+    }
+    
+    // Handle reports if provided
+    if (reports && reports.length > 0) {
+      // If we want to add to existing reports
+      if (req.query.appendReports === 'true') {
+        updateData.$push = { 
+          reports: { 
+            $each: reports.map(report => ({
+              name: report.name,
+              type: report.type, 
+              fileUrl: report.fileUrl,
+              fileType: report.fileType,
+              description: report.description || "",
+              uploadedAt: new Date(),
+              metadata: report.metadata || {}
+            }))
+          }
+        };
+      } else {
+        // Replace all reports
+        updateData.reports = reports.map(report => ({
+          name: report.name,
+          type: report.type,
+          fileUrl: report.fileUrl,
+          fileType: report.fileType,
+          description: report.description || "",
+          uploadedAt: new Date(),
+          metadata: report.metadata || {}
+        }));
+      }
+    }
+
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      id,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedAppointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedAppointment,
+      message: "Appointment updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating appointment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update appointment details",
+      error: error.message,
+    });
+  }
+};
+
+// Add a report to an appointment
+exports.addReportToAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reportData = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format"
+      });
+    }
+
+    if (!reportData.name || !reportData.fileUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "Report name and fileUrl are required"
+      });
+    }
+
+    const report = {
+      name: reportData.name,
+      type: reportData.type || "Other",
+      fileUrl: reportData.fileUrl,
+      fileType: reportData.fileType || "pdf",
+      description: reportData.description || "",
+      uploadedAt: new Date(),
+      metadata: reportData.metadata || {}
+    };
+
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      id,
+      { $push: { reports: report } },
+      { new: true }
+    );
+
+    if (!updatedAppointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedAppointment.reports,
+      message: "Report added successfully"
+    });
+  } catch (error) {
+    console.error("Error adding report:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add report",
+      error: error.message
+    });
+  }
+};
+
+// Upload a single report file to appointment
+exports.uploadAppointmentReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format"
+      });
+    }
+
+    // Check if appointment exists
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found"
+      });
+    }
+
+    // Process uploaded file from req.file (Multer attaches this)
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded"
+      });
+    }
+
+    // Create report object from uploaded file
+    const newReport = {
+      name: req.body.name || req.file.originalname,
+      type: req.body.type || "Other",
+      fileUrl: req.file.path, // Cloudinary URL from your middleware
+      fileType: req.file.mimetype.split('/')[1] || "pdf",
+      description: req.body.description || "",
+      uploadedAt: new Date(),
+      metadata: {
+        originalName: req.file.originalname,
+        size: req.file.size,
+        cloudinaryId: req.file.filename || req.file.public_id
+      }
+    };
+
+    // Update appointment with new report
+    let updatedAppointment;
+    if (appointment.reports && appointment.reports.length > 0) {
+      // Append to existing reports
+      updatedAppointment = await Appointment.findByIdAndUpdate(
+        id,
+        { $push: { reports: newReport } },
+        { new: true }
+      );
+    } else {
+      // Set reports if none exist
+      updatedAppointment = await Appointment.findByIdAndUpdate(
+        id,
+        { reports: [newReport] },
+        { new: true }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      data: newReport,
+      message: "Report uploaded successfully"
+    });
+
+  } catch (error) {
+    console.error("Error uploading report:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload report",
+      error: error.message
+    });
+  }
+};
+
+// Delete a report from an appointment
+exports.deleteReport = async (req, res) => {
+  try {
+    const { appointmentId, reportId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format"
+      });
+    }
+
+    // Find the appointment and verify it exists
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found"
+      });
+    }
+
+    // Find the report in the appointment
+    const reportIndex = appointment.reports ? 
+      appointment.reports.findIndex(r => r._id.toString() === reportId) : -1;
+
+    if (reportIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Report not found in this appointment"
+      });
+    }
+
+    // Get cloudinary ID to delete the file from cloud storage if available
+    const cloudinaryId = appointment.reports[reportIndex].metadata?.cloudinaryId;
+
+    // Remove the report from the reports array
+    appointment.reports.splice(reportIndex, 1);
+    await appointment.save();
+
+    // If using Cloudinary, you could delete the file here
+    // if (cloudinaryId) {
+    //   try {
+    //     await cloudinary.uploader.destroy(cloudinaryId);
+    //   } catch (cloudError) {
+    //     console.error('Error deleting file from Cloudinary:', cloudError);
+    //   }
+    // }
+
+    res.status(200).json({
+      success: true,
+      message: "Report deleted successfully",
+      data: {
+        remainingReports: appointment.reports
+      }
+    });
+  } catch (error) {
+    console.error("Error deleting report:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete report",
+      error: error.message
+    });
+  }
+};
+
+// Get appointment details including consultation, tests, and medications
+exports.getAppointmentDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(id)
+      .populate("doctor", "name.first name.last")
+      .populate("patient", "name.first name.last patientId")
+      .lean();
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    // Add doctor name to consultation
+    if (appointment.consultation) {
+      appointment.consultation.consultationDoctor = 
+        `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
+      
+      // Ensure consultation fields exist
+      appointment.consultation.interview = appointment.consultation.interview || "";
+      appointment.consultation.physicalExamination = appointment.consultation.physicalExamination || "";
+      appointment.consultation.treatment = appointment.consultation.treatment || "";
+      appointment.consultation.recommendations = appointment.consultation.recommendations || "";
+      
+      // Add appointment start time to consultation data
+      appointment.consultation.time = appointment.startTime || "";
+    } else {
+      appointment.consultation = {
+        consultationDoctor: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
+        interview: "",
+        physicalExamination: "",
+        treatment: "",
+        recommendations: "",
+        time: appointment.startTime || ""
+      };
+    }
+
+    // Format reports if they exist
+    if (appointment.reports && appointment.reports.length > 0) {
+      appointment.reports = appointment.reports.map(report => ({
+        ...report,
+        uploadedAt: report.uploadedAt || new Date(),
+        displayName: report.name || "Unnamed Report",
+        url: report.fileUrl,
+        type: report.fileType || "pdf"
+      }));
+    } else {
+      appointment.reports = [];
+    }
+
+    res.status(200).json({
+      success: true,
+      data: appointment,
+    });
+  } catch (error) {
+    console.error("Error fetching appointment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch appointment details",
+      error: error.message,
+    });
+  }
+};
+
+// Get all appointments for a patient
+exports.getPatientAppointments = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const { status, startDate, endDate } = req.query;
+
+    const query = { patient: patientId };
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (startDate && endDate) {
+      query.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    const appointments = await Appointment.find(query)
+      .populate("doctor", "name.first name.last")
+      .sort({ date: -1, startTime: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: appointments,
+    });
+  } catch (error) {
+    console.error("Error fetching patient appointments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch patient appointments",
+      error: error.message,
+    });
+  }
+};
+
+// Get appointments with pagination, sorting and filtering
+exports.getAppointments = async (req, res) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            sortBy = 'date',
+            sortOrder = 'desc',
+            status,
+            startDate,
+            endDate,
+            doctorId,
+            searchTerm
+        } = req.query;
+
+        // Build query
+        const query = {};
+
+        // Status filter
+        if (status && status !== 'all') {
+            query.status = status;
+        }
+
+        // Date range filter
+        if (startDate && endDate) {
+            query.date = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            };
+        }
+
+        // Doctor filter
+        if (doctorId) {
+            query.doctor = doctorId;
+        }
+
+        // Search by patient name or disease
+        if (searchTerm) {
+            query.$or = [
+                { 'mainComplaint': { $regex: searchTerm, $options: 'i' } }
+            ];
+        }
+
+        // Calculate skip for pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // Build sort object
+        const sortObject = {};
+        sortObject[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+        // Get appointments with pagination
+        const appointments = await Appointment.find(query)
+            .populate({
+                path: 'patient',
+                select: 'name email profilePicture sex dateOfBirth mainComplaint patientId'
+            })
+            .populate({
+                path: 'doctor',
+                select: 'name email'
+            })
+            .sort(sortObject)
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        // Get total count for pagination
+        const total = await Appointment.countDocuments(query);
+
+        // Calculate age for each patient
+        const appointmentsWithAge = appointments.map(appointment => {
+            const patientData = appointment.patient;
+            let age = null;
+            if (patientData?.dateOfBirth) {
+                const today = new Date();
+                const birthDate = new Date(patientData.dateOfBirth);
+                age = today.getFullYear() - birthDate.getFullYear();
+                const monthDiff = today.getMonth() - birthDate.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                    age--;
+                }
+            }
+
+            return {
+                id: appointment._id,
+                date: appointment.date,
+                startTime: appointment.startTime,
+                endTime: appointment.endTime,
+                status: appointment.status,
+                mode: appointment.mode,
+                checkIn: appointment.checkedIn,
+                checkInDate: appointment.checkInDate,
+                patient: {
+                    id: patientData?._id,
+                    patientId: patientData?.patientId,
+                    name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
+                    sex: patientData?.sex,
+                    age: age,
+                    disease: patientData?.mainComplaint,
+                    profilePicture: patientData?.profilePicture || null,
+                    email: patientData?.email
+                },
+                doctor: appointment.doctor ? {
+                    id: appointment.doctor._id,
+                    name: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
+                    email: appointment.doctor.email
+                } : null,
+                metadata: appointment.metadata || {}
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            data: appointmentsWithAge,
+            pagination: {
+                total,
+                page: parseInt(page),
+                pages: Math.ceil(total / parseInt(limit)),
+                limit: parseInt(limit)
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching appointments:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch appointments',
+            error: error.message
+        });
+    }
+};
+
+// Upload report files to appointment
+exports.uploadAppointmentReports = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format"
+      });
+    }
+
+    // Check if appointment exists
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found"
+      });
+    }
+
+    // Process uploaded files from req.files (Multer should attach this)
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No files uploaded"
+      });
+    }
+
+    // Create report objects from uploaded files
+    const reports = req.files.map(file => ({
+      name: req.body.name || file.originalname,
+      type: req.body.type || "Other",
+      fileUrl: file.path, // Cloudinary URL from your middleware
+      fileType: file.mimetype.split('/')[1] || "pdf",
+      description: req.body.description || "",
+      uploadedAt: new Date(),
+      metadata: {
+        originalName: file.originalname,
+        size: file.size,
+        cloudinaryId: file.filename || file.public_id
+      }
+    }));
+
+    // Update appointment with new reports
+    let updatedAppointment;
+    if (appointment.reports && appointment.reports.length > 0) {
+      // Append to existing reports
+      updatedAppointment = await Appointment.findByIdAndUpdate(
+        id,
+        { $push: { reports: { $each: reports } } },
+        { new: true }
+      );
+    } else {
+      // Set reports if none exist
+      updatedAppointment = await Appointment.findByIdAndUpdate(
+        id,
+        { reports: reports },
+        { new: true }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      data: updatedAppointment.reports,
+      message: `${reports.length} report(s) uploaded successfully`
+    });
+
+  } catch (error) {
+    console.error("Error uploading reports:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload reports",
+      error: error.message
+    });
+  }
+};
+
+// Update only consultation details
+exports.updateConsultation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const consultationData = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid appointment ID format" 
+      });
+    }
+
+    // Get the current appointment
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found"
+      });
+    }
+
+    // Prepare consultation update data
+    const consultationUpdate = {
+      consultationType: consultationData.consultationType || appointment.consultation?.consultationType,
+      consultationNotes: consultationData.notes || consultationData.consultationNotes || appointment.consultation?.consultationNotes,
+      description: consultationData.description || appointment.consultation?.description,
+      treatmentCategory: consultationData.treatmentCategory || appointment.consultation?.treatmentCategory,
+      consultationStatus: consultationData.status || consultationData.consultationStatus || appointment.consultation?.consultationStatus || "Scheduled",
+      isOnline: consultationData.isOnline !== undefined ? consultationData.isOnline : appointment.consultation?.isOnline,
+      roomNumber: consultationData.roomNumber !== undefined ? consultationData.roomNumber : appointment.consultation?.roomNumber,
+      isRisky: consultationData.isRisky !== undefined ? consultationData.isRisky : appointment.consultation?.isRisky,
+      
+      // Ensure the four required fields are included
+      interview: consultationData.interview || appointment.consultation?.interview || "",
+      physicalExamination: consultationData.physicalExamination || appointment.consultation?.physicalExamination || "",
+      treatment: consultationData.treatment || appointment.consultation?.treatment || "",
+      recommendations: consultationData.recommendations || appointment.consultation?.recommendations || "",
+      
+      // Add time from appointment's startTime if not provided
+      time: consultationData.time || appointment.startTime || appointment.consultation?.time || ""
+    };
+
+    // Add consultation date if provided
+    if (consultationData.date || consultationData.consultationDate) {
+      const dateValue = consultationData.date || consultationData.consultationDate;
+      const consultDate = new Date(dateValue);
+      if (!isNaN(consultDate.getTime())) {
+        consultationUpdate.consultationDate = consultDate;
+      }
+    } else if (appointment.consultation?.consultationDate) {
+      consultationUpdate.consultationDate = appointment.consultation.consultationDate;
+    } else {
+      consultationUpdate.consultationDate = new Date();
+    }
+
+    // Update the appointment
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      id,
+      { consultation: consultationUpdate },
+      { new: true, runValidators: true }
+    );
+
+    // Add start time to the response
+    if (!updatedAppointment.consultation.time && updatedAppointment.startTime) {
+      updatedAppointment.consultation.time = updatedAppointment.startTime;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Consultation updated successfully",
+      data: {
+        consultation: updatedAppointment.consultation
+      }
+    });
+  } catch (error) {
+    console.error("Error updating consultation:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update consultation",
+      error: error.message
+    });
   }
 };

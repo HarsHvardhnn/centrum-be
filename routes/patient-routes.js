@@ -6,6 +6,7 @@ const User = require("../models/user-entity/user");
 const { format } = require("date-fns");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const { default: mongoose } = require("mongoose");
+const appointment = require("../models/appointment");
 
 router.post("/", upload.array("files", 10), patientController.createPatient);
 router.put("/:id", upload.array("files", 10), patientController.updatePatient);
@@ -98,11 +99,11 @@ patientController.updatePatientDetails
 
 
 router.post(
-  "/documents/:patientId/upload",
+  "/documents/:patientId/upload/:appointmentId",
   upload.array("files"),
   async (req, res) => {
     try {
-      const { patientId } = req.params;
+      const { patientId,appointmentId } = req.params;
       const files = req.files;
 
       if (!files || files.length === 0) {
@@ -120,6 +121,11 @@ router.post(
       }
 
 
+      const appointmentData = await appointment.findById(appointmentId);
+      appointmentData.status="completed";
+      appointmentData.checkedIn=true;
+      appointmentData.checkInDate=new Date();
+      await appointmentData.save();
       // Upload each file to cloudinary
        const uploadedDocuments = files.map((file) => ({
          type: file.mimetype,

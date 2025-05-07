@@ -2,6 +2,85 @@
 
 const mongoose = require("mongoose");
 
+// Define the consultation schema
+const consultationSchema = new mongoose.Schema({
+  consultationType: {
+    type: String,
+    enum: ["Clinic Consulting", "Online Consultation", "Home Visit", "Konsultacja w przychodni",
+      "Konsultacja online", "Wizyta domowa"],
+  },
+  consultationDate: Date,
+  consultationNotes: String,
+  description: String,
+  treatmentCategory: String,
+  roomNumber: Number,
+  consultationStatus: {
+    type: String,
+    enum: ["Scheduled", "In Progress", "Completed", "Cancelled"],
+    default: "Scheduled",
+  },
+  isRisky: Boolean,
+  isOnline: Boolean,
+  interview: String,          // Wywiad z pacjentem
+  physicalExamination: String, // Badanie przedmiotowe
+  treatment: String,          // Zastosowane leczenie
+  recommendations: String     // Zalecenia
+});
+
+// Define the test schema
+const testSchema = new mongoose.Schema({
+  name: String,
+  date: Date,
+  results: mongoose.Schema.Types.Mixed,
+  status: String,
+});
+
+// Define the medication schema
+const medicationSchema = new mongoose.Schema({
+  name: String,
+  dosage: String,
+  frequency: String,
+  startDate: Date,
+  endDate: Date,
+  status: String,
+});
+
+// Define the health data schema
+const healthDataSchema = new mongoose.Schema({
+  bloodPressure: {
+    value: String,
+    percentage: Number,
+    temperature: Number,
+  },
+  bodyHeight: {
+    value: String,
+    percentage: Number,
+  },
+  bodyWeight: {
+    value: Number,
+    percentage: Number,
+  },
+  notes: String,
+  recordedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Define the reports schema
+const reportSchema = new mongoose.Schema({
+  name: String,
+  type: String, // e.g., "Lab", "Imaging", "Procedure"
+  fileUrl: String,
+  fileType: String, // e.g., "pdf", "jpg", "png"
+  description: String,
+  uploadedAt: {
+    type: Date,
+    default: Date.now
+  },
+  metadata: mongoose.Schema.Types.Mixed
+});
+
 const appointmentSchema = new mongoose.Schema(
   {
     doctor: {
@@ -35,6 +114,14 @@ const appointmentSchema = new mongoose.Schema(
       type: Number, 
       required: true,
     },
+    checkedIn:{
+      type:Boolean,
+      default:false
+    },
+    checkInDate:{
+      type:Date,
+      default:null
+    },
     mode: {
       type: String, 
       enum: ["online", "offline"],
@@ -50,6 +137,13 @@ const appointmentSchema = new mongoose.Schema(
       required: false
     },
     notes: String,
+    // New fields for consultation, tests, and medications
+    consultation: consultationSchema,
+    tests: [testSchema],
+    medications: [medicationSchema],
+    // New fields for health data and reports
+    healthData: healthDataSchema,
+    reports: [reportSchema],
     metadata: {
       patientSource: String,
       visitType: String,

@@ -2,44 +2,54 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 const Patient = require("../models/user-entity/patient");
+const Appointment = require("../models/appointment");
 const cloudinary = require("../utils/cloudinary");
 const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
+const mongoose = require("mongoose");
 
 /**
- * Generate a visit card PDF for a patient
- * @param {Object} req - Express request object with patientId parameter and consultation details
+ * Generate a visit card PDF for a patient based on appointment
+ * @param {Object} req - Express request object with appointmentId parameter
  * @param {Object} res - Express response object
  * @returns {Object} JSON with download URL
  */
 exports.generateVisitCard = async (req, res) => {
   try {
-    // Find the patient
-    const patientId = req.params.patientId;
-    const patient = await Patient.findById(patientId)
-      .populate("consultingDoctor", "name.first name.last")
+    // Get appointment ID from parameters
+    const appointmentId = req.params.appointmentId;
+
+    if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    // Find the appointment with populated patient and doctor data
+    const appointment = await Appointment.findById(appointmentId)
+      .populate("patient", "name dateOfBirth address city pinCode phone phoneFormatted documents")
+      .populate("doctor", "name.first name.last")
       .exec();
 
-    if (!patient) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Patient not found" });
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
     }
 
-    // Get consultation data from request or use the latest consultation
-    let consultationData = req.body;
-    if (!consultationData?.consultationDate) {
-      if (patient.consultations && Array.isArray(patient.consultations)) {
-        // If patient has consultations array, sort and get the latest
-        const latestConsultation = patient.consultations.sort(
-          (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-        )[0];
-        consultationData = latestConsultation || {};
-      } else if (patient.consultations) {
-        // If patient has a single consultation object
-        consultationData = patient.consultations;
-      }
+    // Get the patient from appointment
+    const patient = appointment.patient;
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found in appointment",
+      });
     }
+
+    // Get consultation data from appointment
+    const consultationData = appointment.consultation || {};
 
     // Create a unique filename
     const filename = `visit_card_${patient._id}_${uuidv4()}.pdf`;
@@ -71,13 +81,12 @@ exports.generateVisitCard = async (req, res) => {
     const logoPath = path.join(__dirname, "../public/logo_teal.png");
 
     // Format visit date
-    const visitDate = consultationData.consultationDate
-      ? new Date(consultationData.consultationDate).toLocaleDateString("en-GB")
+    const visitDate = appointment.date
+      ? new Date(appointment.date).toLocaleDateString("en-GB")
       : new Date().toLocaleDateString("en-GB");
 
     // Format visit time
-    const visitTime =
-      consultationData.consultationTime ||
+    const visitTime = appointment.startTime || 
       new Date().toLocaleTimeString("en-GB", {
         hour: "2-digit",
         minute: "2-digit",
@@ -85,8 +94,8 @@ exports.generateVisitCard = async (req, res) => {
 
     // Get doctor's name
     let doctorName = "Dr. ";
-    if (patient.consultingDoctor) {
-      doctorName += `${patient.consultingDoctor.name.first} ${patient.consultingDoctor.name.last}`;
+    if (appointment.doctor) {
+      doctorName += `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
     } else {
       doctorName += req.user.name.first + " " + req.user.name.last;
     }
@@ -174,7 +183,7 @@ if (fs.existsSync(logoPath)) {
     doc
       .font("Helvetica")
       .text(
-        consultationData.interview || "Text from the text pole",
+        consultationData.interview || "No interview data available",
         50,
         yPosition
       );
@@ -188,7 +197,7 @@ if (fs.existsSync(logoPath)) {
     doc
       .font("Helvetica")
       .text(
-        consultationData.physicalExamination || "Text from the text pole",
+        consultationData.physicalExamination || "No examination data available",
         50,
         yPosition
       );
@@ -202,7 +211,7 @@ if (fs.existsSync(logoPath)) {
     doc
       .font("Helvetica")
       .text(
-        consultationData.treatment || "Text from the text pole",
+        consultationData.treatment || "No treatment data available",
         50,
         yPosition
       );
@@ -216,7 +225,7 @@ if (fs.existsSync(logoPath)) {
     doc
       .font("Helvetica")
       .text(
-        consultationData.recommendations || "Text from the text pole",
+        consultationData.recommendations || "No recommendations available",
         50,
         yPosition
       );
@@ -228,7 +237,7 @@ if (fs.existsSync(logoPath)) {
     doc
       .font("Helvetica")
       .text(
-        consultationData.consultationNotes || "Text from the text pole",
+        consultationData.description || "No notes available",
         50,
         yPosition
       );
@@ -266,20 +275,46 @@ if (fs.existsSync(logoPath)) {
     // Delete the temporary file
     fs.unlinkSync(tempFilePath);
 
-    // Save the document reference to the patient
-    if (!patient.documents) {
-      patient.documents = [];
+    // Create a report for the appointment
+    const newReport = {
+      name: `Visit Card - ${visitDate}`,
+      type: "Visit Card",
+      fileUrl: result.secure_url,
+      fileType: "pdf",
+      description: `Visit card generated for appointment on ${visitDate}`,
+      uploadedAt: new Date(),
+      metadata: {
+        originalName: filename,
+        cloudinaryId: result.public_id,
+        appointmentId: appointmentId,
+        patientId: patient._id.toString()
+      }
+    };
+
+    // Add report to appointment
+    if (!appointment.reports) {
+      appointment.reports = [];
     }
+    appointment.reports.push(newReport);
+    await appointment.save();
 
-    patient.documents.push({
-      type: "visit-card",
-      url: result.secure_url,
-      publicId: result.public_id,
-      createdAt: new Date(),
-      consultationId: consultationData._id || undefined,
-    });
+    // Save the document reference to the patient as well for backward compatibility
+    const patientDoc = await Patient.findById(patient._id);
+    if (patientDoc) {
+      if (!patientDoc.documents) {
+        patientDoc.documents = [];
+      }
 
-    await patient.save();
+      patientDoc.documents.push({
+        type: "visit-card",
+        url: result.secure_url,
+        publicId: result.public_id,
+        createdAt: new Date(),
+        appointmentId: appointmentId
+      });
+
+      await patientDoc.save();
+    }
 
     // Return the download URL
     return res.status(200).json({
@@ -287,7 +322,8 @@ if (fs.existsSync(logoPath)) {
       message: "Visit card generated successfully",
       data: {
         url: result.secure_url,
-        documentId: patient.documents[patient.documents.length - 1]._id,
+        reportId: appointment.reports[appointment.reports.length - 1]._id,
+        appointmentId: appointmentId
       },
     });
   } catch (error) {
@@ -301,11 +337,80 @@ if (fs.existsSync(logoPath)) {
 };
 
 /**
- * Get visit card by patient ID
- * @param {Object} req - Express request object with patientId parameter
+ * Get visit cards by appointment ID
+ * @param {Object} req - Express request object with appointmentId parameter
  * @param {Object} res - Express response object
  * @returns {Object} JSON with visit card URL
  */
+exports.getVisitCardByAppointment = async (req, res) => {
+  try {
+    const appointmentId = req.params.appointmentId;
+
+    if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(appointmentId)
+      .populate("patient", "_id role")
+      .exec();
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+    console.log("appointment",req.user)
+
+    // Check if user is authorized to access this appointment's data
+    if (appointment.patient.role === "patient" && req.user.id.toString() !== appointment.patient.id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized access to this appointment's data",
+      });
+    }
+
+    // Find the visit cards in appointment reports
+    const visitCards = appointment.reports?.filter(report => 
+      report.type === "Visit Card" || report.type === "visit-card"
+    ) || [];
+
+    if (visitCards.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No visit cards found for this appointment",
+      });
+    }
+
+    // Return the most recent visit card
+    const latestVisitCard = visitCards.sort(
+      (a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt)
+    )[0];
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        url: latestVisitCard.fileUrl,
+        reportId: latestVisitCard._id,
+        createdAt: latestVisitCard.uploadedAt,
+        type: latestVisitCard.type,
+        name: latestVisitCard.name
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching visit card:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch visit card",
+      error: error.message,
+    });
+  }
+};
+
+// Keep the original getVisitCard function for backward compatibility
 exports.getVisitCard = async (req, res) => {
   try {
     const patientId = req.params.patientId;

@@ -21,37 +21,6 @@ const patientHealthDataSchema = new mongoose.Schema({
   },
 });
 
-// Define the consultation schema
-const consultationSchema = new mongoose.Schema({
-  consultationType: {
-    type: String,
-    enum: ["Clinic Consulting", "Online Consultation", "Home Visit",    "Konsultacja w przychodni",
-      "Konsultacja online",
-      "Wizyta domowa",],
-  },
-  consultationNotes: String,
-  consultationTime: String,
-  description: String,
-  treatmentCategory:String,
-  consultationDate: Date,
-  roomNumber: Number,
-  consultationStatus: {
-    type: String,
-    enum: ["Scheduled", "In Progress", "Completed", "Cancelled"],
-    default: "Scheduled",
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  isRisky: Boolean,
-  isOnline: Boolean,
-  // New fields
-  interview: String,
-  physicalExamination: String,
-  treatment: String,
-  recommendations: String,
-});
 // Combine all patient fields into a single schema
 const patientSchema = new mongoose.Schema({
   // Basic patient info
@@ -141,32 +110,11 @@ const patientSchema = new mongoose.Schema({
       "Other",
     ],
   },
-  consultations: consultationSchema,
   healthData: patientHealthDataSchema,
   goals: [String],
   monitoringPlan: {
     type: mongoose.Schema.Types.Mixed,
   },
-
-  // Tests and medications
-  tests: [
-    {
-      name: String,
-      date: Date,
-      results: mongoose.Schema.Types.Mixed,
-      status: String,
-    },
-  ],
-  medications: [
-    {
-      name: String,
-      dosage: String,
-      frequency: String,
-      startDate: Date,
-      endDate: Date,
-      status: String,
-    },
-  ],
 
   // Additional data
   photo: String,

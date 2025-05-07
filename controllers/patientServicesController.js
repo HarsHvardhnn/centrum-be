@@ -15,7 +15,7 @@ exports.addServicesToPatient = async (req, res) => {
     }
 
     // Verify patient exists and is a patient
-    const patient = await User.findOne({  patientId, role: "patient" });
+    const patient = await User.findOne({  _id:patientId, role: "patient" });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }
@@ -99,7 +99,7 @@ exports.getPatientServices = async (req, res) => {
 
     // Verify patient exists
     console.log(patientId);
-    const patient = await User.findOne({ patientId, role: "patient" });
+    const patient = await User.findOne({ _id:patientId, role: "patient" });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }
@@ -140,7 +140,7 @@ exports.updatePatientService = async (req, res) => {
     const { status, notes } = req.body;
 
     // Verify patient exists
-    const patient = await User.findOne({ patientId, role: "patient" });
+    const patient = await User.findOne({ _id:patientId, role: "patient" });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }
@@ -200,7 +200,7 @@ exports.deletePatientServices = async (req, res) => {
     const { patientId } = req.params;
 
     // Verify patient exists
-    const patient = await User.findOne({ patientId, role: "patient" });
+    const patient = await User.findOne({ _id:patientId, role: "patient" });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }

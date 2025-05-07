@@ -62,6 +62,7 @@ exports.createPatient = async (req, res) => {
         patient: existingPatient,
       });
     }
+    console.log(consultingSpecialization);  
     const consultSpec = await Specialization.findOne({
       _id: consultingSpecialization,
     });
@@ -102,7 +103,7 @@ exports.createPatient = async (req, res) => {
       ivrLanguage,
       mainComplaint,
       reviewNotes,
-      consultingSpecialization: consultSpec.name || "General",
+      consultingSpecialization: consultSpec?.name || "General",
       consultingDoctor: new mongoose.Types.ObjectId(consultingDoctor),
       photo,
       otherHospitalIds,
@@ -284,7 +285,7 @@ exports.getPatientsList = async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
-    console.log("Patients fetched:", patients[0].profilePicture, "from", totalCount, "total");
+    // console.log("Patients fetched:", patients[0].profilePicture, "from", totalCount, "total");
     // Transform the data
     const simplifiedPatients = patients.map((patient) => {
       const patientDate = patient.createdAt
@@ -603,6 +604,7 @@ exports.getPatientDetails = async (req, res) => {
       return res.status(404).json({ message: "Patient not found" });
     }
 
+    console.log("Patient details:", patient);
     // Format response to match frontend expectations
     const patientData = {
       id: patient._id,

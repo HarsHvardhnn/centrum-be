@@ -460,14 +460,32 @@ const getAvailableSlots = async (req, res) => {
     }
 
     const requestedDate = new Date(date);
-    const dayOfWeek = format(requestedDate, "EEEE"); // Monday, Tuesday, etc.
+    
+    // Get both English and Polish day names
+    const englishDayOfWeek = format(requestedDate, "EEEE"); // Monday, Tuesday, etc.
+    
+    // Map of English day names to Polish day names
+    const dayNameMap = {
+      'Monday': 'Poniedziałek',
+      'Tuesday': 'Wtorek',
+      'Wednesday': 'Środa',
+      'Thursday': 'Czwartek',
+      'Friday': 'Piątek',
+      'Saturday': 'Sobota',
+      'Sunday': 'Niedziela'
+    };
+    
+    const polishDayOfWeek = dayNameMap[englishDayOfWeek];
 
-    // Check if doctor works on this day
-    const shift = doctor.weeklyShifts.find((s) => s.dayOfWeek === dayOfWeek);
+    // Check if doctor works on this day (check both English and Polish day names)
+    let shift = doctor.weeklyShifts.find(
+      (s) => s.dayOfWeek === englishDayOfWeek || s.dayOfWeek === polishDayOfWeek
+    );
+    
     if (!shift) {
       return res.status(200).json({
         success: true,
-        message: `Doctor does not work on ${dayOfWeek}`,
+        message: `Doctor does not work on ${englishDayOfWeek} (${polishDayOfWeek})`,
         data: [],
       });
     }

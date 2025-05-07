@@ -5,6 +5,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 
 const connectDB = require("./config/db");
+const seedAdmin = require("./utils/adminSeeder");
 const authRoutes = require("./routes/auth");
 const doctorRoutes = require("./routes/doctor-routes");
 const patientRoutes = require("./routes/patient-routes");
@@ -19,7 +20,23 @@ const patientServicesRoutes = require("./routes/patient-services-routes");
 const userServicesRoutes = require("./routes/user-services-routes");
 const smsDataRoutes = require("./routes/sms-data-routes");
 dotenv.config();
-connectDB();
+
+// Initialize database and seed admin
+const initializeApp = async () => {
+  try {
+    await connectDB();
+    console.log('Database connected successfully');
+    
+    // Seed admin user
+    await seedAdmin();
+  } catch (error) {
+    console.error('Error during initialization:', error);
+    process.exit(1);
+  }
+};
+
+// Call initialization
+initializeApp();
 
 const app = express();
 const server = http.createServer(app); // Create HTTP server with Express
