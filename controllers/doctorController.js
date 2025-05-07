@@ -38,6 +38,7 @@ const addDoctor = async (req, res) => {
       experience: doctorData.experience || 0,
       bio: doctorData.bio || "",
       consultationFee: doctorData.consultationFee || 0,
+      offlineConsultationFee: doctorData.offlineConsultationFee || 0,
       weeklyShifts: doctorData.weeklyShifts || [],
       offSchedule: doctorData.offSchedule || [],
     };
@@ -65,6 +66,7 @@ const addDoctor = async (req, res) => {
       specializations: newDoctor.specialization,
       bio: newDoctor.bio,
       consultationFee: newDoctor.consultationFee,
+      offlineConsultationFee: newDoctor.offlineConsultationFee,
     };
 
     res.status(201).json({
@@ -149,6 +151,7 @@ const getAllDoctors = async (req, res) => {
       specializations: doc.specialization || [],
       bio: doc.bio || "",
       consultationFee: doc.consultationFee || 0,
+      offlineConsultationFee: doc.offlineConsultationFee || 0,
     }));
 
     // Calculate pagination metadata

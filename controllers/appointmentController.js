@@ -8,6 +8,12 @@ const MessageReceipt = require("../models/smsData");
 const { sendSMS } = require("../utils/smsapi");
 const { formatDate, formatTime } = require("../utils/dateUtils");
 const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
+
+// Helper function to generate temporary password
+const generateTemporaryPassword = () => {
+  return crypto.randomBytes(8).toString('hex');
+};
 
 const sendAppointmentConfirmationSMS = async (
   appointment,
@@ -121,7 +127,7 @@ exports.createAppointment = async (req, res) => {
     }
 
     const {
-      doctor,
+      doctor: doctorId,
       patient,
       date,
       startTime,
@@ -134,28 +140,87 @@ exports.createAppointment = async (req, res) => {
       markAsArrived,
       notes,
       enableRepeats,
+      isNewPatient,
+      newPatient,
+      mode
     } = req.body;
 
-    // 1️⃣ Check if patient exists
-    const patientDetails = await user.findById(patient);
-    if (!patientDetails) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Patient not found" });
+    let patientId = patient;
+    let patientDetails;
+    let isNewlyCreated = false;
+
+    // HANDLE NEW PATIENT CREATION
+    if (isNewPatient && newPatient) {
+      try {
+        // Check if patient with this email already exists
+        const existingPatient = await user.findOne({ email: newPatient.email });
+        
+        if (existingPatient) {
+          patientDetails = existingPatient;
+          patientId = existingPatient._id;
+          isNewlyCreated = false;
+        } else {
+          // Create a new patient user
+          const tempPassword = generateTemporaryPassword();
+          
+          const newPatientUser = new user({
+            name: {
+              first: newPatient.firstName,
+              last: newPatient.lastName
+            },
+            email: newPatient.email,
+            phone: newPatient.phone || "",
+            role: "patient",
+            patientId: `P-${new Date().getTime()}`,
+            password: tempPassword, // Temporary password - should be hashed in production
+            signupMethod: "email",
+            profilePicture: "",
+            isVerified: false,
+            sex: newPatient.sex || "",
+            // Add any other required fields with defaults
+          });
+  
+          patientDetails = await newPatientUser.save();
+          patientId = patientDetails._id;
+          isNewlyCreated = true;
+          
+          // TODO: Send welcome email with temporary credentials
+          console.log(`New patient created with temporary password: ${tempPassword}`);
+        }
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: "Failed to create new patient",
+          error: error.message
+        });
+      }
+    } else {
+      // EXISTING PATIENT FLOW
+      patientDetails = await user.findById(patientId);
+      if (!patientDetails) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Patient not found" });
+      }
     }
 
     // Get doctor details for SMS
-    const doctorDetails = await user.findById(doctor);
+    const doctorDetails = await user.findById(doctorId);
     if (!doctorDetails) {
       return res
         .status(404)
         .json({ success: false, message: "Doctor not found" });
     }
 
-    // 2️⃣ Check if appointment already exists at the same time
+    // Get the consultation fee based on appointment mode
+    const doctorModel = await doctor.findById(doctorId);
+    const consultationFee = mode === "online" 
+      ? doctorModel?.consultationFee || 0 
+      : doctorModel?.offlineConsultationFee || 0;
+
+    // Check if appointment already exists at the same time
     const existingAppointment = await Appointment.findOne({
-      doctor: doctor,
-      patient: patient,
+      doctor: doctorId,
       date: new Date(date),
       $or: [
         {
@@ -163,16 +228,17 @@ exports.createAppointment = async (req, res) => {
           endTime: { $gt: startTime },
         },
       ],
+      status: { $ne: "cancelled" }
     });
 
     if (existingAppointment) {
       return res.status(400).json({
         success: false,
-        message: "Appointment already exists for this patient at this time",
+        message: "Appointment slot is already booked at this time",
       });
     }
 
-    // ✅ Calculate duration
+    // Calculate duration
     const calculateDuration = (start, end) => {
       const [startHour, startMinute] = start.split(":").map(Number);
       const [endHour, endMinute] = end.split(":").map(Number);
@@ -181,15 +247,16 @@ exports.createAppointment = async (req, res) => {
 
     const duration = calculateDuration(startTime, endTime);
 
-    // ✅ Create new appointment
+    // Create new appointment
     const newAppointment = new Appointment({
-      doctor,
-      patient,
+      doctor: doctorId,
+      patient: patientId,
       bookedBy: req.user.id,
       date: new Date(date),
       startTime,
       endTime,
       duration,
+      mode: mode || "offline",
       notes,
       status: markAsArrived ? "completed" : "booked",
       metadata: {
@@ -199,22 +266,24 @@ exports.createAppointment = async (req, res) => {
         isWalkin,
         needsAttention,
         enableRepeats,
+        isNewPatient: isNewPatient || false,
+        consultationFee
       },
     });
 
-    // ✅ Update patient consulting doctor
-    patientDetails.consultingDoctor = doctor;
+    // Update patient consulting doctor
+    patientDetails.consultingDoctor = doctorId;
     await patientDetails.save();
 
     await newAppointment.save();
 
-    // ✅ Populate doctor and patient details
+    // Populate doctor and patient details
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("doctor", "name email")
       .populate("patient", "name email phone mobile")
       .populate("bookedBy", "name email");
 
-    // ✅ Send confirmation SMS to patient
+    // Send confirmation SMS to patient
     let smsResult = null;
     try {
       smsResult = await sendAppointmentConfirmationSMS(
@@ -242,6 +311,7 @@ exports.createAppointment = async (req, res) => {
         success: true,
         data: populatedAppointment,
         notifications: notificationInfo,
+        newPatientCreated: isNewlyCreated
       });
     } catch (smsError) {
       console.error("SMS sending error:", smsError);
@@ -254,6 +324,7 @@ exports.createAppointment = async (req, res) => {
             error: smsError.message || "Failed to send SMS notification",
           },
         },
+        newPatientCreated: isNewlyCreated
       });
     }
   } catch (error) {

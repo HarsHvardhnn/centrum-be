@@ -25,7 +25,9 @@ const patientHealthDataSchema = new mongoose.Schema({
 const consultationSchema = new mongoose.Schema({
   consultationType: {
     type: String,
-    enum: ["Clinic Consulting", "Online Consultation", "Home Visit"],
+    enum: ["Clinic Consulting", "Online Consultation", "Home Visit",    "Konsultacja w przychodni",
+      "Konsultacja online",
+      "Wizyta domowa",],
   },
   consultationNotes: String,
   consultationTime: String,

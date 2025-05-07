@@ -17,7 +17,6 @@ router.post(
     authorizeRoles(["doctor","receptionist","admin"]),
     [
       check("doctor", "Doctor ID is required").notEmpty(),
-      check("patient", "Patient ID is required").notEmpty(),
       check("date", "Valid date is required").isDate(),
       check("startTime", "Start time is required").notEmpty(),
       check("endTime", "End time is required").notEmpty(),

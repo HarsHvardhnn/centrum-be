@@ -71,6 +71,10 @@ const doctorSchema = new mongoose.Schema({
   experience: Number,
   bio: String,
   consultationFee: Number,
+  offlineConsultationFee: {
+    type: Number,
+    default: 0
+  },
   patients: [
     {
       type: mongoose.Schema.Types.ObjectId,

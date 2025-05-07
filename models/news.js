@@ -10,9 +10,13 @@ const newsArticleSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    shortDescription: {
+      type: String,
+      required: false,
+    },
     author: {
       type: String,
-      required: true,
+      required: false,
     },
     title: {
       type: String,

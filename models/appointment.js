@@ -47,9 +47,22 @@ const appointmentSchema = new mongoose.Schema(
     },
     joining_link: {
       type: String,
-      required:false
+      required: false
     },
     notes: String,
+    metadata: {
+      patientSource: String,
+      visitType: String,
+      isInternational: Boolean,
+      isWalkin: Boolean,
+      needsAttention: Boolean,
+      enableRepeats: Boolean,
+      isNewPatient: Boolean,
+      consultationFee: {
+        type: Number,
+        default: 0
+      }
+    }
   },
   {
     timestamps: true,
