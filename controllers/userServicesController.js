@@ -91,7 +91,7 @@ exports.addServicesToUser = async (req, res) => {
         user: userId,
         userType,
         services: formattedServices,
-        assignedBy: req.user._id,
+        assignedBy: req.user.id,
         isDeleted: false
       });
     }
@@ -107,7 +107,7 @@ exports.addServicesToUser = async (req, res) => {
       data: userService
     });
   } catch (error) {
-    console.error(`Error adding services to ${req.body.userType || 'user'}:`, error);
+    // console.error(`Error adding services to ${req.body.userType || 'user'}:`, error);
     return res.status(500).json({ 
       message: `Failed to add services to ${req.body.userType || 'user'}`,
       error: error.message

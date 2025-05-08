@@ -6,6 +6,7 @@ const { check } = require("express-validator");
 const appointmentController = require("../controllers/appointmentController");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const { bookAppointment } = require("../controllers/gmeetController");
+const { upload } = require("../middlewares/cloudinaryUpload");
 
 
 // @route   POST /api/appointments
@@ -70,5 +71,62 @@ router.patch(
 );
 
 router.post("/book", bookAppointment);
+
+// Update appointment details (consultation, tests, medications)
+router.put(
+  "/:id/details",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.updateAppointmentDetails
+);
+
+// Get appointment details
+router.get(
+  "/:id",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getAppointmentDetails
+);
+
+// Get all appointments for a patient
+router.get(
+  "/patient/:patientId",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getPatientAppointments
+);
+
+// Get all appointments with pagination, sorting and filtering
+router.get(
+  "/details/list",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getAppointments
+);
+
+// Upload a single report file to an appointment
+router.post(
+  "/rep/:id/upload-report",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  upload.single("file"), // Using single file upload
+  appointmentController.uploadAppointmentReport
+);
+
+// Delete a report from an appointment
+router.delete(
+  "/:appointmentId/reports/:reportId",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.deleteReport
+);
+
+// Add a report to an appointment
+router.post(
+  "/:id/reports",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.addReportToAppointment
+);
+
+// Add a route for updating only consultation details
+router.put(
+  "/:id/consultation",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.updateConsultation
+);
 
 module.exports = router;

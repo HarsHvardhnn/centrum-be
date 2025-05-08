@@ -7,6 +7,11 @@ const patientServiceSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    appointment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Appointment",
+      // Making it optional for backward compatibility
+    },
     services: [
       {
         service: {
@@ -47,7 +52,7 @@ const patientServiceSchema = new mongoose.Schema(
   }
 );
 
-// Ensure that there's only one document per patient by creating a unique index
-patientServiceSchema.index({ patient: 1 }, { unique: true });
+// Update index to include appointment, remove unique constraint to allow multiple records per patient
+patientServiceSchema.index({ patient: 1, appointment: 1 });
 
 module.exports = mongoose.model("PatientService", patientServiceSchema); 
