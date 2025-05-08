@@ -122,7 +122,7 @@ router.post(
 
 
       const appointmentData = await appointment.findById(appointmentId);
-      appointmentData.status="completed";
+      appointmentData.status="checkedIn";
       appointmentData.checkedIn=true;
       appointmentData.checkInDate=new Date();
       await appointmentData.save();

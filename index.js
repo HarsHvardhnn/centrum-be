@@ -19,6 +19,8 @@ const smsRoutes = require("./routes/sms-routes");
 const patientServicesRoutes = require("./routes/patient-services-routes");
 const userServicesRoutes = require("./routes/user-services-routes");
 const smsDataRoutes = require("./routes/sms-data-routes");
+const patientBillRoutes = require("./routes/patientBillRoutes");
+const doctorStatsRoutes = require("./routes/doctor-stats-routes");
 dotenv.config();
 
 // Initialize database and seed admin
@@ -63,6 +65,8 @@ app.use("/visit-cards", visitCardRoutes);
 app.use("/patient-services", patientServicesRoutes);
 app.use("/user-services", userServicesRoutes);
 app.use("/sms-data", smsDataRoutes);
+app.use("/patient-bills", patientBillRoutes);
+app.use("/doctor-stats", doctorStatsRoutes);
 // Import socket handler and pass io
 const socketHandler = require("./config/socketHandler");
 socketHandler(io);

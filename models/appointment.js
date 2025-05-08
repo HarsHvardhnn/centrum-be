@@ -129,7 +129,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["booked", "cancelled", "completed"],
+      enum: ["booked", "cancelled", "completed","checkedIn"],
       default: "booked",
     },
     joining_link: {

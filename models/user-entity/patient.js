@@ -85,7 +85,7 @@ const patientSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["completed", "in-treatment"],
+    enum: ["completed", "in-treatment","billed"],
     default: "in-treatment",
   },
 

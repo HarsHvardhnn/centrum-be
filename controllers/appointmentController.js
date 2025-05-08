@@ -10,6 +10,8 @@ const { formatDate, formatTime } = require("../utils/dateUtils");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
+const PatientService = require("../models/patientServices");
+const Service = require("../models/services");
 
 // Helper function to generate temporary password
 const generateTemporaryPassword = () => {
@@ -143,7 +145,8 @@ exports.createAppointment = async (req, res) => {
       enableRepeats,
       isNewPatient,
       newPatient,
-      mode
+      mode,
+      services
     } = req.body;
 
     let patientId = patient;
@@ -277,6 +280,42 @@ exports.createAppointment = async (req, res) => {
     await patientDetails.save();
 
     await newAppointment.save();
+
+    // Handle services if provided in the request
+    if (services && Array.isArray(services) && services.length > 0) {
+      try {
+        // Verify all services exist
+        const serviceIds = services.map(s => s.serviceId);
+        const existingServices = await Service.find({ 
+          _id: { $in: serviceIds },
+          isDeleted: false
+        });
+
+        if (existingServices.length !== serviceIds.length) {
+          console.warn("One or more services do not exist");
+        } else {
+          // Format service data
+          const formattedServices = services.map(s => ({
+            service: s.serviceId,
+            notes: s.notes || "",
+            status: s.status || "active",
+            assignedDate: new Date(),
+          }));
+
+          // Create the patient service entry
+          await PatientService.create({
+            patient: patientId,
+            appointment: newAppointment._id,
+            services: formattedServices,
+            assignedBy: req.user.id,
+            isDeleted: false
+          });
+        }
+      } catch (serviceError) {
+        console.error("Error creating patient services:", serviceError);
+        // Continue with appointment creation even if service creation fails
+      }
+    }
 
     // Populate doctor and patient details
     const populatedAppointment = await Appointment.findById(newAppointment._id)
@@ -1128,7 +1167,7 @@ exports.getAppointments = async (req, res) => {
         const appointments = await Appointment.find(query)
             .populate({
                 path: 'patient',
-                select: 'name email profilePicture sex dateOfBirth mainComplaint patientId'
+                select: 'name email profilePicture sex dateOfBirth mainComplaint patientId status'
             })
             .populate({
                 path: 'doctor',
@@ -1136,7 +1175,7 @@ exports.getAppointments = async (req, res) => {
             })
             .sort(sortObject)
             .skip(skip)
-            .limit(parseInt(limit));
+            .limit(parseInt(limit)).lean();
 
         // Get total count for pagination
         const total = await Appointment.countDocuments(query);
@@ -1155,6 +1194,7 @@ exports.getAppointments = async (req, res) => {
                 }
             }
 
+            console.log("patientData?.status",patientData);
             return {
                 id: appointment._id,
                 date: appointment.date,
@@ -1165,6 +1205,7 @@ exports.getAppointments = async (req, res) => {
                 checkIn: appointment.checkedIn,
                 checkInDate: appointment.checkInDate,
                 patient: {
+                    patient_status: patientData?.status,  
                     id: patientData?._id,
                     patientId: patientData?.patientId,
                     name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
