@@ -15,6 +15,13 @@ const addDoctor = async (req, res) => {
   try {
     const doctorData = req.body;
 
+    const existingDoctor = await User.findOne({ email: doctorData.email });
+    if (existingDoctor) {
+      return res.status(400).json({
+        success: false,
+        message: "Doctor with this email already exists",
+      });
+    } 
     // Create the base user document
     const userData = {
       name: {
@@ -38,7 +45,8 @@ const addDoctor = async (req, res) => {
       qualifications: doctorData.qualifications || [],
       experience: doctorData.experience || 0,
       bio: doctorData.bio || "",
-      consultationFee: doctorData.consultationFee || 0,
+      // off: doctorData.consultationFee || 0,
+      onlineConsultationFee: doctorData.onlineConsultationFee || 0,
       offlineConsultationFee: doctorData.offlineConsultationFee || 0,
       weeklyShifts: doctorData.weeklyShifts || [],
       offSchedule: doctorData.offSchedule || [],
