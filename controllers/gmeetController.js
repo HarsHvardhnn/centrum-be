@@ -2,7 +2,7 @@ const User = require("../models/user-entity/user");
 const Appointment = require("../models/appointment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
-const { getCalendarClient } = require("../utils/googleCalendar");
+const { getServerManagedCalendarClient, getDirectCalendarClient, GOOGLE_CALENDAR_ID } = require("../utils/serverGoogleAuth");
 const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
 
@@ -115,6 +115,38 @@ exports.bookAppointment = async (req, res) => {
         .json({ success: false, message: "Doctor not found" });
     }
 
+    // Calculate appointment dates and times
+    const appointmentDate = new Date(`${date}T${time}:00`);
+    const duration = 30; // Default duration in minutes
+    const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
+    const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
+    const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
+    const endTime = `${endTimeHour}:${endTimeMinute}`;
+    
+    // Check if there's already an appointment at the same date and time for this doctor
+    // Format the date for MongoDB query
+    const startOfDay = new Date(appointmentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(appointmentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    // Check for existing appointments with the same doctor, date and time that are still booked
+    const existingAppointment = await Appointment.findOne({
+      doctor: doctorId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      startTime: time,
+      status: "booked" // Only consider appointments that are still booked
+    });
+    
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        message: "There is already an appointment booked with this doctor at this time.",
+        conflict: true
+      });
+    }
+
     // Look for existing patient by email
     let patient = await User.findOne({
       email: email.toLowerCase(),
@@ -150,14 +182,6 @@ exports.bookAppointment = async (req, res) => {
       await patient.save();
     }
 
-    // Calculate end time (assuming duration is in minutes)
-    const duration = 30; // Default duration in minutes
-    const appointmentDate = new Date(`${date}T${time}:00`);
-    const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
-    const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
-    const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
-    const endTime = `${endTimeHour}:${endTimeMinute}`;
-
     // Create appointment
     const appointment = new Appointment({
       doctor: doctorId,
@@ -177,17 +201,28 @@ exports.bookAppointment = async (req, res) => {
     let meetingLink = "";
     let calendarSetupNeeded = false;
     
-    // Create Google Meet event
+    // Create Google Meet event with service account authentication 
     try {
-      // Get admin user for Google Calendar integration
-      const admin = await getCalendarAdmin();
+      // Use direct service account authentication which uses domain-wide delegation
+      console.log("Attempting to create Google Calendar event for appointment...");
+      let calendar;
+      
+      try {
+        // This is our most reliable method - using domain-wide delegation
+        calendar = await getDirectCalendarClient();
+      } catch (serviceAuthError) {
+        console.error("Direct service account authentication failed:", serviceAuthError.message);
+        
+        // Fallback to OAuth-based authentication if service account fails
+        console.log("Falling back to OAuth-based authentication...");
+        const admin = await getCalendarAdmin();
+        calendar = await getServerManagedCalendarClient(admin._id);
+      }
 
-      // Get Calendar client - this now handles token refresh automatically
-      const calendar = await getCalendarClient(admin._id);
-
+      // Create the calendar event
       const event = {
-        summary: `Medical Appointment: ${department}`,
-        description: message || "Medical consultation",
+        summary: `Medical Appointment: ${department || "Consultation"}`,
+        description: `Patient: ${patient.name.first} ${patient.name.last}\n${message || "Medical consultation"}`,
         start: {
           dateTime: appointmentDate.toISOString(),
           timeZone: "Asia/Kolkata", // Adjust for your timezone
@@ -196,7 +231,10 @@ exports.bookAppointment = async (req, res) => {
           dateTime: endTimeDate.toISOString(),
           timeZone: "Asia/Kolkata", // Adjust for your timezone
         },
-        attendees: [{ email: doctor.email }, { email: patient.email }],
+        attendees: [
+          { email: doctor.email, displayName: `Dr. ${doctor.name.first} ${doctor.name.last}` }, 
+          { email: patient.email, displayName: `${patient.name.first} ${patient.name.last}` }
+        ],
         conferenceData: {
           createRequest: {
             requestId: uuidv4(),
@@ -205,8 +243,10 @@ exports.bookAppointment = async (req, res) => {
         },
       };
 
+      console.log(`Creating calendar event in calendar ID: ${GOOGLE_CALENDAR_ID || 'primary'}`);
+      
       const calendarResponse = await calendar.events.insert({
-        calendarId: "primary",
+        calendarId: GOOGLE_CALENDAR_ID || "primary",
         resource: event,
         conferenceDataVersion: 1,
         sendNotifications: true,
@@ -217,15 +257,27 @@ exports.bookAppointment = async (req, res) => {
       appointment.joining_link = meetingLink;
       await appointment.save();
       
+      console.log("Successfully created Google Meet link:", meetingLink);
+      
     } catch (googleError) {
       console.error("Google Calendar error:", googleError);
 
       // Check if error is due to missing or invalid token
       if (
         googleError.message.includes("auth") ||
-        googleError.message.includes("token")
+        googleError.message.includes("token") ||
+        googleError.message.includes("authorization required") ||
+        googleError.message.includes("invalid_grant")
       ) {
         calendarSetupNeeded = true;
+        console.log("Google Calendar needs authentication setup. Error:", googleError.message);
+        
+        // Log detailed error for debugging
+        console.error("Detailed Google Calendar error:", JSON.stringify({
+          message: googleError.message,
+          stack: googleError.stack,
+          response: googleError.response?.data
+        }, null, 2));
       }
     }
     

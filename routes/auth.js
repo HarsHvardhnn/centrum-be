@@ -18,7 +18,12 @@ const {
 } = require("../controllers/authController");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const {upload} = require("../middlewares/cloudinaryUpload");
-const { getGoogleAuthUrl, handleGoogleCallback } = require("../controllers/googleController");
+const { 
+  getGoogleAuthUrl, 
+  handleGoogleCallback, 
+  initializeGoogleAuth, 
+  checkGoogleAuthStatus 
+} = require("../controllers/googleController");
 
 router.post("/signup", signup);
 router.post("/verify-otp", verifyOTP);
@@ -44,14 +49,27 @@ router.put(
 );
 
 
-
-router.get("/google/auth-url", authorizeRoles("admin","patient"), getGoogleAuthUrl);
+// Google Calendar auth routes
+router.get("/google/auth-url", authorizeRoles(["admin"]), getGoogleAuthUrl);
 
 // OAuth callback route
 router.get(
   "/oauth2callback",
-  authorizeRoles("admin", "patient"),
+  authorizeRoles(["admin"]),
   handleGoogleCallback
+);
+
+// New server-side Google token management APIs
+router.post(
+  "/google/initialize",
+  authorizeRoles(["admin"]),
+  initializeGoogleAuth
+);
+
+router.get(
+  "/google/status",
+  authorizeRoles(["admin"]),
+  checkGoogleAuthStatus
 );
 
 module.exports = router;

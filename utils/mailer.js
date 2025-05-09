@@ -1,28 +1,53 @@
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 
-console.log("sdd", process.env.GMAIL_USER, process.env.GMAIL_PASS);
+// For debugging purposes only - remove in production
+console.log("SMTP Config:", {
+  host: "smtp.zoho.com",
+  port: 465,
+  user: process.env.ZOHO_USER ? "***@" + process.env.ZOHO_USER.split('@')[1] : undefined, // Hide full email 
+  pass: process.env.ZOHO_PASS ? "********" : undefined, // Hide password
+  secure: true
+});
 
+// Create transporter with SSL configuration
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com", // This should be smtp.gmail.com, not just "gmail"
-  port: 587, // You need to specify the port
-  secure: false, // true for 465, false for other ports like 587
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // Use SSL
   auth: {
-    user: process.env.GMAIL_USER, // your Gmail address
-    pass: process.env.GMAIL_PASS, // your Gmail app password
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
   },
+  debug: true // Enable debug mode to see detailed logs
+});
+
+// Test the connection before using it
+transporter.verify(function(error, success) {
+  if (error) {
+    console.error("SMTP Connection Error:", error);
+  } else {
+    console.log("SMTP Server is ready to send emails");
+  }
 });
 
 const sendEmail = async ({ to, subject, html, text }) => {
-  const mailOptions = {
-    from: `"Hospital App" <${process.env.GMAIL_USER}>`,
-    to,
-    subject,
-    text,
-    html,
-  };
+  try {
+    const mailOptions = {
+      from: `"Hospital App" <${process.env.ZOHO_USER}>`,
+      to,
+      subject,
+      text,
+      html,
+    };
 
-  await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Email sent successfully:", info.messageId);
+    return info;
+  } catch (error) {
+    console.error("Failed to send email:", error);
+    throw error;
+  }
 };
 
 module.exports = sendEmail;
