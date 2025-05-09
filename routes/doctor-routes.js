@@ -10,6 +10,7 @@ const {
   removeOffTime,
   addOffTime,
   getAvailableSlots,
+  getDoctorProfile,
 } = require("../controllers/doctorController");
 const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
@@ -17,6 +18,10 @@ const authorizeRoles = require("../middlewares/authenticateRole");
 router.post("/", upload.single("file"), addDoctor);
 
 router.get("/", getAllDoctors);
+
+// Doctor profile endpoints
+router.get("/profile", authorizeRoles(["doctor"]), getDoctorProfile);
+router.get("/profile/:doctorId", getDoctorProfile);
 
 router.get("/:id", getDoctorById);
 
@@ -52,7 +57,7 @@ router.delete(
 // Get available slots
 router.get(
   "/schedule/available-slots/:id",
-  authorizeRoles(["doctor","admin"]),
+  // authorizeRoles(["doctor","admin"]),
   getAvailableSlots
 );
 

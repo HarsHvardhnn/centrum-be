@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "setup-google": "node scripts/setup-google-service-account.js",
+    "setup-delegation": "node scripts/setup-google-delegation.js",
+    "test-email": "node scripts/test-zoho-email.js",
+    "debug-smtp": "node scripts/debug-zoho-smtp.js"
   },
   "keywords": [],
   "author": "",
