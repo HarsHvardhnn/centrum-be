@@ -3,6 +3,8 @@ const Appointment = require("../models/appointment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
 const { getCalendarClient } = require("../utils/googleCalendar");
+const sendEmail = require("../utils/mailer");
+const { format } = require("date-fns");
 
 // Function to get admin user for Google Calendar auth
 async function getCalendarAdmin() {
@@ -12,6 +14,71 @@ async function getCalendarAdmin() {
   }
   return admin;
 }
+
+// Function to create HTML email for appointment details
+const createAppointmentEmailHtml = (appointmentDetails) => {
+  const {
+    patientName,
+    doctorName,
+    date,
+    time,
+    department,
+    meetingLink,
+    notes,
+    mode,
+    isNewUser,
+    temporaryPassword,
+  } = appointmentDetails;
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #3f51b5;">Appointment Confirmation</h2>
+        <p style="color: #666;">Your appointment has been scheduled successfully</p>
+      </div>
+      
+      <div style="margin-bottom: 20px; padding: 15px; background-color: #f5f5f5; border-radius: 4px;">
+        <h3 style="margin-top: 0; color: #3f51b5;">Appointment Details</h3>
+        <p><strong>Patient:</strong> ${patientName}</p>
+        <p><strong>Doctor:</strong> ${doctorName}</p>
+        <p><strong>Date:</strong> ${date}</p>
+        <p><strong>Time:</strong> ${time}</p>
+        <p><strong>Department:</strong> ${department || 'Not specified'}</p>
+        <p><strong>Mode:</strong> ${mode || 'Online'}</p>
+        ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+      </div>
+      
+      ${meetingLink ? `
+        <div style="margin-bottom: 20px; padding: 15px; background-color: #e8f5e9; border-radius: 4px; text-align: center;">
+          <h3 style="margin-top: 0; color: #2e7d32;">Google Meet Link</h3>
+          <p>Click the button below to join your appointment at the scheduled time:</p>
+          <a href="${meetingLink}" style="display: inline-block; padding: 10px 20px; background-color: #4caf50; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;">Join Meeting</a>
+        </div>
+      ` : `
+        <div style="margin-bottom: 20px; padding: 15px; background-color: #fff3e0; border-radius: 4px; text-align: center;">
+          <h3 style="margin-top: 0; color: #e65100;">Note</h3>
+          <p>This is an online appointment, but the meeting link could not be generated automatically. The doctor's office will contact you with further instructions.</p>
+        </div>
+      `}
+      
+      ${isNewUser ? `
+        <div style="margin-bottom: 20px; padding: 15px; background-color: #e3f2fd; border-radius: 4px;">
+          <h3 style="margin-top: 0; color: #1976d2;">Welcome to Our Platform</h3>
+          <p>As a new user, we've created an account for you with the following credentials:</p>
+          <p><strong>Email:</strong> Your provided email address</p>
+          <p><strong>Temporary Password:</strong> ${temporaryPassword || 'harsh123'}</p>
+          <p>We recommend changing your password after your first login for security reasons.</p>
+        </div>
+      ` : ''}
+      
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #666; font-size: 14px;">
+        <p>Thank you for choosing our medical services.</p>
+        <p>If you need to reschedule or cancel, please contact us at least 24 hours before your appointment.</p>
+        <p>© ${new Date().getFullYear()} Centrum Medyczne - All rights reserved</p>
+      </div>
+    </div>
+  `;
+};
 
 // Book appointment API
 exports.bookAppointment = async (req, res) => {
@@ -54,12 +121,13 @@ exports.bookAppointment = async (req, res) => {
       role: "patient",
     });
     let isNewUser = false;
+    const temporaryPassword = "harsh123"; // Should be randomly generated in production
 
     // If patient doesn't exist, create a new one
     if (!patient) {
       isNewUser = true;
       // Generate a secure random password - should be sent to user in real application
-      const hashedPassword = await bcrypt.hash("harsh123", 10);
+      const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
       patient = new User({
         name: {
@@ -80,9 +148,6 @@ exports.bookAppointment = async (req, res) => {
       });
 
       await patient.save();
-
-      // You would send the temporary password to the user here
-      // Example: await sendPasswordEmail(patient.email, randomPassword);
     }
 
     // Calculate end time (assuming duration is in minutes)
@@ -108,6 +173,10 @@ exports.bookAppointment = async (req, res) => {
 
     await appointment.save();
 
+    // Prepare appointment data for email
+    let meetingLink = "";
+    let calendarSetupNeeded = false;
+    
     // Create Google Meet event
     try {
       // Get admin user for Google Calendar integration
@@ -144,16 +213,10 @@ exports.bookAppointment = async (req, res) => {
       });
 
       // Update appointment with the meeting link
-      appointment.joining_link = calendarResponse.data.hangoutLink;
+      meetingLink = calendarResponse.data.hangoutLink;
+      appointment.joining_link = meetingLink;
       await appointment.save();
-
-      return res.status(201).json({
-        success: true,
-        message: "Appointment booked successfully",
-        appointment,
-        meetLink: calendarResponse.data.hangoutLink,
-        isNewUser,
-      });
+      
     } catch (googleError) {
       console.error("Google Calendar error:", googleError);
 
@@ -162,23 +225,71 @@ exports.bookAppointment = async (req, res) => {
         googleError.message.includes("auth") ||
         googleError.message.includes("token")
       ) {
-        return res.status(201).json({
-          success: true,
-          message:
-            "Appointment booked but Google Calendar integration needs to be set up",
-          appointment,
-          isNewUser,
-          calendarSetupNeeded: true,
-        });
+        calendarSetupNeeded = true;
       }
+    }
+    
+    // Send email to patient regardless of Google Calendar success/failure
+    try {
+      const formattedDate = format(appointmentDate, "EEEE, MMMM dd, yyyy");
+      
+      // Email data
+      const emailData = {
+        patientName: `${patient.name.first} ${patient.name.last}`,
+        doctorName: `Dr. ${doctor.name.first} ${doctor.name.last}`,
+        date: formattedDate,
+        time: `${time} - ${endTime}`,
+        department: department || "General",
+        meetingLink: meetingLink,
+        notes: message || "",
+        mode: "Online",
+        isNewUser,
+        temporaryPassword: isNewUser ? temporaryPassword : null,
+      };
+      
+      // Send email
+      await sendEmail({
+        to: patient.email,
+        subject: "Your Appointment Confirmation",
+        html: createAppointmentEmailHtml(emailData),
+        text: `Your appointment with Dr. ${doctor.name.first} ${doctor.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions."}`,
+      });
+      
+      console.log(`Appointment confirmation email sent to ${patient.email}`);
+    } catch (emailError) {
+      console.error("Failed to send appointment email:", emailError);
+      // Continue with the response - don't fail the whole appointment just because email failed
+    }
 
+    // Return appropriate response based on Google Meet creation result
+    if (meetingLink) {
+      return res.status(201).json({
+        success: true,
+        message: "Appointment booked successfully with Google Meet",
+        appointment,
+        meetLink: meetingLink,
+        isNewUser,
+        emailSent: true,
+      });
+    } else if (calendarSetupNeeded) {
+      return res.status(201).json({
+        success: true,
+        message: "Appointment booked but Google Calendar integration needs to be set up",
+        appointment,
+        isNewUser,
+        calendarSetupNeeded: true,
+        emailSent: true,
+      });
+    } else {
       return res.status(201).json({
         success: true,
         message: "Appointment booked but failed to create Google Meet event",
         appointment,
         isNewUser,
+        emailSent: true,
       });
     }
+    
   } catch (error) {
     console.error("Appointment booking error:", error);
     return res.status(500).json({

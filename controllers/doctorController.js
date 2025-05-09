@@ -4,6 +4,7 @@ const Doctor = require("../models/user-entity/doctor"); // This is the discrimin
 const { format, startOfDay, endOfDay } = require("date-fns");
 const appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
+const mongoose = require("mongoose");
 
 /**
  * Add a new doctor to the database
@@ -639,6 +640,74 @@ const getAvailableSlots = async (req, res) => {
   }
 };
 
+/**
+ * Get doctor profile information
+ * @param {Object} req - Request object
+ * @param {Object} res - Response object
+ * @returns {Object} Doctor profile data
+ */
+const getDoctorProfile = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    
+    // If no doctorId is provided, use the logged-in user's ID (if they are a doctor)
+    const id = doctorId || req.user?.id;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Doctor ID is required",
+      });
+    }
+
+    // Find doctor by ID or d_id
+    let query = {};
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query._id = id;
+    } else {
+      query.d_id = id;
+    }
+    query.role = "doctor";
+
+    const doctor = await Doctor.findOne(query)
+      .select("name email experience profilePicture consultationFee offlineConsultationFee bio qualifications specialization")
+      .populate("specialization", "name");
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+
+    // Format response
+    const response = {
+      id: doctor._id,
+      name: `${doctor.name.first} ${doctor.name.last}`.trim(),
+      email: doctor.email,
+      experience: doctor.experience || 0,
+      profilePicture: doctor.profilePicture,
+      onlineConsultationPrice: doctor.consultationFee || 0,
+      offlineConsultationPrice: doctor.offlineConsultationFee || 0,
+      bio: doctor.bio || "",
+      qualifications: doctor.qualifications || [],
+      specializations: doctor.specialization.map(spec => spec.name || spec) || []
+    };
+
+    res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    console.error("Error fetching doctor profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch doctor profile",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   addDoctor,
   getAllDoctors,
@@ -649,4 +718,5 @@ module.exports = {
   getOffSchedule,
   updateWeeklyShifts,
   getWeeklyShifts,
+  getDoctorProfile,
 };
