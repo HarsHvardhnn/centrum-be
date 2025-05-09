@@ -27,7 +27,22 @@ exports.generateBill = async (req, res) => {
     } = req.body;
 
     // Find appointment and check if it exists
-    const appointment = await Appointment.findById(appointmentId);
+    const appointment = await Appointment.findById(appointmentId).populate({
+      path: "doctor",
+      model: "User", // <-- Make sure this matches your Doctor model name
+      select: "onlineConsultationFee offlineConsultationFee"
+    });
+    
+    // SAFETY CHEC
+    // K
+    if (!appointment || !appointment.doctor) {
+      throw new Error("Appointment or associated doctor not found.");
+    }
+
+    const copiedDoctor = appointment.doctor.toObject();
+    console.log(copiedDoctor,"copiedDoctor");
+    console.log(copiedDoctor.onlineConsultationFee,"charges");
+    
     if (!appointment) {
       return res.status(404).json({
         success: false,
@@ -44,11 +59,22 @@ exports.generateBill = async (req, res) => {
       });
     }
 
+ 
+    // Get consultation charges
+    let consultationCharges = 0;
+    
+    if (appointment.mode === "online") {
+      consultationCharges = copiedDoctor.onlineConsultationFee || 0;
+    } else {
+      consultationCharges = copiedDoctor.offlineConsultationFee || 0;
+    }
+
     // Create new bill
     const newBill = new PatientBill({
       patient: appointment.patient,
       appointment: appointmentId,
       services,
+      consultationCharges,
       subtotal,
       taxPercentage,
       taxAmount,
@@ -555,6 +581,15 @@ exports.generateInvoice = async (req, res) => {
       };
       return statusMap[status] || status;
     };
+    
+    // Add consultation charge as first item if present
+    if (bill.consultationCharges > 0) {
+      const consultationType = bill.appointment?.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni";
+      doc.text(consultationType, 50, y)
+        .text(`${bill.consultationCharges.toFixed(2)} PLN`, 350, y, { width: 90, align: "right" })
+        .text("zakończony", 450, y, { width: 90, align: "right" });
+      y += 20;
+    }
     
     bill.services.forEach((service) => {
       doc.text(service.title, 50, y)

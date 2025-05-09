@@ -34,6 +34,10 @@ const patientBillSchema = new mongoose.Schema(
         }
       },
     ],
+    consultationCharges: {
+      type: Number,
+      default: 0,
+    },
     subtotal: {
       type: Number,
       required: true,
@@ -69,7 +73,7 @@ const patientBillSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["cash", "card", "online", "insurance", "other"],
+      enum: ["cash", "card", "online", "insurance", "other","bank_transfer"],
       default: "cash",
     },
     billedAt: {
