@@ -859,27 +859,32 @@ exports.getPatientDetailsAndReports = async (req, res) => {
 
 
 exports.getPatientMedicalDetails = async (req, res) => {
-  const { id } = req.user;
+  const { appointmentId } = req.params;
 
-  console.log("Received patient ID:", id);
+  if (!appointmentId) {
+    return res.status(400).json({ message: "Appointment ID is required" });
+  }
+
+  console.log("Received appointment ID:", appointmentId);
   try {
-    const patient = await user.findById(id).select(
-      "medications tests consultations documents"
-    ).lean();
-    console.log("Patient medical details:", patient);
+    const appointment = await Appointment.findById(appointmentId)
+      .select("medications tests consultation reports healthData")
+      .lean();
+    
+    console.log("Appointment medical details:", appointment);
 
-    if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found" });
     }
 
     return res.status(200).json({
-      medications: patient.medications || [],
-      tests: patient.tests || [],
-      consultation: patient.consultations || {},
-      documents: patient.documents || [],
+      medications: appointment.medications || [],
+      tests: appointment.tests || [],
+      consultation: appointment.consultation || {},
+      reports: appointment.reports || [],
     });
   } catch (error) {
-    console.error("Error fetching patient details:", error);
+    console.error("Error fetching appointment medical details:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };

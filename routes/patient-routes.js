@@ -156,6 +156,6 @@ router.post(
 );
 
 
-router.get("/by-id/medical-details",authorizeRoles(["patient"]), patientController.getPatientMedicalDetails);
+router.get("/by-id/medical-details/:appointmentId",authorizeRoles(["patient"]), patientController.getPatientMedicalDetails);
 
 module.exports = router;

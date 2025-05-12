@@ -78,7 +78,7 @@ exports.generateVisitCard = async (req, res) => {
     doc.pipe(stream);
 
     // Load logo
-    const logoPath = path.join(__dirname, "../public/logo_teal.png");
+    const logoPath = path.join(__dirname, "../public/logo_new.png");
 
     // Format visit date
     const visitDate = appointment.date
@@ -119,32 +119,21 @@ exports.generateVisitCard = async (req, res) => {
     const phone = patient.phone || patient.phoneFormatted || "Not provided";
 
     // Draw border
-    doc
-      .rect(20, 20, doc.page.width - 40, doc.page.height - 40)
-      .dash(5, { space: 10 }) // Create a dashed line
-      .stroke();
+    // doc
+    //   .rect(20, 20, doc.page.width - 40, doc.page.height - 40)
+    //   .dash(5, { space: 10 }) // Create a dashed line
+    //   .stroke();
 
     // Add logo
-if (fs.existsSync(logoPath)) {
-  // Set dimensions
-  const logoWidth = 50;
-  const textWidth = 160; // Approximate width of "Centrum Medyczne" text
-  const spacing = 20; // Space between logo and text
-  const totalWidth = logoWidth + spacing + textWidth;
-  const topPosition = 40; // Vertical position
-
-  // Calculate center positioning
-  const startX = (doc.page.width - totalWidth) / 2;
-
-  // Position the logo on the left of the centered group
-  doc.image(logoPath, startX, topPosition, { width: logoWidth });
-
-  // Position the text to the right of the logo
-  doc
-    .fillColor("black")
-    .fontSize(20)
-    .text("Centrum Medyczne", startX + logoWidth + spacing, topPosition + 15); // Align text vertically with logo
-} else {
+    if (fs.existsSync(logoPath)) {
+      const logoWidth = 160;
+      const topPosition = 20;
+    
+      // Center the logo horizontally
+      const startX = (doc.page.width - logoWidth) / 2;
+    
+      doc.image(logoPath, startX, topPosition, { width: logoWidth });
+    }else {
   // If no logo, just display text in center position with black color
   doc
     .fillColor("black")
@@ -154,15 +143,16 @@ if (fs.existsSync(logoPath)) {
     // Add visit information
     doc.moveDown(2);
     doc.fontSize(10);
-    doc.text(`Data of visite: ${visitDate}`, 50, 100);
-    doc.text(`Time of visite: ${visitTime}`, 50, 115);
-    doc.text(`Doctor: ${doctorName}`, 50, 130);
-
-    // Add patient information
-    doc.text(`Name and Surname: ${patientName}`, doc.page.width - 240, 100);
-    doc.text(`Date fo birth: ${dob}`, doc.page.width - 240, 115);
-    doc.text(`Address: ${address}`, doc.page.width - 240, 130);
-    doc.text(`Phone number: ${phone}`, doc.page.width - 240, 145);
+    doc.text(`Data wizyty: ${visitDate}`, 50, 100);
+    doc.text(`Godzina wizyty: ${visitTime}`, 50, 115);
+    doc.text(`Lekarz: ${doctorName}`, 50, 130);
+    
+    // Informacje o pacjencie
+    doc.text(`Imię i nazwisko: ${patientName}`, doc.page.width - 240, 100);
+    doc.text(`Data urodzenia: ${dob}`, doc.page.width - 240, 115);
+    doc.text(`Adres: ${address}`, doc.page.width - 240, 130);
+    doc.text(`Numer telefonu: ${phone}`, doc.page.width - 240, 145);
+    
 
     // Add visit card title
     doc
