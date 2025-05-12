@@ -92,14 +92,22 @@ exports.bookAppointment = async (req, res) => {
       message,
       name,
       phone,
+      consultationType,
       time,
     } = req.body;
 
     // Validate required fields
-    if (!date || !doctorId || !email || !name || !phone || !time) {
+    if (!date || !doctorId || !email || !name || !phone || !time || !consultationType) {
       return res
         .status(400)
         .json({ success: false, message: "Missing required fields" });
+    }
+
+    // Validate consultationType
+    if (!['online', 'offline'].includes(consultationType.toLowerCase())) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid consultation type. Must be either 'online' or 'offline'" });
     }
 
     // Parse name into first and last
@@ -191,7 +199,7 @@ exports.bookAppointment = async (req, res) => {
       startTime: time,
       endTime: endTime,
       duration: duration,
-      mode: "online",
+      mode: consultationType.toLowerCase(),
       notes: message || "",
     });
 
@@ -201,83 +209,85 @@ exports.bookAppointment = async (req, res) => {
     let meetingLink = "";
     let calendarSetupNeeded = false;
     
-    // Create Google Meet event with service account authentication 
-    try {
-      // Use direct service account authentication which uses domain-wide delegation
-      console.log("Attempting to create Google Calendar event for appointment...");
-      let calendar;
-      
+    // Create Google Meet event only for online consultations
+    if (consultationType.toLowerCase() === 'online') {
       try {
-        // This is our most reliable method - using domain-wide delegation
-        calendar = await getDirectCalendarClient();
-      } catch (serviceAuthError) {
-        console.error("Direct service account authentication failed:", serviceAuthError.message);
+        // Use direct service account authentication which uses domain-wide delegation
+        console.log("Attempting to create Google Calendar event for appointment...");
+        let calendar;
         
-        // Fallback to OAuth-based authentication if service account fails
-        console.log("Falling back to OAuth-based authentication...");
-        const admin = await getCalendarAdmin();
-        calendar = await getServerManagedCalendarClient(admin._id);
-      }
+        try {
+          // This is our most reliable method - using domain-wide delegation
+          calendar = await getDirectCalendarClient();
+        } catch (serviceAuthError) {
+          console.error("Direct service account authentication failed:", serviceAuthError.message);
+          
+          // Fallback to OAuth-based authentication if service account fails
+          console.log("Falling back to OAuth-based authentication...");
+          const admin = await getCalendarAdmin();
+          calendar = await getServerManagedCalendarClient(admin._id);
+        }
 
-      // Create the calendar event
-      const event = {
-        summary: `Medical Appointment: ${department || "Consultation"}`,
-        description: `Patient: ${patient.name.first} ${patient.name.last}\n${message || "Medical consultation"}`,
-        start: {
-          dateTime: appointmentDate.toISOString(),
-          timeZone: "Asia/Kolkata", // Adjust for your timezone
-        },
-        end: {
-          dateTime: endTimeDate.toISOString(),
-          timeZone: "Asia/Kolkata", // Adjust for your timezone
-        },
-        attendees: [
-          { email: doctor.email, displayName: `Dr. ${doctor.name.first} ${doctor.name.last}` }, 
-          { email: patient.email, displayName: `${patient.name.first} ${patient.name.last}` }
-        ],
-        conferenceData: {
-          createRequest: {
-            requestId: uuidv4(),
-            conferenceSolutionKey: { type: "hangoutsMeet" },
+        // Create the calendar event
+        const event = {
+          summary: `Medical Appointment: ${department || "Consultation"}`,
+          description: `Patient: ${patient.name.first} ${patient.name.last}\n${message || "Medical consultation"}`,
+          start: {
+            dateTime: appointmentDate.toISOString(),
+            timeZone: "Asia/Kolkata", // Adjust for your timezone
           },
-        },
-      };
+          end: {
+            dateTime: endTimeDate.toISOString(),
+            timeZone: "Asia/Kolkata", // Adjust for your timezone
+          },
+          attendees: [
+            { email: doctor.email, displayName: `Dr. ${doctor.name.first} ${doctor.name.last}` }, 
+            { email: patient.email, displayName: `${patient.name.first} ${patient.name.last}` }
+          ],
+          conferenceData: {
+            createRequest: {
+              requestId: uuidv4(),
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+            },
+          },
+        };
 
-      console.log(`Creating calendar event in calendar ID: ${GOOGLE_CALENDAR_ID || 'primary'}`);
-      
-      const calendarResponse = await calendar.events.insert({
-        calendarId: GOOGLE_CALENDAR_ID || "primary",
-        resource: event,
-        conferenceDataVersion: 1,
-        sendNotifications: true,
-      });
-
-      // Update appointment with the meeting link
-      meetingLink = calendarResponse.data.hangoutLink;
-      appointment.joining_link = meetingLink;
-      await appointment.save();
-      
-      console.log("Successfully created Google Meet link:", meetingLink);
-      
-    } catch (googleError) {
-      console.error("Google Calendar error:", googleError);
-
-      // Check if error is due to missing or invalid token
-      if (
-        googleError.message.includes("auth") ||
-        googleError.message.includes("token") ||
-        googleError.message.includes("authorization required") ||
-        googleError.message.includes("invalid_grant")
-      ) {
-        calendarSetupNeeded = true;
-        console.log("Google Calendar needs authentication setup. Error:", googleError.message);
+        console.log(`Creating calendar event in calendar ID: ${GOOGLE_CALENDAR_ID || 'primary'}`);
         
-        // Log detailed error for debugging
-        console.error("Detailed Google Calendar error:", JSON.stringify({
-          message: googleError.message,
-          stack: googleError.stack,
-          response: googleError.response?.data
-        }, null, 2));
+        const calendarResponse = await calendar.events.insert({
+          calendarId: GOOGLE_CALENDAR_ID || "primary",
+          resource: event,
+          conferenceDataVersion: 1,
+          sendNotifications: true,
+        });
+
+        // Update appointment with the meeting link
+        meetingLink = calendarResponse.data.hangoutLink;
+        appointment.joining_link = meetingLink;
+        await appointment.save();
+        
+        console.log("Successfully created Google Meet link:", meetingLink);
+        
+      } catch (googleError) {
+        console.error("Google Calendar error:", googleError);
+
+        // Check if error is due to missing or invalid token
+        if (
+          googleError.message.includes("auth") ||
+          googleError.message.includes("token") ||
+          googleError.message.includes("authorization required") ||
+          googleError.message.includes("invalid_grant")
+        ) {
+          calendarSetupNeeded = true;
+          console.log("Google Calendar needs authentication setup. Error:", googleError.message);
+          
+          // Log detailed error for debugging
+          console.error("Detailed Google Calendar error:", JSON.stringify({
+            message: googleError.message,
+            stack: googleError.stack,
+            response: googleError.response?.data
+          }, null, 2));
+        }
       }
     }
     
@@ -292,9 +302,9 @@ exports.bookAppointment = async (req, res) => {
         date: formattedDate,
         time: `${time} - ${endTime}`,
         department: department || "General",
-        meetingLink: meetingLink,
+        meetingLink: consultationType.toLowerCase() === 'online' ? meetingLink : null,
         notes: message || "",
-        mode: "Online",
+        mode: consultationType.toLowerCase(),
         isNewUser,
         temporaryPassword: isNewUser ? temporaryPassword : null,
       };
@@ -313,29 +323,39 @@ exports.bookAppointment = async (req, res) => {
       // Continue with the response - don't fail the whole appointment just because email failed
     }
 
-    // Return appropriate response based on Google Meet creation result
-    if (meetingLink) {
-      return res.status(201).json({
-        success: true,
-        message: "Appointment booked successfully with Google Meet",
-        appointment,
-        meetLink: meetingLink,
-        isNewUser,
-        emailSent: true,
-      });
-    } else if (calendarSetupNeeded) {
-      return res.status(201).json({
-        success: true,
-        message: "Appointment booked but Google Calendar integration needs to be set up",
-        appointment,
-        isNewUser,
-        calendarSetupNeeded: true,
-        emailSent: true,
-      });
+    // Return appropriate response based on consultation type and Google Meet creation result
+    if (consultationType.toLowerCase() === 'online') {
+      if (meetingLink) {
+        return res.status(201).json({
+          success: true,
+          message: "Online appointment booked successfully with Google Meet",
+          appointment,
+          meetLink: meetingLink,
+          isNewUser,
+          emailSent: true,
+        });
+      } else if (calendarSetupNeeded) {
+        return res.status(201).json({
+          success: true,
+          message: "Online appointment booked but Google Calendar integration needs to be set up",
+          appointment,
+          isNewUser,
+          calendarSetupNeeded: true,
+          emailSent: true,
+        });
+      } else {
+        return res.status(201).json({
+          success: true,
+          message: "Online appointment booked but failed to create Google Meet event",
+          appointment,
+          isNewUser,
+          emailSent: true,
+        });
+      }
     } else {
       return res.status(201).json({
         success: true,
-        message: "Appointment booked but failed to create Google Meet event",
+        message: "Offline appointment booked successfully",
         appointment,
         isNewUser,
         emailSent: true,
