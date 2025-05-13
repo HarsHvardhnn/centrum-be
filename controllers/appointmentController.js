@@ -185,6 +185,8 @@ exports.createAppointment = async (req, res) => {
           });
   
           patientDetails = await newPatientUser.save();
+          await sendWelcomeEmail(newPatientUser,'polish');
+
           patientId = patientDetails._id;
           isNewlyCreated = true;
           

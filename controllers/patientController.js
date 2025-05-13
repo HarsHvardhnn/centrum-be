@@ -5,6 +5,7 @@ const doctor = require("../models/user-entity/doctor");
 const Appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const Specialization = require("../models/specialization");
+const sendWelcomeEmail = require("../utils/welcomeEmail");
 const { ObjectId } = mongoose.Types;
 
 
@@ -117,6 +118,7 @@ exports.createPatient = async (req, res) => {
     });
 
     await newPatient.save();
+    await sendWelcomeEmail(newPatient,'polish');
 
     res
       .status(201)
