@@ -166,28 +166,52 @@ exports.bookAppointment = async (req, res) => {
     // If patient doesn't exist, create a new one
     if (!patient) {
       isNewUser = true;
-      // Generate a secure random password - should be sent to user in real application
-      const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-
-      patient = new User({
-        name: {
-          first: firstName,
-          last: lastName || "",
-        },
-        email: email.toLowerCase(),
-        sex:
-          gender === "Male"
-            ? "Male"
-            : gender === "Female"
-            ? "Female"
-            : "Others",
-        phone,
-        password: hashedPassword,
-        role: "patient",
-        signupMethod: "email",
+      // Check one more time to prevent race conditions
+      patient = await User.findOne({
+        email: email.toLowerCase()
       });
+      
+      if (!patient) {
+        // Generate a secure random password - should be sent to user in real application
+        const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
-      await patient.save();
+        patient = new User({
+          name: {
+            first: firstName,
+            last: lastName || "",
+          },
+          email: email.toLowerCase(),
+          sex:
+            gender === "Male"
+              ? "Male"
+              : gender === "Female"
+              ? "Female"
+              : "Others",
+          phone,
+          password: hashedPassword,
+          role: "patient",
+          signupMethod: "email",
+        });
+
+        try {
+          await patient.save();
+        } catch (saveError) {
+          // If we hit a duplicate key error, try one last time to find the user
+          if (saveError.code === 11000) {
+            patient = await User.findOne({
+              email: email.toLowerCase()
+            });
+            if (!patient) {
+              throw saveError; // If we still can't find the user, something is wrong
+            }
+            isNewUser = false;
+          } else {
+            throw saveError;
+          }
+        }
+      } else {
+        isNewUser = false;
+      }
     }
 
     // Create appointment

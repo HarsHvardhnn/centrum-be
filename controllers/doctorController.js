@@ -6,6 +6,23 @@ const appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const mongoose = require("mongoose");
 
+// Helper function to generate default shifts
+const generateDefaultShifts = () => {
+  const defaultStartTime = "09:00";
+  const defaultEndTime = "17:00";
+  
+  const days = [
+    "Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek"
+  ];
+
+  return days.map(day => ({
+    dayOfWeek: day,
+    startTime: defaultStartTime,
+    endTime: defaultEndTime,
+    status: "approved"
+  }));
+};
+
 /**
  * Add a new doctor to the database
  * @param {Object} req - Request object
@@ -34,9 +51,12 @@ const addDoctor = async (req, res) => {
       password: doctorData.password, // In production, this should be hashed
       role: "doctor", // This triggers the discriminator
       signupMethod: doctorData.signupMethod || "email",
-      profilePicture: req.file.path,
+      profilePicture: req.file?.path || "",
       singleSessionMode: doctorData.singleSessionMode || false,
     };
+
+    // Generate default shifts for all days
+    const defaultShifts = generateDefaultShifts();
 
     // Doctor-specific fields
     const doctorFields = {
@@ -45,10 +65,9 @@ const addDoctor = async (req, res) => {
       qualifications: doctorData.qualifications || [],
       experience: doctorData.experience || 0,
       bio: doctorData.bio || "",
-      // off: doctorData.consultationFee || 0,
       onlineConsultationFee: doctorData.onlineConsultationFee || 0,
       offlineConsultationFee: doctorData.offlineConsultationFee || 0,
-      weeklyShifts: doctorData.weeklyShifts || [],
+      weeklyShifts: doctorData.weeklyShifts || defaultShifts, // Use provided shifts or default ones
       offSchedule: doctorData.offSchedule || [],
     };
 
@@ -76,6 +95,7 @@ const addDoctor = async (req, res) => {
       bio: newDoctor.bio,
       consultationFee: newDoctor.consultationFee,
       offlineConsultationFee: newDoctor.offlineConsultationFee,
+      weeklyShifts: newDoctor.weeklyShifts
     };
 
     res.status(201).json({
