@@ -17,6 +17,7 @@ const newsArticleSchema = new mongoose.Schema(
     author: {
       type: String,
       required: false,
+      default:'Centrum Medyczne'
     },
     title: {
       type: String,
