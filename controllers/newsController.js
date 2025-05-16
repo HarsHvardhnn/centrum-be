@@ -28,7 +28,7 @@ exports.createNews = async (req, res) => {
 // Get all non-deleted news
 exports.getAllNews = async (req, res) => {
   try {
-    const { latest, isNews } = req.query;
+    const { latest, isNews ,category} = req.query;
 
     // Build base query
     const filter = { isDeleted: false };
@@ -36,6 +36,9 @@ exports.getAllNews = async (req, res) => {
     // If isNews is explicitly provided, convert to boolean and include in filter
     if (isNews !== undefined) {
       filter.isNews = isNews === "true";
+    }
+    if(category){
+      filter.category=category;
     }
 
     let query = NewsArticle.find(filter)
