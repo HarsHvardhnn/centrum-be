@@ -2,11 +2,15 @@ const User = require("../models/user-entity/user");
 const Appointment = require("../models/appointment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
-const { getServerManagedCalendarClient, getDirectCalendarClient, GOOGLE_CALENDAR_ID } = require("../utils/serverGoogleAuth");
 const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
 const MessageReceipt = require("../models/smsData");
 const {sendSMS} = require("../utils/smsapi");
+const { getCalendarClient } = require("../config/googleCalendar");
+// const doctor = require("../models/user-entity/doctor");
+// const Service = require("../models/service");
+// const PatientService = require("../models/patientService");
+// const mongoose = require("mongoose");
 
 // Function to get admin user for Google Calendar auth
 async function getCalendarAdmin() {
@@ -230,33 +234,35 @@ exports.bookAppointment = async (req, res) => {
     // Create Google Meet event only for online consultations
     if (consultationType.toLowerCase() === 'online') {
       try {
-        // Use direct service account authentication which uses domain-wide delegation
-        console.log("Attempting to create Google Calendar event for appointment...");
-        let calendar;
-        
-        try {
-          // This is our most reliable method - using domain-wide delegation
-          calendar = await getDirectCalendarClient();
-        } catch (serviceAuthError) {
-          console.error("Direct service account authentication failed:", serviceAuthError.message);
-          
-          // Fallback to OAuth-based authentication if service account fails
-          console.log("Falling back to OAuth-based authentication...");
-          const admin = await getCalendarAdmin();
-          calendar = await getServerManagedCalendarClient(admin._id);
-        }
+        // Get calendar client with fresh token
+        const calendar = await getCalendarClient();
+
+        // Convert appointment time to Polish timezone
+        const appointmentDateTime = new Date(appointmentDate);
+        const [hours, minutes] = time.split(':').map(Number);
+        appointmentDateTime.setHours(hours, minutes, 0, 0);
+
+        // Calculate end time
+        const endDateTime = new Date(appointmentDateTime);
+        endDateTime.setMinutes(endDateTime.getMinutes() + duration);
 
         // Create the calendar event
         const event = {
           summary: `Medical Appointment: ${department || "Consultation"}`,
-          description: `Patient: ${patient.name.first} ${patient.name.last}\n${message || "Medical consultation"}`,
+          description: `
+Patient: ${patient.name.first} ${patient.name.last}
+Doctor: Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}
+Department: ${department || "General"}
+Mode: Online Consultation
+${message ? `\nNotes: ${message}` : ""}
+          `.trim(),
           start: {
-            dateTime: appointmentDate.toISOString(),
-            timeZone: "Asia/Kolkata", // Adjust for your timezone
+            dateTime: appointmentDateTime.toISOString(),
+            timeZone: "Europe/Warsaw",
           },
           end: {
-            dateTime: endTimeDate.toISOString(),
-            timeZone: "Asia/Kolkata", // Adjust for your timezone
+            dateTime: endDateTime.toISOString(),
+            timeZone: "Europe/Warsaw",
           },
           attendees: [
             { email: doctorDetails.email, displayName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}` }, 
@@ -268,16 +274,25 @@ exports.bookAppointment = async (req, res) => {
               conferenceSolutionKey: { type: "hangoutsMeet" },
             },
           },
+          reminders: {
+            useDefault: false,
+            overrides: [
+              { method: 'email', minutes: 60 },
+              { method: 'popup', minutes: 30 }
+            ]
+          }
         };
 
-        console.log(`Creating calendar event in calendar ID: ${GOOGLE_CALENDAR_ID || 'primary'}`);
-        
         const calendarResponse = await calendar.events.insert({
-          calendarId: GOOGLE_CALENDAR_ID || "primary",
+          calendarId: 'primary',
           resource: event,
           conferenceDataVersion: 1,
           sendNotifications: true,
         });
+
+        if (!calendarResponse?.data?.hangoutLink) {
+          throw new Error("Failed to get Google Meet link from calendar response");
+        }
 
         // Update appointment with the meeting link
         meetingLink = calendarResponse.data.hangoutLink;
@@ -288,24 +303,7 @@ exports.bookAppointment = async (req, res) => {
         
       } catch (googleError) {
         console.error("Google Calendar error:", googleError);
-
-        // Check if error is due to missing or invalid token
-        if (
-          googleError.message.includes("auth") ||
-          googleError.message.includes("token") ||
-          googleError.message.includes("authorization required") ||
-          googleError.message.includes("invalid_grant")
-        ) {
-          calendarSetupNeeded = true;
-          console.log("Google Calendar needs authentication setup. Error:", googleError.message);
-          
-          // Log detailed error for debugging
-          console.error("Detailed Google Calendar error:", JSON.stringify({
-            message: googleError.message,
-            stack: googleError.stack,
-            response: googleError.response?.data
-          }, null, 2));
-        }
+        calendarSetupNeeded = true;
       }
     }
 
