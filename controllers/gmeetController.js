@@ -7,6 +7,8 @@ const { format } = require("date-fns");
 const MessageReceipt = require("../models/smsData");
 const {sendSMS} = require("../utils/smsapi");
 const { getCalendarClient } = require("../config/googleCalendar");
+const path = require('path');
+const fs = require('fs');
 // const doctor = require("../models/user-entity/doctor");
 // const Service = require("../models/service");
 // const PatientService = require("../models/patientService");
@@ -36,51 +38,52 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
     temporaryPassword,
   } = appointmentDetails;
 
+  const logoPath = path.join(__dirname, '../public', 'logo_new.png');
+  console.log(logoPath,"logoPath");
+  
+  // Read and convert logo to base64
+  const logoBase64 = fs.readFileSync(logoPath, { encoding: 'base64' });
+
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
-      <div style="text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #3f51b5;">Appointment Confirmation</h2>
-        <p style="color: #666;">Your appointment has been scheduled successfully</p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: left; margin-bottom: 20px;">
+        <img src="data:image/png;base64,${logoBase64}" alt="Centrum Medyczne 7" style="height: 50px;" />
       </div>
       
-      <div style="margin-bottom: 20px; padding: 15px; background-color: #f5f5f5; border-radius: 4px;">
-        <h3 style="margin-top: 0; color: #3f51b5;">Appointment Details</h3>
-        <p><strong>Patient:</strong> ${patientName}</p>
-        <p><strong>Doctor:</strong> ${doctorName}</p>
-        <p><strong>Date:</strong> ${date}</p>
-        <p><strong>Time:</strong> ${time}</p>
-        <p><strong>Department:</strong> ${department || 'Not specified'}</p>
-        <p><strong>Mode:</strong> ${mode || 'Online'}</p>
-        ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+      <div style="margin-bottom: 30px;">
+        <h2 style="color: #333; margin-bottom: 5px;">Appointment Confirmation | Potwierdzenie Wizyty</h2>
+        <p style="color: #666; font-size: 16px; margin-top: 0;">Twoja wizyta została umówiona pomyślnie.</p>
       </div>
       
-      ${meetingLink ? `
-        <div style="margin-bottom: 20px; padding: 15px; background-color: #e8f5e9; border-radius: 4px; text-align: center;">
-          <h3 style="margin-top: 0; color: #2e7d32;">Google Meet Link</h3>
-          <p>Click the button below to join your appointment at the scheduled time:</p>
-          <a href="${meetingLink}" style="display: inline-block; padding: 10px 20px; background-color: #4caf50; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;">Join Meeting</a>
+      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+        <h3 style="color: #333; margin-top: 0;">Szczegóły Wizyty:</h3>
+        
+        <div style="margin-bottom: 15px;">
+          <p style="margin: 5px 0;"><strong>Pacjent:</strong> ${patientName}</p>
+          <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
+          <p style="margin: 5px 0;"><strong>Data:</strong> ${date}</p>
+          <p style="margin: 5px 0;"><strong>Godzina:</strong> ${time}</p>
+          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${mode === 'online' ? 'Online' : 'Stacjonarna'}</p>
+          ${notes ? `<p style="margin: 5px 0;"><strong>Uwagi pacjenta:</strong> ${notes}</p>` : ''}
         </div>
-      ` : `
-        <div style="margin-bottom: 20px; padding: 15px; background-color: #fff3e0; border-radius: 4px; text-align: center;">
-          <h3 style="margin-top: 0; color: #e65100;">Note</h3>
-          <p>This is an online appointment, but the meeting link could not be generated automatically. The doctor's office will contact you with further instructions.</p>
-        </div>
-      `}
+      </div>
       
-      ${isNewUser ? `
-        <div style="margin-bottom: 20px; padding: 15px; background-color: #e3f2fd; border-radius: 4px;">
-          <h3 style="margin-top: 0; color: #1976d2;">Welcome to Our Platform</h3>
-          <p>As a new user, we've created an account for you with the following credentials:</p>
-          <p><strong>Email:</strong> Your provided email address</p>
-          <p><strong>Temporary Password:</strong> ${temporaryPassword || 'harsh123'}</p>
-          <p>We recommend changing your password after your first login for security reasons.</p>
-        </div>
+      ${mode === 'online' ? `
+        ${meetingLink ? `
+          <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+            <p style="margin: 0;">If it's a stationary visit, don't send this message. If it's an online visit, leave a space here for the link to the meeting</p>
+          </div>
+        ` : `
+          <div style="background-color: #fff3e0; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+            <p style="margin: 0;">This is an online appointment, but the meeting link could not be generated automatically. The doctor's office will contact you with further instructions.</p>
+          </div>
+        `}
       ` : ''}
-      
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #666; font-size: 14px;">
-        <p>Thank you for choosing our medical services.</p>
-        <p>If you need to reschedule or cancel, please contact us at least 24 hours before your appointment.</p>
-        <p>© ${new Date().getFullYear()} Centrum Medyczne - All rights reserved</p>
+
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+        <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>
+        <p style="color: #666; margin-bottom: 10px;">Dziękujemy za zaufanie!</p>
+        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - All rights reserved</p>
       </div>
     </div>
   `;
@@ -354,7 +357,7 @@ if(smsConsentAgreed){    try {
         to: patient.email,
         subject: "Your Appointment Confirmation",
         html: createAppointmentEmailHtml(emailData),
-        text: `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions. your created password to login to our system is centrum123"}`,
+        text: `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions."}`
       });
       
       console.log(`Appointment confirmation email sent to ${patient.email}`);
