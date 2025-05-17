@@ -253,7 +253,7 @@ exports.bookAppointment = async (req, res) => {
 Patient: ${patient.name.first} ${patient.name.last}
 Doctor: Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}
 Department: ${department || "General"}
-Mode: Online Consultation
+Mode: ${appointment.mode} Consultation
 ${message ? `\nNotes: ${message}` : ""}
           `.trim(),
           start: {
@@ -311,7 +311,9 @@ ${message ? `\nNotes: ${message}` : ""}
     let smsResult = null;
 if(smsConsentAgreed){    try {
       const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-      const message = `Twoja wizyta u Dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+      const message = appointment.mode === "online" 
+        ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+        : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
       const batchId = uuidv4();
       await MessageReceipt.create({

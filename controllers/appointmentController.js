@@ -14,6 +14,7 @@ const PatientService = require("../models/patientServices");
 const Service = require("../models/services");
 const bcrypt = require("bcrypt");
 const { sendEmail } = require("../utils/mailer");
+const { format } = require("date-fns");
 
 // Helper function to check if patient has consented to SMS notifications
 const hasPatientConsentedToSMS = (patientDetails) => {
@@ -437,12 +438,15 @@ exports.createAppointment = async (req, res) => {
     // Send SMS notification
     let smsResult = null;
     try {
-      let message = `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} is confirmed for ${formatDate(new Date(date))} at ${startTime}. Mode: ${mode || 'offline'}`;
+      const formattedDate = format(new Date(date), "dd.MM.yyyy");
+      const message = mode === "online" 
+        ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+        : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
       
       // Add temporary password to SMS if new patient
-      if (isNewlyCreated && temporaryPassword) {
-        message += ` Your temporary password is: ${temporaryPassword}. Please change it after login.`;
-      }
+      // if (isNewlyCreated && temporaryPassword) {
+      //   message += ` Your temporary password is: ${temporaryPassword}. Please change it after login.`;
+      // }
       
       if (hasPatientConsentedToSMS(patientDetails)) {
         const batchId = uuidv4();
