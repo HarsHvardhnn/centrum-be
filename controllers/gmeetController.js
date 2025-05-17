@@ -310,13 +310,8 @@ ${message ? `\nNotes: ${message}` : ""}
     // Send SMS notification without checking consent
     let smsResult = null;
 if(smsConsentAgreed){    try {
-      const formattedDate = format(appointmentDate, "dd/MM/yyyy");
-      let message = `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} is confirmed for ${formattedDate} at ${time}. Mode: ${consultationType.toLowerCase()}. Thank you for choosing Centrum Medyczne.`;
-      
-      // Add temporary password to SMS if new patient
-      if (isNewUser) {
-        message += ` Your temporary password is: ${temporaryPassword}. Please change it after login.`;
-      }
+      const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+      const message = `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
       const batchId = uuidv4();
       await MessageReceipt.create({
