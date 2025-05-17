@@ -88,6 +88,10 @@ const patientSchema = new mongoose.Schema({
     enum: ["completed", "in-treatment","billed"],
     default: "in-treatment",
   },
+  smsConsentAgreed: {
+    type: Boolean,
+    default: false,
+  },
 
   // Enhanced fields
   currentStatus: {

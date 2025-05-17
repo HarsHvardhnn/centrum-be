@@ -12,6 +12,114 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const PatientService = require("../models/patientServices");
 const Service = require("../models/services");
+const bcrypt = require("bcrypt");
+const { sendEmail } = require("../utils/mailer");
+
+// Helper function to check if patient has consented to SMS notifications
+const hasPatientConsentedToSMS = (patientDetails) => {
+  if (!patientDetails.consents || patientDetails.consents.length === 0) {
+    return false;
+  }
+  
+  try {
+    const parsedConsents = JSON.parse(patientDetails.consents);
+    return parsedConsents.some(
+      (consent) =>
+        consent.text.toLowerCase().includes("sms notifications") &&
+        consent.agreed === true
+    );
+  } catch (error) {
+    console.error("Error parsing patient consents:", error);
+    return false;
+  }
+};
+
+// Helper function to send appointment status SMS
+const sendAppointmentStatusSMS = async (appointment, patientDetails, doctorDetails, status) => {
+  try {
+    if (!hasPatientConsentedToSMS(patientDetails)) {
+      console.log("Patient has not consented to SMS notifications");
+      return { success: false, error: "Patient has not consented to SMS notifications" };
+    }
+
+    const phoneNumber = patientDetails.phone;
+    if (!phoneNumber) {
+      return { success: false, error: "No phone number available" };
+    }
+
+    const appointmentDate = formatDate(new Date(appointment.date));
+    const startTimeFormatted = formatTime(appointment.startTime);
+    const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
+    const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
+
+    let message = "";
+    switch (status) {
+      case "cancelled":
+        message = `Your appointment with Dr. ${doctorName} scheduled for ${appointmentDate} at ${startTimeFormatted} has been cancelled. Contact us for rescheduling.`;
+        break;
+      case "completed":
+        message = `Thank you for visiting Dr. ${doctorName}. Your appointment on ${appointmentDate} has been completed. Take care!`;
+        break;
+      case "rescheduled":
+        message = `Your appointment with Dr. ${doctorName} has been rescheduled to ${appointmentDate} at ${startTimeFormatted}.`;
+        break;
+      default:
+        message = `Your appointment status with Dr. ${doctorName} for ${appointmentDate} at ${startTimeFormatted} has been updated to: ${status}`;
+    }
+
+    const batchId = uuidv4();
+    await MessageReceipt.create({
+      content: message,
+      batchId,
+      recipient: {
+        userId: patientDetails._id.toString(),
+        phone: phoneNumber,
+      },
+      status: "PENDING",
+    });
+
+    return await sendSMS(phoneNumber, message);
+  } catch (error) {
+    console.error("Error sending appointment status SMS:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Helper function to send report upload notification SMS
+const sendReportUploadSMS = async (appointment, patientDetails, doctorDetails) => {
+  try {
+    if (!hasPatientConsentedToSMS(patientDetails)) {
+      return { success: false, error: "Patient has not consented to SMS notifications" };
+    }
+
+    const phoneNumber = patientDetails.phone;
+    if (!phoneNumber) {
+      return { success: false, error: "No phone number available" };
+    }
+
+    const appointmentDate = formatDate(new Date(appointment.date));
+    const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
+    const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
+
+    const message = `New medical report(s) have been uploaded for your appointment with Dr. ${doctorName} on ${appointmentDate}. Please check your patient portal.`;
+
+    const batchId = uuidv4();
+    await MessageReceipt.create({
+      content: message,
+      batchId,
+      recipient: {
+        userId: patientDetails._id.toString(),
+        phone: phoneNumber,
+      },
+      status: "PENDING",
+    });
+
+    return await sendSMS(phoneNumber, message);
+  } catch (error) {
+    console.error("Error sending report upload SMS:", error);
+    return { success: false, error: error.message };
+  }
+};
 
 // Helper function to generate temporary password
 const generateTemporaryPassword = () => {
@@ -152,6 +260,16 @@ exports.createAppointment = async (req, res) => {
     let patientId = patient;
     let patientDetails;
     let isNewlyCreated = false;
+    let temporaryPassword = null;
+
+    // Get doctor details for SMS
+    const doctorDetails = await doctor.findById(doctorId);
+    if (!doctorDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found"
+      });
+    }
 
     // HANDLE NEW PATIENT CREATION
     if (isNewPatient && newPatient) {
@@ -162,60 +280,63 @@ exports.createAppointment = async (req, res) => {
         if (existingPatient) {
           patientDetails = existingPatient;
           patientId = existingPatient._id;
-          isNewlyCreated = false;
         } else {
-          // Create a new patient user
-          const tempPassword = generateTemporaryPassword();
+          // Create new patient
+          temporaryPassword = generateTemporaryPassword();
+          const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
           
-          const newPatientUser = new user({
+          patientDetails = new user({
             name: {
               first: newPatient.firstName,
-              last: newPatient.lastName
+              last: newPatient.lastName || "",
             },
             email: newPatient.email,
-            phone: newPatient.phone || "",
+            phone: newPatient.phone,
+            password: hashedPassword,
             role: "patient",
             patientId: `P-${new Date().getTime()}`,
-            password: tempPassword, // Temporary password - should be hashed in production
             signupMethod: "email",
             profilePicture: "",
             isVerified: false,
             sex: newPatient.sex || "",
-            // Add any other required fields with defaults
           });
-  
-          patientDetails = await newPatientUser.save();
-          await sendWelcomeEmail(newPatientUser,'polish');
-
+          
+          await patientDetails.save();
           patientId = patientDetails._id;
           isNewlyCreated = true;
-          
-          // TODO: Send welcome email with temporary credentials
-          console.log(`New patient created with temporary password: ${tempPassword}`);
+
+          // Send welcome email with temporary credentials
+          try {
+            await sendEmail({
+              to: patientDetails.email,
+              subject: "Welcome to Centrum Medyczne",
+              html: createWelcomeEmailHtml({
+                name: `${patientDetails.name.first} ${patientDetails.name.last}`,
+                email: patientDetails.email,
+                temporaryPassword
+              }),
+              text: `Welcome to Centrum Medyczne! Your temporary password is: ${temporaryPassword}. Please change it after your first login.`
+            });
+          } catch (emailError) {
+            console.error("Failed to send welcome email:", emailError);
+          }
         }
       } catch (error) {
-        return res.status(400).json({
+        return res.status(500).json({
           success: false,
           message: "Failed to create new patient",
-          error: error.message
+          error: error.message,
         });
       }
     } else {
-      // EXISTING PATIENT FLOW
+      // Get existing patient details
       patientDetails = await user.findById(patientId);
       if (!patientDetails) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Patient not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Patient not found"
+        });
       }
-    }
-
-    // Get doctor details for SMS
-    const doctorDetails = await user.findById(doctorId);
-    if (!doctorDetails) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Doctor not found" });
     }
 
     // Get the consultation fee based on appointment mode
@@ -283,20 +404,16 @@ exports.createAppointment = async (req, res) => {
 
     await newAppointment.save();
 
-    // Handle services if provided in the request
+    // Handle services if provided
     if (services && Array.isArray(services) && services.length > 0) {
       try {
-        // Verify all services exist
         const serviceIds = services.map(s => s.serviceId);
         const existingServices = await Service.find({ 
           _id: { $in: serviceIds },
           isDeleted: false
         });
 
-        if (existingServices.length !== serviceIds.length) {
-          console.warn("One or more services do not exist");
-        } else {
-          // Format service data
+        if (existingServices.length === serviceIds.length) {
           const formattedServices = services.map(s => ({
             service: s.serviceId,
             notes: s.notes || "",
@@ -304,7 +421,6 @@ exports.createAppointment = async (req, res) => {
             assignedDate: new Date(),
           }));
 
-          // Create the patient service entry
           await PatientService.create({
             patient: patientId,
             appointment: newAppointment._id,
@@ -315,60 +431,59 @@ exports.createAppointment = async (req, res) => {
         }
       } catch (serviceError) {
         console.error("Error creating patient services:", serviceError);
-        // Continue with appointment creation even if service creation fails
       }
     }
 
-    // Populate doctor and patient details
+    // Send SMS notification
+    let smsResult = null;
+    try {
+      let message = `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} is confirmed for ${formatDate(new Date(date))} at ${startTime}. Mode: ${mode || 'offline'}`;
+      
+      // Add temporary password to SMS if new patient
+      if (isNewlyCreated && temporaryPassword) {
+        message += ` Your temporary password is: ${temporaryPassword}. Please change it after login.`;
+      }
+      
+      if (hasPatientConsentedToSMS(patientDetails)) {
+        const batchId = uuidv4();
+        await MessageReceipt.create({
+          content: message,
+          batchId,
+          recipient: {
+            userId: patientDetails._id.toString(),
+            phone: patientDetails.phone,
+          },
+          status: "PENDING",
+        });
+        
+        smsResult = await sendSMS(patientDetails.phone, message);
+      }
+    } catch (smsError) {
+      console.error("Error sending appointment confirmation SMS:", smsError);
+    }
+
+    // Populate and return response
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("doctor", "name email")
       .populate("patient", "name email phone mobile")
       .populate("bookedBy", "name email");
 
-    // Send confirmation SMS to patient
-    let smsResult = null;
-    try {
-      smsResult = await sendAppointmentConfirmationSMS(
-        newAppointment,
-        patientDetails,
-        doctorDetails
-      );
-
-      const notificationInfo = {
-        smsNotification: {
+    res.status(201).json({
+      success: true,
+      data: populatedAppointment,
+      notifications: {
+        sms: smsResult ? {
           sent: smsResult.success,
-          receiptId: smsResult.receiptId,
-        },
-      };
+          error: smsResult.error
+        } : {
+          sent: false,
+          error: "SMS notification not sent - patient consent not given"
+        }
+      },
+      newPatientCreated: isNewlyCreated,
+      temporaryPassword: isNewlyCreated ? temporaryPassword : undefined
+    });
 
-      if (!smsResult.success) {
-        notificationInfo.smsNotification.error = smsResult.error;
-        console.warn(
-          "Failed to send appointment confirmation SMS:",
-          smsResult.error
-        );
-      }
-
-      res.status(201).json({
-        success: true,
-        data: populatedAppointment,
-        notifications: notificationInfo,
-        newPatientCreated: isNewlyCreated
-      });
-    } catch (smsError) {
-      console.error("SMS sending error:", smsError);
-      res.status(201).json({
-        success: true,
-        data: populatedAppointment,
-        notifications: {
-          smsNotification: {
-            sent: false,
-            error: smsError.message || "Failed to send SMS notification",
-          },
-        },
-        newPatientCreated: isNewlyCreated
-      });
-    }
   } catch (error) {
     console.error("Error creating appointment:", error);
     res.status(500).json({
@@ -499,11 +614,8 @@ exports.updateAppointmentStatus = async (req, res) => {
       });
     }
 
-    const appointment = await Appointment.findByIdAndUpdate(
-      appointmentId,
-      { status },
-      { new: true }
-    ).populate("doctor patient bookedBy", "name email");
+    const appointment = await Appointment.findById(appointmentId)
+      .populate("doctor patient", "name email phone");
 
     if (!appointment) {
       return res.status(404).json({
@@ -512,9 +624,46 @@ exports.updateAppointmentStatus = async (req, res) => {
       });
     }
 
+    // Get doctor and patient details for SMS
+    const doctorDetails = await doctor.findById(appointment.doctor._id);
+    const patientDetails = await user.findById(appointment.patient._id);
+
+    if (!doctorDetails || !patientDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor or patient details not found",
+      });
+    }
+
+    // Update appointment status
+    appointment.status = status;
+    await appointment.save();
+
+    // Send SMS notification
+    let smsResult = null;
+    try {
+      smsResult = await sendAppointmentStatusSMS(
+        appointment,
+        patientDetails,
+        doctorDetails,
+        status
+      );
+    } catch (smsError) {
+      console.error("Error sending status update SMS:", smsError);
+    }
+
     res.status(200).json({
       success: true,
       data: appointment,
+      notifications: {
+        sms: smsResult ? {
+          sent: smsResult.success,
+          error: smsResult.error
+        } : {
+          sent: false,
+          error: "SMS notification not sent - patient consent not given"
+        }
+      }
     });
   } catch (error) {
     console.error("Error updating appointment status:", error);
@@ -596,22 +745,58 @@ exports.cancelAppointment = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const appointment = await Appointment.findById(id);
+    const appointment = await Appointment.findById(id)
+      .populate("doctor patient", "name email phone");
 
     if (!appointment) {
       return res.status(404).json({ message: "Appointment not found" });
     }
 
     if (appointment.status === "cancelled") {
-      return res
-        .status(400)
-        .json({ message: "Appointment is already cancelled" });
+      return res.status(400).json({ message: "Appointment is already cancelled" });
     }
 
+    // Get doctor and patient details for SMS
+    const doctorDetails = await doctor.findById(appointment.doctor._id);
+    const patientDetails = await user.findById(appointment.patient._id);
+
+    if (!doctorDetails || !patientDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor or patient details not found"
+      });
+    }
+
+    // Update appointment status
     appointment.status = "cancelled";
     await appointment.save();
 
-    res.status(200).json({ message: "Appointment cancelled successfully" });
+    // Send SMS notification
+    let smsResult = null;
+    try {
+      smsResult = await sendAppointmentStatusSMS(
+        appointment,
+        patientDetails,
+        doctorDetails,
+        "cancelled"
+      );
+    } catch (smsError) {
+      console.error("Error sending cancellation SMS:", smsError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Appointment cancelled successfully",
+      notifications: {
+        sms: smsResult ? {
+          sent: smsResult.success,
+          error: smsResult.error
+        } : {
+          sent: false,
+          error: "SMS notification not sent - patient consent not given"
+        }
+      }
+    });
   } catch (error) {
     console.error("Error cancelling appointment:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -865,8 +1050,10 @@ exports.uploadAppointmentReport = async (req, res) => {
       });
     }
 
-    // Check if appointment exists
-    const appointment = await Appointment.findById(id);
+    // Check if appointment exists and get populated data
+    const appointment = await Appointment.findById(id)
+      .populate("doctor patient", "name email phone");
+      
     if (!appointment) {
       return res.status(404).json({
         success: false,
@@ -874,7 +1061,18 @@ exports.uploadAppointmentReport = async (req, res) => {
       });
     }
 
-    // Process uploaded file from req.file (Multer attaches this)
+    // Get doctor and patient details for SMS
+    const doctorDetails = await doctor.findById(appointment.doctor._id);
+    const patientDetails = await user.findById(appointment.patient._id);
+
+    if (!doctorDetails || !patientDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor or patient details not found"
+      });
+    }
+
+    // Process uploaded file
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -882,11 +1080,11 @@ exports.uploadAppointmentReport = async (req, res) => {
       });
     }
 
-    // Create report object from uploaded file
-    const newReport = {
+    // Create report object
+    const report = {
       name: req.body.name || req.file.originalname,
       type: req.body.type || "Other",
-      fileUrl: req.file.path, // Cloudinary URL from your middleware
+      fileUrl: req.file.path,
       fileType: req.file.mimetype.split('/')[1] || "pdf",
       description: req.body.description || "",
       uploadedAt: new Date(),
@@ -897,30 +1095,42 @@ exports.uploadAppointmentReport = async (req, res) => {
       }
     };
 
-    // Update appointment with new report
-    let updatedAppointment;
-    if (appointment.reports && appointment.reports.length > 0) {
-      // Append to existing reports
-      updatedAppointment = await Appointment.findByIdAndUpdate(
-        id,
-        { $push: { reports: newReport } },
-        { new: true }
+    // Add report to appointment
+    if (!appointment.reports) {
+      appointment.reports = [];
+    }
+    appointment.reports.push(report);
+    await appointment.save();
+
+    // Send SMS notification
+    let smsResult = null;
+    try {
+      smsResult = await sendReportUploadSMS(
+        appointment,
+        patientDetails,
+        doctorDetails
       );
-    } else {
-      // Set reports if none exist
-      updatedAppointment = await Appointment.findByIdAndUpdate(
-        id,
-        { reports: [newReport] },
-        { new: true }
-      );
+    } catch (smsError) {
+      console.error("Error sending report upload SMS:", smsError);
     }
 
     res.status(200).json({
       success: true,
-      data: newReport,
-      message: "Report uploaded successfully"
+      message: "Report uploaded successfully",
+      data: {
+        report,
+        appointment
+      },
+      notifications: {
+        sms: smsResult ? {
+          sent: smsResult.success,
+          error: smsResult.error
+        } : {
+          sent: false,
+          error: "SMS notification not sent - patient consent not given"
+        }
+      }
     });
-
   } catch (error) {
     console.error("Error uploading report:", error);
     res.status(500).json({
@@ -1409,3 +1619,5 @@ exports.updateConsultation = async (req, res) => {
     });
   }
 };
+
+

@@ -5,6 +5,8 @@ const bcrypt = require("bcrypt");
 const { getServerManagedCalendarClient, getDirectCalendarClient, GOOGLE_CALENDAR_ID } = require("../utils/serverGoogleAuth");
 const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
+const MessageReceipt = require("../models/smsData");
+const {sendSMS} = require("../utils/smsapi");
 
 // Function to get admin user for Google Calendar auth
 async function getCalendarAdmin() {
@@ -92,6 +94,7 @@ exports.bookAppointment = async (req, res) => {
       message,
       name,
       phone,
+      smsConsentAgreed,
       consultationType,
       time,
     } = req.body;
@@ -116,8 +119,8 @@ exports.bookAppointment = async (req, res) => {
     const lastName = nameParts.slice(1).join(" ");
 
     // Find the doctor
-    const doctor = await User.findById(doctorId);
-    if (!doctor || doctor.role !== "doctor") {
+    const doctorDetails = await User.findById(doctorId);
+    if (!doctorDetails || doctorDetails.role !== "doctor") {
       return res
         .status(404)
         .json({ success: false, message: "Doctor not found" });
@@ -131,20 +134,18 @@ exports.bookAppointment = async (req, res) => {
     const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
     const endTime = `${endTimeHour}:${endTimeMinute}`;
     
-    // Check if there's already an appointment at the same date and time for this doctor
-    // Format the date for MongoDB query
+    // Check for existing appointments
     const startOfDay = new Date(appointmentDate);
     startOfDay.setHours(0, 0, 0, 0);
     
     const endOfDay = new Date(appointmentDate);
     endOfDay.setHours(23, 59, 59, 999);
     
-    // Check for existing appointments with the same doctor, date and time that are still booked
     const existingAppointment = await Appointment.findOne({
       doctor: doctorId,
       date: { $gte: startOfDay, $lte: endOfDay },
       startTime: time,
-      status: "booked" // Only consider appointments that are still booked
+      status: "booked"
     });
     
     if (existingAppointment) {
@@ -161,18 +162,16 @@ exports.bookAppointment = async (req, res) => {
       role: "patient",
     });
     let isNewUser = false;
-    const temporaryPassword = "harsh123"; // Should be randomly generated in production
+    const temporaryPassword = "centrum123";
 
     // If patient doesn't exist, create a new one
     if (!patient) {
       isNewUser = true;
-      // Check one more time to prevent race conditions
       patient = await User.findOne({
         email: email.toLowerCase()
       });
       
       if (!patient) {
-        // Generate a secure random password - should be sent to user in real application
         const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
         patient = new User({
@@ -181,28 +180,23 @@ exports.bookAppointment = async (req, res) => {
             last: lastName || "",
           },
           email: email.toLowerCase(),
-          sex:
-            gender === "Male"
-              ? "Male"
-              : gender === "Female"
-              ? "Female"
-              : "Others",
+          sex: gender === "Male" ? "Male" : gender === "Female" ? "Female" : "Others",
           phone,
           password: hashedPassword,
           role: "patient",
           signupMethod: "email",
+          smsConsentAgreed: smsConsentAgreed,
         });
 
         try {
           await patient.save();
         } catch (saveError) {
-          // If we hit a duplicate key error, try one last time to find the user
           if (saveError.code === 11000) {
             patient = await User.findOne({
               email: email.toLowerCase()
             });
             if (!patient) {
-              throw saveError; // If we still can't find the user, something is wrong
+              throw saveError;
             }
             isNewUser = false;
           } else {
@@ -265,7 +259,7 @@ exports.bookAppointment = async (req, res) => {
             timeZone: "Asia/Kolkata", // Adjust for your timezone
           },
           attendees: [
-            { email: doctor.email, displayName: `Dr. ${doctor.name.first} ${doctor.name.last}` }, 
+            { email: doctorDetails.email, displayName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}` }, 
             { email: patient.email, displayName: `${patient.name.first} ${patient.name.last}` }
           ],
           conferenceData: {
@@ -314,6 +308,33 @@ exports.bookAppointment = async (req, res) => {
         }
       }
     }
+
+    // Send SMS notification without checking consent
+    let smsResult = null;
+if(smsConsentAgreed){    try {
+      const formattedDate = format(appointmentDate, "dd/MM/yyyy");
+      let message = `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} is confirmed for ${formattedDate} at ${time}. Mode: ${consultationType.toLowerCase()}. Thank you for choosing Centrum Medyczne.`;
+      
+      // Add temporary password to SMS if new patient
+      if (isNewUser) {
+        message += ` Your temporary password is: ${temporaryPassword}. Please change it after login.`;
+      }
+
+      const batchId = uuidv4();
+      await MessageReceipt.create({
+        content: message,
+        batchId,
+        recipient: {
+          userId: patient._id.toString(),
+          phone: phone,
+        },
+        status: "PENDING",
+      });
+      
+      smsResult = await sendSMS(phone, message);
+    } catch (smsError) {
+      console.error("Error sending appointment confirmation SMS:", smsError);
+    }}
     
     // Send email to patient regardless of Google Calendar success/failure
     try {
@@ -322,7 +343,7 @@ exports.bookAppointment = async (req, res) => {
       // Email data
       const emailData = {
         patientName: `${patient.name.first} ${patient.name.last}`,
-        doctorName: `Dr. ${doctor.name.first} ${doctor.name.last}`,
+        doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
         date: formattedDate,
         time: `${time} - ${endTime}`,
         department: department || "General",
@@ -338,7 +359,7 @@ exports.bookAppointment = async (req, res) => {
         to: patient.email,
         subject: "Your Appointment Confirmation",
         html: createAppointmentEmailHtml(emailData),
-        text: `Your appointment with Dr. ${doctor.name.first} ${doctor.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions."}`,
+        text: `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions. your created password to login to our system is centrum123"}`,
       });
       
       console.log(`Appointment confirmation email sent to ${patient.email}`);
@@ -353,45 +374,81 @@ exports.bookAppointment = async (req, res) => {
         return res.status(201).json({
           success: true,
           message: "Online appointment booked successfully with Google Meet",
-          appointment,
+          data: appointment,
           meetLink: meetingLink,
           isNewUser,
           emailSent: true,
+          notifications: {
+            sms: smsResult ? {
+              sent: smsResult.success,
+              error: smsResult.error
+            } : {
+              sent: false,
+              error: "Failed to send SMS notification"
+            }
+          }
         });
       } else if (calendarSetupNeeded) {
         return res.status(201).json({
           success: true,
           message: "Online appointment booked but Google Calendar integration needs to be set up",
-          appointment,
+          data: appointment,
           isNewUser,
           calendarSetupNeeded: true,
           emailSent: true,
+          notifications: {
+            sms: smsResult ? {
+              sent: smsResult.success,
+              error: smsResult.error
+            } : {
+              sent: false,
+              error: "Failed to send SMS notification"
+            }
+          }
         });
       } else {
         return res.status(201).json({
           success: true,
           message: "Online appointment booked but failed to create Google Meet event",
-          appointment,
+          data: appointment,
           isNewUser,
           emailSent: true,
+          notifications: {
+            sms: smsResult ? {
+              sent: smsResult.success,
+              error: smsResult.error
+            } : {
+              sent: false,
+              error: "Failed to send SMS notification"
+            }
+          }
         });
       }
     } else {
       return res.status(201).json({
         success: true,
         message: "Offline appointment booked successfully",
-        appointment,
+        data: appointment,
         isNewUser,
         emailSent: true,
+        notifications: {
+          sms: smsResult ? {
+            sent: smsResult.success,
+            error: smsResult.error
+          } : {
+            sent: false,
+            error: "Failed to send SMS notification"
+          }
+        }
       });
     }
-    
+
   } catch (error) {
-    console.error("Appointment booking error:", error);
-    return res.status(500).json({
+    console.error("Error booking appointment:", error);
+    res.status(500).json({
       success: false,
       message: "Failed to book appointment",
-      error: error.message,
+      error: error.message
     });
   }
 };
