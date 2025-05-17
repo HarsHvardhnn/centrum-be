@@ -311,7 +311,7 @@ ${message ? `\nNotes: ${message}` : ""}
     let smsResult = null;
 if(smsConsentAgreed){    try {
       const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-      const message = `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+      const message = `Twoja wizyta u Dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
       const batchId = uuidv4();
       await MessageReceipt.create({
