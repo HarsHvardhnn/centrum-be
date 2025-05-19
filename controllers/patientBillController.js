@@ -122,6 +122,7 @@ exports.getAllBills = async (req, res) => {
       startDate,
       endDate,
       paymentStatus,
+     
     } = req.query;
 
     // Convert to numbers
@@ -140,6 +141,7 @@ exports.getAllBills = async (req, res) => {
       query.patient = patientId;
     }
 
+ 
     if (startDate && endDate) {
       query.billedAt = {
         $gte: new Date(startDate),
@@ -156,14 +158,14 @@ exports.getAllBills = async (req, res) => {
     }
 
     // Get bills with pagination
-    const bills = await PatientBill.find(query)
+    let bills = await PatientBill.find(query)
       .populate({
         path: "patient",
         select: "name email profilePicture patientId",
       })
       .populate({
         path: "appointment",
-        select: "date startTime endTime",
+        select: "date startTime endTime doctor",
       })
       .populate({
         path: "billedBy",
@@ -171,9 +173,12 @@ exports.getAllBills = async (req, res) => {
       })
       .sort(sortObject)
       .skip(skip)
-      .limit(limit)
-      .lean();
+      .limit(limit);
+      console.log("total bills",bills)
 
+          if (req.user.role=="doctor") {
+      bills = bills.filter((bill) => bill.appointment.doctor == req.user.id);
+    }
     // Get total count for pagination
     const totalBills = await PatientBill.countDocuments(query);
 

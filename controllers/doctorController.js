@@ -736,6 +736,149 @@ const getDoctorProfile = async (req, res) => {
   }
 };
 
+// Get next available date for a doctor
+const getNextAvailableDate = async (req, res) => {
+  try {
+    const doctorId = req.params.id;
+    const doctor = await user.findById(doctorId);
+    
+    if (!doctor) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Doctor not found" 
+      });
+    }
+
+    // Start checking from tomorrow
+    let currentDate = new Date();
+    currentDate.setDate(currentDate.getDate() + 1);
+    
+    // Maximum number of days to check (e.g., 30 days)
+    const maxDaysToCheck = 30;
+    let daysChecked = 0;
+
+    while (daysChecked < maxDaysToCheck) {
+      // Get English and Polish day names
+      const englishDayOfWeek = format(currentDate, "EEEE");
+      const dayNameMap = {
+        'Monday': 'Poniedziałek',
+        'Tuesday': 'Wtorek',
+        'Wednesday': 'Środa',
+        'Thursday': 'Czwartek',
+        'Friday': 'Piątek',
+        'Saturday': 'Sobota',
+        'Sunday': 'Niedziela'
+      };
+      const polishDayOfWeek = dayNameMap[englishDayOfWeek];
+
+      // Check if doctor works on this day
+      const shift = doctor.weeklyShifts.find(
+        (s) => s.dayOfWeek === englishDayOfWeek || s.dayOfWeek === polishDayOfWeek
+      );
+
+      if (shift) {
+        // Check if doctor has any off time on this day
+        const offDay = doctor.offSchedule.find(
+          (off) => off.date.toISOString().slice(0, 10) === currentDate.toISOString().slice(0, 10)
+        );
+
+        // If no off time or off time doesn't cover entire day
+        if (!offDay || offDay.timeRanges.length === 0) {
+          // Get available slots for this date
+          const appointments = await appointment.find({
+            doctor: doctorId,
+            date: {
+              $gte: startOfDay(currentDate),
+              $lte: endOfDay(currentDate),
+            },
+            status: "booked",
+          }).sort({ startTime: 1 });
+
+          // Generate slots for this day
+          const slotDuration = 30;
+          const slots = [];
+          const [shiftStartHour, shiftStartMinute] = shift.startTime.split(":").map(Number);
+          const [shiftEndHour, shiftEndMinute] = shift.endTime.split(":").map(Number);
+          const shiftStartMinutes = shiftStartHour * 60 + shiftStartMinute;
+          const shiftEndMinutes = shiftEndHour * 60 + shiftEndMinute;
+
+          // Generate all possible slots
+          for (let time = shiftStartMinutes; time < shiftEndMinutes; time += slotDuration) {
+            const hour = Math.floor(time / 60);
+            const minute = time % 60;
+            const slotStartTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+            const slotEndMinutes = time + slotDuration;
+            const endHour = Math.floor(slotEndMinutes / 60);
+            const endMinute = slotEndMinutes % 60;
+            const slotEndTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
+
+            if (slotEndMinutes <= shiftEndMinutes) {
+              slots.push({
+                startTime: slotStartTime,
+                endTime: slotEndTime,
+                available: true,
+              });
+            }
+          }
+
+          // Mark slots as unavailable if they overlap with appointments
+          appointments.forEach((appointment) => {
+            const [appStartHour, appStartMinute] = appointment.startTime.split(":").map(Number);
+            const [appEndHour, appEndMinute] = appointment.endTime.split(":").map(Number);
+            const appStartMinutes = appStartHour * 60 + appStartMinute;
+            const appEndMinutes = appEndHour * 60 + appEndMinute;
+
+            slots.forEach((slot) => {
+              const [slotStartHour, slotStartMinute] = slot.startTime.split(":").map(Number);
+              const [slotEndHour, slotEndMinute] = slot.endTime.split(":").map(Number);
+              const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
+              const slotEndMinutes = slotEndHour * 60 + slotEndMinute;
+
+              if (
+                (slotStartMinutes < appEndMinutes && slotEndMinutes > appStartMinutes) ||
+                (slotStartMinutes === appStartMinutes && slotEndMinutes === appEndMinutes)
+              ) {
+                slot.available = false;
+              }
+            });
+          });
+
+          // Check if there's at least one available slot
+          const hasAvailableSlot = slots.some(slot => slot.available);
+          if (hasAvailableSlot) {
+            return res.status(200).json({
+              success: true,
+              data: {
+                nextAvailableDate: currentDate.toISOString().split('T')[0],
+                availableSlots: slots.filter(slot => slot.available)
+              }
+            });
+          }
+        }
+      }
+
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+      daysChecked++;
+    }
+
+    // If no available date found within the search period
+    return res.status(200).json({
+      success: true,
+      message: "No available dates found in the next 30 days",
+      data: null
+    });
+
+  } catch (error) {
+    console.error("Error finding next available date:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while finding next available date",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   addDoctor,
   getAllDoctors,
@@ -747,4 +890,5 @@ module.exports = {
   updateWeeklyShifts,
   getWeeklyShifts,
   getDoctorProfile,
+  getNextAvailableDate,
 };

@@ -333,6 +333,7 @@ const login = async (req, res) => {
         d_id: user.d_id || "",
         name: `${user.name.first} ${user.name.last}`,
         role: user.role,
+        phone: user.phone,
         profilePicture: user.profilePicture,
         singleSessionMode: user.singleSessionMode,
       },
@@ -378,6 +379,7 @@ const googleLogin = async (req, res) => {
         profilePicture: picture,
         signupMethod: "google",
         refreshTokens: [],
+        phone: user.phone,
         singleSessionMode: false,
       });
     }
