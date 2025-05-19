@@ -11,6 +11,7 @@ const {
   addOffTime,
   getAvailableSlots,
   getDoctorProfile,
+  getNextAvailableDate,
 } = require("../controllers/doctorController");
 const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
@@ -61,6 +62,10 @@ router.get(
   getAvailableSlots
 );
 
-
+// Get next available date
+router.get(
+  "/schedule/next-available/:id",
+  getNextAvailableDate
+);
 
 module.exports = router;
