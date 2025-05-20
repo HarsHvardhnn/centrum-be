@@ -22,6 +22,7 @@ const smsDataRoutes = require("./routes/sms-data-routes");
 const patientBillRoutes = require("./routes/patientBillRoutes");
 const doctorStatsRoutes = require("./routes/doctor-stats-routes");
 const contactRoutes = require("./routes/contactRoutes");
+const googleAuthRoutes = require("./utils/googleAccessToken");
 dotenv.config();
 
 // Initialize database and seed admin
@@ -69,6 +70,7 @@ app.use("/sms-data", smsDataRoutes);
 app.use("/patient-bills", patientBillRoutes);
 app.use("/doctor-stats", doctorStatsRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/auth/google", googleAuthRoutes);
 // Import socket handler and pass io
 const socketHandler = require("./config/socketHandler");
 socketHandler(io);
@@ -77,6 +79,6 @@ app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 // Use server.listen instead of app.listen
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
