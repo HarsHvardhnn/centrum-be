@@ -31,7 +31,7 @@ router.patch(
 );
 router.patch("/users/:userId/revive", authorizeRoles(["admin"]), unMarkDeleted);
 
-router.get("/users/non-admins", authorizeRoles(["admin"]), getAllNonAdminUsers);
+router.get("/users/non-admins",   authorizeRoles(["admin", "receptionist"]), getAllNonAdminUsers);
 router.get("/users/:id", authorizeRoles(["admin"]), getUserById);
 router.get(
   "/history/chats",

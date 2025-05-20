@@ -90,7 +90,16 @@ exports.getAllNonAdminUsers = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    const query = { role: { $ne: "admin" } };
+    let query = {};
+
+    if (req.user.role === 'admin') {
+   
+      query = { role: { $ne: 'admin' } };
+    } else if (req.user.role === 'receptionist') {
+  
+      query = { role: 'patient' };
+    }
+    
 
     if (searchTerm) {
       query.$or = [
