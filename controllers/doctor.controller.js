@@ -2,17 +2,29 @@
 const generateDefaultShifts = () => {
   const defaultStartTime = "09:00";
   const defaultEndTime = "17:00";
-  
+
   const days = [
-    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
-    "Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Niedziela",
+    "Poniedziałek",
+    "Wtorek",
+    "Środa",
+    "Czwartek",
+    "Piątek",
+    "Sobota",
   ];
 
-  return days.map(day => ({
+  return days.map((day) => ({
     dayOfWeek: day,
     startTime: defaultStartTime,
     endTime: defaultEndTime,
-    status: "approved"
+    status: "approved",
   }));
 };
 
@@ -26,7 +38,7 @@ const addDoctor = async (req, res) => {
         success: false,
         message: "Doctor with this email already exists",
       });
-    } 
+    }
     // Create the base user document
     const userData = {
       name: {
@@ -83,7 +95,7 @@ const addDoctor = async (req, res) => {
       bio: newDoctor.bio,
       consultationFee: newDoctor.consultationFee,
       offlineConsultationFee: newDoctor.offlineConsultationFee,
-      weeklyShifts: newDoctor.weeklyShifts
+      weeklyShifts: newDoctor.weeklyShifts,
     };
 
     res.status(201).json({
@@ -99,4 +111,4 @@ const addDoctor = async (req, res) => {
       error: error.message,
     });
   }
-}; 
+};

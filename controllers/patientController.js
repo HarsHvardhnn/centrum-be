@@ -161,7 +161,12 @@ function deepParse(value) {
 
 exports.getPatientById = async (req, res) => {
   try {
-    const info = await patient.findOne({ patientId: req.params.id }).lean();
+    let info =null;
+    if(req.params.id.includes("P-")){
+      info = await patient.findOne({ patientId: req.params.id }).lean();
+    }else{
+      info = await patient.findById(req.params.id).lean();
+    }
 
     if (!info) {
       return res.status(404).json({ message: "Patient not found" });
@@ -898,6 +903,8 @@ exports.updatePatient = async (req, res) => {
   try {
     const patientId = req.params.id;
 
+    
+
 
     const {
       fullName,
@@ -952,7 +959,7 @@ exports.updatePatient = async (req, res) => {
     if (email) {
       const existingPatient = await patient.findOne({
         email,
-        patientId: { $ne: patientId },
+        _id: { $ne: patientId },
       });
 
       if (existingPatient) {
@@ -963,7 +970,7 @@ exports.updatePatient = async (req, res) => {
     }
 
     // Find the existing patient
-    const existingPatient = await patient.findOne({patientId});
+    const existingPatient = await patient.findOne({_id:patientId});
     if (!existingPatient) {
       return res.status(404).json({ error: "Patient not found" });
     }
@@ -1039,7 +1046,7 @@ exports.updatePatient = async (req, res) => {
 
     // Update patient with new data
     const updatedPatient = await patient.findOneAndUpdate(
-      {patientId},
+      {_id:patientId},
       updateData,
       { new: true, runValidators: true }
     );
