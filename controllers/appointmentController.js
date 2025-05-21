@@ -15,6 +15,7 @@ const Service = require("../models/services");
 const bcrypt = require("bcrypt");
 const { sendEmail } = require("../utils/mailer");
 const { format } = require("date-fns");
+const patient = require("../models/user-entity/patient");
 
 // Helper function to check if patient has consented to SMS notifications
 const hasPatientConsentedToSMS = (patientDetails) => {
@@ -859,7 +860,29 @@ exports.updateAppointmentDetails = async (req, res) => {
 
     const updateData = {};
 
-    const {bloodPressure,temperature,weight,heightroomNumber} = patientData;
+    const {bloodPressure, temperature, weight, height, riskStatus, treatmentStatus, roomNumber, id: patientId} = patientData;
+
+    console.log("patient id ", patientId);
+    // Update patient model with health information
+    if (patientId) {
+      try {
+        await patient.findByIdAndUpdate(
+          patientId,
+          {
+            bloodPressure,
+            temperature,
+            weight,
+            height,
+            isRisky: riskStatus === "Risky",
+            treatmentStatus,
+            roomNumber
+          },
+          { new: true }
+        );
+      } catch (error) {
+        console.error("Error updating patient:", error);
+      }
+    }
 
     // Handle consultation data if provided
     if (consultationData) {
@@ -1227,7 +1250,7 @@ exports.getAppointmentDetails = async (req, res) => {
 
     const appointment = await Appointment.findById(id)
       .populate("doctor", "name.first name.last")
-      .populate("patient", "name.first name.last patientId age dateOfBirth")
+      .populate("patient", "name.first name.last patientId age dateOfBirth height weight bloodPressure temperature riskStatus treatmentStatus roomNumber")
       .lean();
 
     if (!appointment) {

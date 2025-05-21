@@ -639,9 +639,9 @@ exports.getPatientDetails = async (req, res) => {
       treatmentStatus:
         patient.currentStatus?.treatmentStatus || "Under Treatment",
       bloodPressure: patient.bloodPressure?.value || "141/90 mmHg",
-      temperature: patient.bloodPressure?.temperature || "29°C",
-      weight: patient.bodyWeight?.value || "78kg",
-      height: patient.bodyHeight?.value || "5'6\" inc",
+      temperature: patient?.temperature || "29°C",
+      weight: patient?.weight || "78kg",
+      height: patient?.height || "5'6\" inc",
     };
 
     // Get latest consultation if exists

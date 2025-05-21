@@ -4,23 +4,6 @@
 const mongoose = require("mongoose");
 const User = require("./user");
 
-// Define the health data schema
-const patientHealthDataSchema = new mongoose.Schema({
-  bloodPressure: {
-    value: String,
-    percentage: Number,
-    temperature: Number,
-  },
-  bodyHeight: {
-    value: String,
-    percentage: Number,
-  },
-  bodyWeight: {
-    value: Number,
-    percentage: Number,
-  },
-});
-
 // Combine all patient fields into a single schema
 const patientSchema = new mongoose.Schema({
   // Basic patient info
@@ -93,15 +76,19 @@ const patientSchema = new mongoose.Schema({
     default: false,
   },
 
-  // Enhanced fields
-  currentStatus: {
-    roomNumber: Number,
-    isRisky: Boolean,
-    treatmentStatus: {
-      type: String,
-      enum: ["Under Treatment", "Completed", "Pending", "Scheduled"],
-    },
+  // Health Data - Simplified
+  bloodPressure: String,
+  temperature: Number,
+  weight: Number,
+  height: Number,
+  roomNumber: Number,
+  isRisky: Boolean,
+  treatmentStatus: {
+    type: String,
+    enum: ["Under Treatment", "Completed", "Pending", "Scheduled"],
   },
+
+  // Additional fields
   chronicConditions: [String],
   specialty: {
     type: String,
@@ -114,7 +101,6 @@ const patientSchema = new mongoose.Schema({
       "Other",
     ],
   },
-  healthData: patientHealthDataSchema,
   goals: [String],
   monitoringPlan: {
     type: mongoose.Schema.Types.Mixed,
