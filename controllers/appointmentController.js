@@ -1357,136 +1357,192 @@ exports.getPatientAppointments = async (req, res) => {
 
 // Get appointments with pagination, sorting and filtering
 exports.getAppointments = async (req, res) => {
-    try {
-        const {
-            page = 1,
-            limit = 10,
-            sortBy = 'date',
-            sortOrder = 'desc',
-            status,
-            startDate,
-            endDate,
-            doctorId,
-            searchTerm
-        } = req.query;
+  try {
+      const {
+          page = 1,
+          limit = 10,
+          sortBy = 'date',
+          sortOrder = 'desc',
+          status,
+          startDate,
+          endDate,
+          doctorId,
+          searchTerm,
+          isClinicIp
+      } = req.query;
 
-        // Build query
-        const query = {};
+      // Build query
+      const query = {};
 
-        // Status filter
-        if (status && status !== 'all') {
-            query.status = status;
-        }
+      // Status filter
+      if (status && status !== 'all') {
+          query.status = status;
+      }
 
-        // Date range filter
-        if (startDate && endDate) {
-            query.date = {
-                $gte: new Date(startDate),
-                $lte: new Date(endDate)
-            };
-        }
+      // Date range filter
+      if (startDate && endDate) {
+          query.date = {
+              $gte: new Date(startDate),
+              $lte: new Date(endDate)
+          };
+      }
 
-        // Doctor filter
-        if (doctorId) {
-            query.doctor = doctorId;
-        }
+      // Doctor filter
+      if (doctorId) {
+          query.doctor = doctorId;
+      }
 
-        // Search by patient name or disease
-        if (searchTerm) {
-            query.$or = [
-                { 'mainComplaint': { $regex: searchTerm, $options: 'i' } }
-            ];
-        }
+      // Add offline mode filter for isClinicIp=true
+      if (isClinicIp === 'true') {
+          query.mode = 'offline';
+      }
 
-        // Calculate skip for pagination
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+      // Search by patient name or disease
+      if (searchTerm) {
+          query.$or = [
+              { 'mainComplaint': { $regex: searchTerm, $options: 'i' } }
+          ];
+      }
 
-        // Build sort object
-        const sortObject = {};
-        sortObject[sortBy] = sortOrder === 'desc' ? -1 : 1;
+      // Build sort object
+      const sortObject = {};
+      sortObject[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-        // Get appointments with pagination
-        const appointments = await Appointment.find(query)
-            .populate({
-                path: 'patient',
-                select: 'name email profilePicture sex dateOfBirth mainComplaint patientId status'
-            })
-            .populate({
-                path: 'doctor',
-                select: 'name email'
-            })
-            .sort(sortObject)
-            .skip(skip)
-            .limit(parseInt(limit)).lean();
+      // Get appointments
+      let appointments = await Appointment.find(query)
+          .populate({
+              path: 'patient',
+              select: 'name email profilePicture sex dateOfBirth mainComplaint patientId status'
+          })
+          .populate({
+              path: 'doctor',
+              select: 'name email'
+          })
+          .sort(sortObject)
+          .lean();
 
-        // Get total count for pagination
-        const total = await Appointment.countDocuments(query);
+      // Process appointments data
+      let appointmentsWithAge = appointments.map(appointment => {
+          const patientData = appointment.patient;
+          let age = null;
+          if (patientData?.dateOfBirth) {
+              const today = new Date();
+              const birthDate = new Date(patientData.dateOfBirth);
+              age = today.getFullYear() - birthDate.getFullYear();
+              const monthDiff = today.getMonth() - birthDate.getMonth();
+              if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                  age--;
+              }
+          }
 
-        // Calculate age for each patient
-        const appointmentsWithAge = appointments.map(appointment => {
-            const patientData = appointment.patient;
-            let age = null;
-            if (patientData?.dateOfBirth) {
-                const today = new Date();
-                const birthDate = new Date(patientData.dateOfBirth);
-                age = today.getFullYear() - birthDate.getFullYear();
-                const monthDiff = today.getMonth() - birthDate.getMonth();
-                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-                    age--;
-                }
-            }
+          return {
+              id: appointment._id,
+              date: appointment.date,
+              startTime: appointment.startTime,
+              endTime: appointment.endTime,
+              meetLink: appointment?.joining_link || "",
+              status: appointment.status,
+              mode: appointment.mode,
+              checkIn: appointment.checkedIn,
+              checkInDate: appointment.checkInDate,
+              patient: {
+                  patient_status: patientData?.status,  
+                  id: patientData?._id,
+                  patientId: patientData?.patientId,
+                  name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
+                  sex: patientData?.sex,
+                  age: age,
+                  disease: patientData?.mainComplaint,
+                  profilePicture: patientData?.profilePicture || null,
+                  email: patientData?.email
+              },
+              doctor: appointment.doctor ? {
+                  id: appointment.doctor._id,
+                  name: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
+                  email: appointment.doctor.email
+              } : null,
+              metadata: appointment.metadata || {}
+          };
+      });
 
-            console.log("patientData?.status",patientData);
-            return {
-                id: appointment._id,
-                date: appointment.date,
-                startTime: appointment.startTime,
-                endTime: appointment.endTime,
-                status: appointment.status,
-                mode: appointment.mode,
-                checkIn: appointment.checkedIn,
-                checkInDate: appointment.checkInDate,
-                patient: {
-                    patient_status: patientData?.status,  
-                    id: patientData?._id,
-                    patientId: patientData?.patientId,
-                    name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
-                    sex: patientData?.sex,
-                    age: age,
-                    disease: patientData?.mainComplaint,
-                    profilePicture: patientData?.profilePicture || null,
-                    email: patientData?.email
-                },
-                doctor: appointment.doctor ? {
-                    id: appointment.doctor._id,
-                    name: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
-                    email: appointment.doctor.email
-                } : null,
-                metadata: appointment.metadata || {}
-            };
-        });
+      // Calculate total before any filtering
+      const total = await Appointment.countDocuments(query);
+      
+      // Calculate skip for pagination
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      
+      let responseData;
+      let uniqueAppointments = [];  // Define it here so it's always available
+      
+      // Handle isClinicIp=true case - Group by date but keep response format the same
+      if (isClinicIp === 'true') {
+          // First, group by date for organization
+          const groupedByDate = {};
+          
+          appointmentsWithAge.forEach(appointment => {
+              // Format date as YYYY-MM-DD for grouping
+              const appointmentDate = new Date(appointment.date);
+              const dateKey = appointmentDate.toISOString().split('T')[0];
+              
+              if (!groupedByDate[dateKey]) {
+                  groupedByDate[dateKey] = [];
+              }
+              
+              // Add a dateGroup field to each appointment
+              appointment.dateGroup = dateKey;
+              groupedByDate[dateKey].push(appointment);
+          });
+          
+          // Flatten back into array but now sorted by date first
+          const sortedAppointments = Object.keys(groupedByDate)
+              .sort((a, b) => sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b))
+              .flatMap(date => groupedByDate[date]);
+          
+          // Apply pagination after grouping
+          responseData = sortedAppointments.slice(skip, skip + parseInt(limit));
+      } else {
+          // Filter for unique patients when not in clinic IP mode
+          const uniquePatients = new Map();
+          
+          // Get only the most recent appointment for each patient
+          appointmentsWithAge.forEach(appointment => {
+              const patientId = appointment.patient?.id;
+              
+              if (patientId) {
+                  // If patient not seen yet or this appointment is more recent (based on sort)
+                  if (!uniquePatients.has(patientId)) {
+                      uniquePatients.set(patientId, appointment);
+                  }
+              }
+          });
+          
+          // Convert map values back to array and apply pagination
+          uniqueAppointments = Array.from(uniquePatients.values());
+          responseData = uniqueAppointments.slice(skip, skip + parseInt(limit));
+      }
 
-        res.status(200).json({
-            success: true,
-            data: appointmentsWithAge,
-            pagination: {
-                total,
-                page: parseInt(page),
-                pages: Math.ceil(total / parseInt(limit)),
-                limit: parseInt(limit)
-            }
-        });
+      res.status(200).json({
+          success: true,
+          data: responseData,
+          pagination: {
+              total: isClinicIp === 'true' ? total : uniqueAppointments.length,
+              page: parseInt(page),
+              pages: isClinicIp === 'true' 
+                  ? Math.ceil(total / parseInt(limit)) 
+                  : Math.ceil(uniqueAppointments.length / parseInt(limit)),
+              limit: parseInt(limit)
+          }
+      });
 
-    } catch (error) {
-        console.error('Error fetching appointments:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch appointments',
-            error: error.message
-        });
-    }
+  } catch (error) {
+      console.error('Error fetching appointments:', error);
+      res.status(500).json({
+          success: false,
+          message: 'Failed to fetch appointments',
+          error: error.message
+      });
+  }
 };
-
 // Upload report files to appointment
 exports.uploadAppointmentReports = async (req, res) => {
   try {

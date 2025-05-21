@@ -262,25 +262,38 @@ exports.getBillById = async (req, res) => {
   try {
     const { billId } = req.params;
 
+    // Validate if billId is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(billId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bill ID format",
+      });
+    }
+
+    // Find bill and populate all relevant fields
     const bill = await PatientBill.findById(billId)
       .populate({
         path: "patient",
-        select: "name email profilePicture patientId",
+        select: "name email profilePicture patientId phoneNumber",
       })
       .populate({
         path: "appointment",
-        select: "date startTime endTime doctor",
+        select: "date startTime endTime mode status",
         populate: {
           path: "doctor",
-          select: "name email specialization",
+          select: "name email profilePicture specialization qualifications",
         },
+      })
+      .populate({
+        path: "services.serviceId",
+        select: "name description category",
       })
       .populate({
         path: "billedBy",
         select: "name email role",
       });
 
-    if (!bill) {
+    if (!bill || bill.isDeleted) {
       return res.status(404).json({
         success: false,
         message: "Bill not found",
@@ -292,10 +305,10 @@ exports.getBillById = async (req, res) => {
       data: bill,
     });
   } catch (error) {
-    console.error("Error getting bill:", error);
+    console.error("Error getting bill details:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to get bill",
+      message: "Failed to get bill details",
       error: error.message,
     });
   }
@@ -744,6 +757,98 @@ exports.generateInvoice = async (req, res) => {
       success: false,
       message: "Nie udało się wygenerować faktury",
       error: error.message,
+    });
+  }
+};
+
+// Update bill details
+exports.updateBillDetails = async (req, res) => {
+  try {
+    const { billId } = req.params;
+    const {
+      services,
+      consultationCharges,
+      subtotal,
+      taxPercentage,
+      taxAmount,
+      discount,
+      additionalCharges,
+      additionalChargeNote,
+      totalAmount,
+      paymentMethod,
+      paymentStatus,
+      notes
+    } = req.body;
+
+    // Validate if billId is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(billId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bill ID format"
+      });
+    }
+
+    // Find the bill
+    const bill = await PatientBill.findById(billId);
+
+    if (!bill || bill.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Bill not found"
+      });
+    }
+
+    // Update fields if provided
+    if (services) bill.services = services;
+    if (consultationCharges !== undefined) bill.consultationCharges = consultationCharges;
+    if (subtotal !== undefined) bill.subtotal = subtotal;
+    if (taxPercentage !== undefined) bill.taxPercentage = taxPercentage;
+    if (taxAmount !== undefined) bill.taxAmount = taxAmount;
+    if (discount !== undefined) bill.discount = discount;
+    if (additionalCharges !== undefined) bill.additionalCharges = additionalCharges;
+    if (additionalChargeNote !== undefined) bill.additionalChargeNote = additionalChargeNote;
+    if (totalAmount !== undefined) bill.totalAmount = totalAmount;
+    if (paymentMethod) bill.paymentMethod = paymentMethod;
+    if (paymentStatus) bill.paymentStatus = paymentStatus;
+    if (notes !== undefined) bill.notes = notes;
+
+    // Save the updated bill
+    await bill.save();
+
+    // Return the updated bill with populated fields
+    const updatedBill = await PatientBill.findById(billId)
+      .populate({
+        path: "patient",
+        select: "name email profilePicture patientId phoneNumber"
+      })
+      .populate({
+        path: "appointment",
+        select: "date startTime endTime mode status",
+        populate: {
+          path: "doctor",
+          select: "name email profilePicture specialization qualifications"
+        }
+      })
+      .populate({
+        path: "services.serviceId",
+        select: "name description category"
+      })
+      .populate({
+        path: "billedBy",
+        select: "name email role"
+      });
+
+    return res.status(200).json({
+      success: true,
+      message: "Bill details updated successfully",
+      data: updatedBill
+    });
+  } catch (error) {
+    console.error("Error updating bill details:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update bill details",
+      error: error.message
     });
   }
 }; 

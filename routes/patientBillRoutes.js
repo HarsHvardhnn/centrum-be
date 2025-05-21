@@ -59,4 +59,11 @@ router.get(
   patientBillController.getBillStatistics
 );
 
+// Update bill details
+router.put(
+  "/:billId",
+  authorizeRoles(["admin", "receptionist"]),
+  patientBillController.updateBillDetails
+);
+
 module.exports = router; 
