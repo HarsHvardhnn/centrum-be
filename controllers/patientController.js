@@ -52,7 +52,7 @@ exports.createPatient = async (req, res) => {
     } = req.body;
 
     const documents = (req.files || []).map((file) => ({
-      filename: file.filename,
+      fileName: `${new Date().toISOString().split('T')[0]}`,
       path: file.path,
       originalname: file.originalname,
       mimetype: file.mimetype,
@@ -70,6 +70,9 @@ exports.createPatient = async (req, res) => {
       _id: consultingSpecialization,
     });
 
+    const age = calculateAge(dateOfBirth);
+    console.log("age is ",age)
+
     const newPatient = new patient({
       name: {
         first: fullName.split(" ")[0],
@@ -82,6 +85,7 @@ exports.createPatient = async (req, res) => {
       role: "patient",
       signupMethod: "email",
       profilePicture: null,
+      age,
       smsConsentAgreed,
       fatherName,
       motherName,
@@ -103,7 +107,7 @@ exports.createPatient = async (req, res) => {
       pinCode,
       alternateContact,
       govtId,
-      isInternationalPatient,
+      isInternationalPatient:!!isInternationalPatient,
       ivrLanguage,
       mainComplaint,
       reviewNotes,
@@ -187,7 +191,7 @@ exports.getPatientById = async (req, res) => {
       const fileType = url.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
       return {
         id: Date.now() + Math.random(),
-        name: url.split("/").pop(),
+        name: docUrlOrObj.fileName,
         type: fileType,
         preview: fileType.startsWith("image/") ? url : null,
         isPdf: fileType === "application/pdf",
@@ -619,15 +623,15 @@ exports.getPatientDetails = async (req, res) => {
     const patientData = {
       id: patient._id,
       name: `${patient.name.first || ""} ${patient.name.last || ""}`,
-      age: calculateAge(patient.birthDate),
+      age: patient.age,
       gender: patient.sex,
       email: patient.email,
       phone: patient.phone,
-      birthDate: patient.birthDate,
+      birthDate: patient.dateOfBirth,
       disease: patient.disease || "",
       avatar:
         patient.profilePicture ||
-        "https://randomuser.me/api/portraits/men/75.jpg",
+        null,
       isInternationalPatient: patient.isInternationalPatient || false,
       notes: patient.notes || "",
       roomNumber: patient.currentStatus?.roomNumber || "",
@@ -941,6 +945,7 @@ exports.updatePatient = async (req, res) => {
       referrerEmail,
       referrerNumber,
       referrerType,
+
       consents,
       mobileNumber,
     } = req.body;
@@ -949,7 +954,7 @@ exports.updatePatient = async (req, res) => {
 
     console.log(":req.",req.files)
     const newDocuments = (req.files || []).map((file) => ({
-      filename: file.filename,
+      fileName: `${new Date().toISOString().split('T')[0]}`,
       path: file.path,
       originalname: file.originalname,
       mimetype: file.mimetype,
@@ -1064,5 +1069,133 @@ exports.updatePatient = async (req, res) => {
     res
       .status(500)
       .json({ error: "Internal Server Error", details: error.message });
+  }
+};
+
+exports.getAppointmentsList = async (req, res) => {
+  try {
+    // Extract query parameters
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      sortBy = "date",
+      sortOrder = "desc",
+      status,
+      doctor,
+      mode,
+    } = req.query;
+
+    const query = {};
+    
+    if (doctor) {
+      query.doctor = doctor;
+    }
+
+    if (search) {
+      query.$or = [
+        { "patient.name.first": { $regex: search, $options: "i" } },
+        { "patient.name.last": { $regex: search, $options: "i" } },
+        { "patient.patientId": { $regex: search, $options: "i" } },
+        { "consultation.description": { $regex: search, $options: "i" } }
+      ];
+    }
+    
+    if (status) {
+      query.status = status;
+    }
+    
+    if (mode) {
+      query.mode = mode;
+    }
+
+    // Create sort object
+    const sort = {};
+    sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+    // Calculate pagination
+    const skipAmount = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get total count for pagination info
+    const totalCount = await Appointment.countDocuments(query);
+    
+    // Execute the query with pagination and sorting
+    const appointments = await Appointment
+      .find(query)
+      .populate("patient", "name patientId dateOfBirth sex profilePicture username")
+      .populate("doctor", "name")
+      .sort(sort)
+      .skip(skipAmount)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Transform the data
+    const simplifiedAppointments = appointments.map((appointment) => {
+      const appointmentDate = appointment.date
+        ? new Date(appointment.date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "2-digit",
+          })
+        : new Date().toLocaleDateString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "2-digit",
+          });
+
+      let doctorName = "Unassigned";
+      if (appointment.doctor?.name) {
+        doctorName = `Dr. ${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
+      }
+      
+      const dob = appointment.patient?.dateOfBirth;
+      const age = dob
+        ? Math.floor(
+            (Date.now() - new Date(dob).getTime()) /
+              (1000 * 60 * 60 * 24 * 365.25)
+          )
+        : 0;
+
+      return {
+        id: appointment._id,
+        name: appointment.patient 
+          ? `${appointment.patient.name?.first || ""} ${appointment.patient.name?.last || ""}`.trim()
+          : "Unknown",
+        username: appointment.patient?.username ? `@${appointment.patient.username}` : "",
+        date: appointmentDate,
+        email: appointment.patient?.email || "Not specified",
+        phone: appointment.patient?.phone || "Not specified",
+        sex: appointment.patient?.sex || "Not specified",
+        isCheckedIn: appointment.checkedIn || false,
+        dateOfBirth: appointment.patient?.dateOfBirth || "Not specified",
+        age,
+        avatar: appointment.patient?.profilePicture || "",
+        disease: appointment.consultation?.description || "Not specified",
+        status: appointment.status || "booked",
+        doctor: doctorName,
+        _id: appointment._id,
+        patient_id: appointment.patient._id,
+        mode: appointment.mode || "offline",
+        startTime: appointment.startTime,
+        endTime: appointment.endTime
+      };
+    });
+
+    // Return response with pagination metadata
+    res.status(200).json({
+      success: true,
+      count: simplifiedAppointments.length,
+      total: totalCount,
+      pages: Math.ceil(totalCount / parseInt(limit)),
+      currentPage: parseInt(page),
+      appointments: simplifiedAppointments
+    });
+  } catch (error) {
+    console.error("Error fetching appointments list:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch appointments list",
+      error: error.message,
+    });
   }
 };

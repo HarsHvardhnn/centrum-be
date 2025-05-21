@@ -843,6 +843,7 @@ exports.updateAppointmentDetails = async (req, res) => {
     const { id } = req.params;
     const { 
       consultationData, 
+      patientData,
       medications, 
       tests, 
       healthData,
@@ -857,6 +858,8 @@ exports.updateAppointmentDetails = async (req, res) => {
     }
 
     const updateData = {};
+
+    const {bloodPressure,temperature,weight,heightroomNumber} = patientData;
 
     // Handle consultation data if provided
     if (consultationData) {
@@ -1224,7 +1227,7 @@ exports.getAppointmentDetails = async (req, res) => {
 
     const appointment = await Appointment.findById(id)
       .populate("doctor", "name.first name.last")
-      .populate("patient", "name.first name.last patientId")
+      .populate("patient", "name.first name.last patientId age dateOfBirth")
       .lean();
 
     if (!appointment) {
