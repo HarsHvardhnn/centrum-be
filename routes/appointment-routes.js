@@ -129,4 +129,13 @@ router.put(
   appointmentController.updateConsultation
 );
 
+// @route   GET /api/appointments/doctor/:doctorId/by-date
+// @desc    Get appointments by doctor ID grouped by date
+// @access  Private
+router.get(
+  "/doctor/:doctorId/by-date",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getDoctorAppointmentsByDate
+);
+
 module.exports = router;

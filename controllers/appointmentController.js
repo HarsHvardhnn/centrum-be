@@ -1706,4 +1706,91 @@ exports.updateConsultation = async (req, res) => {
   }
 };
 
+// Get appointments by doctor ID grouped by date
+exports.getDoctorAppointmentsByDate = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const {
+      startDate,
+      endDate,
+      status = "all",
+    } = req.query;
+
+    const query = {
+      doctor: doctorId,
+    };
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.date = { $gte: start, $lte: end };
+    }
+
+    if (status !== "all") {
+      query.status = status;
+    }
+
+    const appointments = await Appointment.find(query)
+      .populate("patient", "name sex dateOfBirth")
+      .sort({ date: 1, startTime: 1 })
+      .lean();
+
+    // Group appointments by date
+    const groupedAppointments = appointments.reduce((acc, appointment) => {
+      const date = appointment.date.toISOString().split('T')[0];
+      
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+
+      // Calculate age
+      let age = null;
+      if (appointment.patient?.dateOfBirth) {
+        const today = new Date();
+        const birthDate = new Date(appointment.patient.dateOfBirth);
+        age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+      }
+
+      acc[date].push({
+        appointmentId: appointment._id,
+        patientName: appointment.patient ? `${appointment.patient.name.first} ${appointment.patient.name.last}` : 'Unknown',
+        age: age,
+        gender: appointment.patient?.sex || 'Unknown',
+        appointmentTime: appointment.startTime,
+        status: appointment.status,
+        mode: appointment.mode,
+        meetLink:appointment?.mode=="online" ? appointment?.joining_link : null
+      });
+
+      return acc;
+    }, {});
+
+    // Convert to array format and sort dates
+    const formattedResponse = Object.entries(groupedAppointments)
+      .map(([date, appointments]) => ({
+        date,
+        appointments: appointments.sort((a, b) => a.appointmentTime.localeCompare(b.appointmentTime))
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    res.status(200).json({
+      success: true,
+      data: formattedResponse
+    });
+  } catch (error) {
+    console.error("Error fetching doctor appointments by date:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch appointments",
+      error: error.message,
+    });
+  }
+};
+
 

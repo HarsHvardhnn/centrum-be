@@ -8,8 +8,8 @@ if (process.env.GOOGLE_CLIENT_ID === undefined) {
 }
 
 // Create OAuth2 client with env variables
-const CLIENT_ID = '422044579125-diqkc9lkptvcdi3ansie05b6rmehclhd.apps.googleusercontent.com';
-const CLIENT_SECRET = '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';
+const CLIENT_ID = '868246524915-squ313k7n6cndnug9n24o8sf2beda6fr.apps.googleusercontent.com';
+const CLIENT_SECRET = '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';
 const REDIRECT_URI = 'http://localhost:5000/oauth2callback';
 
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);

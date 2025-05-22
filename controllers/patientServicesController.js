@@ -17,6 +17,7 @@ exports.addServicesToPatient = async (req, res) => {
 
     // Verify patient exists and is a patient
     const patient = await User.findOne({  _id:patientId, role: "patient" });
+    console.log(patient,"patient");
     if (!patient) {
       return res.status(404).json({ message: "Patient not found" });
     }

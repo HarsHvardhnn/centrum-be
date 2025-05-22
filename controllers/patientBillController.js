@@ -42,6 +42,7 @@ exports.generateBill = async (req, res) => {
     const copiedDoctor = appointment.doctor.toObject();
     console.log(copiedDoctor,"copiedDoctor");
     console.log(copiedDoctor.onlineConsultationFee,"charges");
+    console.log(copiedDoctor.offlineConsultationFee,"charges");
     
     if (!appointment) {
       return res.status(404).json({
@@ -68,6 +69,7 @@ exports.generateBill = async (req, res) => {
     } else {
       consultationCharges = copiedDoctor.offlineConsultationFee || 0;
     }
+    console.log(consultationCharges,"consultationCharges");
 
     // Create new bill
     const newBill = new PatientBill({
@@ -81,7 +83,7 @@ exports.generateBill = async (req, res) => {
       discount,
       additionalCharges,
       additionalChargeNote,
-      totalAmount,
+      totalAmount:parseFloat(totalAmount) + parseFloat(consultationCharges),
       paymentMethod,
       billedAt: new Date(),
       billedBy: req.user._id,
@@ -496,7 +498,7 @@ exports.generateInvoice = async (req, res) => {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Create a PDF document
+    // Create a PDF document with proper font support
     const doc = new PDFDocument({
       size: "A4",
       margin: 50,
@@ -505,6 +507,28 @@ exports.generateInvoice = async (req, res) => {
         Author: "Centrum Medyczne",
       },
     });
+
+    // Register a font that supports Polish characters (you'll need to add this font file)
+    // For now, we'll use built-in fonts and handle encoding properly
+    const fontPath = path.join(__dirname, "../fonts/DejaVuSans.ttf");
+    let customFont = null;
+    
+    // Check if custom font exists, otherwise use built-in fonts
+    if (fs.existsSync(fontPath)) {
+      doc.registerFont('DejaVuSans', fontPath);
+      doc.registerFont('DejaVuSans-Bold', path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf"));
+      customFont = 'DejaVuSans';
+    }
+
+    // Function to safely add text with proper encoding
+    const addText = (text, x, y, options = {}) => {
+      // Ensure text is properly encoded
+      const safeText = Buffer.from(text, 'utf8').toString('utf8');
+      if (customFont) {
+        doc.font(customFont);
+      }
+      return doc.text(safeText, x, y, options);
+    };
 
     // Pipe the PDF into a file
     const stream = fs.createWriteStream(tempFilePath);
@@ -515,79 +539,124 @@ exports.generateInvoice = async (req, res) => {
     
     // Add content to PDF
     // Header with logo and title
-    doc.image(logoPath, 30, 20, { width: 100 }) 
-      .fontSize(20)
-      .text("FAKTURA", 350, 50, { align: "right" })
-      .fontSize(10)
-      .text(`Faktura Nr: ${bill._id}`, { align: "right" })
-      .text(`Data: ${new Date(bill.billedAt).toLocaleDateString('pl-PL')}`, { align: "right" });
+    if (fs.existsSync(logoPath)) {
+      doc.image(logoPath, 50, 30, { width: 80 });
+    }
+    
+    doc.fontSize(20);
+    if (customFont) doc.font(customFont);
+    addText("FAKTURA", 350, 40, { align: "right" });
+    
+    doc.fontSize(10);
+    addText(`Faktura Nr: ${bill._id}`, 350, 65, { align: "right" });
+    addText(`Data: ${new Date(bill.billedAt).toLocaleDateString('pl-PL')}`, 350, 80, { align: "right" });
 
+    // Move to next section
+    doc.y = 120;
+    
     // Add horizontal line
-    doc.moveDown(2)
-      .moveTo(50, doc.y)
+    doc.moveTo(50, doc.y)
       .lineTo(550, doc.y)
       .stroke();
 
-    // Hospital and billing info with correct details
-    doc.fontSize(10)
-      .moveDown(1)
-      .text("Centrum Medyczne", 50, doc.y)
-      .text("Powstańców Warszawy 7/1.5")
-      .text("26-110 Skarżysko-Kamienna")
-      .text("Nagłe przypadki: (+48) 797 097 487, (+48) 797 127 487")
-      .text("Telefon: (+48) 797 097 487")
-      .text("Email: kontakt@centrummedyczne7.pl");
+    // Hospital and billing info
+    doc.fontSize(10);
+    if (customFont) doc.font(customFont);
+    doc.y += 15;
+    let currentY = doc.y;
+    
+    addText("Centrum Medyczne", 50, currentY);
+    addText("Powstańców Warszawy 7/1.5", 50, currentY + 12);
+    addText("26-110 Skarżysko-Kamienna", 50, currentY + 24);
+    addText("Nagłe przypadki: (+48) 797 097 487, (+48) 797 127 487", 50, currentY + 36);
+    addText("Telefon: (+48) 797 097 487", 50, currentY + 48);
+    addText("Email: kontakt@centrummedyczne7.pl", 50, currentY + 60);
 
     // Patient information
-    doc.fontSize(12)
-      .moveDown(2)
-      .text("DANE PACJENTA:", 50, doc.y, { underline: true });
+    doc.y = currentY + 85;
+    doc.fontSize(12);
+    if (customFont) {
+      doc.font(customFont + '-Bold');
+    } else {
+      doc.font('Helvetica-Bold');
+    }
+    addText("DANE PACJENTA:", 50, doc.y, { underline: true });
     
-    doc.fontSize(10)
-      .moveDown(0.5)
-      .text(`Imię i Nazwisko: ${bill.patient?.name?.first || ""} ${bill.patient?.name?.last || ""}`)
-      .text(`ID Pacjenta: ${bill.patient?.patientId || ""}`)
-      .text(`Email: ${bill.patient?.email || ""}`)
-      .text(`Telefon: ${bill.patient?.phone || ""}`);
+    doc.fontSize(10);
+    if (customFont) {
+      doc.font(customFont);
+    } else {
+      doc.font('Helvetica');
+    }
+    
+    currentY = doc.y + 20;
+    addText(`Imię i Nazwisko: ${bill.patient?.name?.first || ""} ${bill.patient?.name?.last || ""}`, 50, currentY);
+    addText(`ID Pacjenta: ${bill.patient?.patientId || ""}`, 50, currentY + 12);
+    addText(`Email: ${bill.patient?.email || ""}`, 50, currentY + 24);
+    addText(`Telefon: ${bill.patient?.phone || ""}`, 50, currentY + 36);
 
     // Appointment details
     const appointmentDate = bill.appointment?.date ? 
       new Date(bill.appointment.date).toLocaleDateString('pl-PL') : "Brak danych";
     
-    doc.fontSize(12)
-      .moveDown(2)
-      .text("SZCZEGÓŁY WIZYTY:", 50, doc.y, { underline: true });
+    doc.y = currentY + 60;
+    doc.fontSize(12);
+    if (customFont) {
+      doc.font(customFont + '-Bold');
+    } else {
+      doc.font('Helvetica-Bold');
+    }
+    addText("SZCZEGÓŁY WIZYTY:", 50, doc.y, { underline: true });
     
-    doc.fontSize(10)
-      .moveDown(0.5)
-      .text(`Data: ${appointmentDate}`)
-      .text(`Godzina: ${bill.appointment?.startTime || "Brak danych"}`)
-      .text(`Lekarz: ${bill.appointment?.doctor?.name?.first || ""} ${bill.appointment?.doctor?.name?.last || ""}`)
-      .text(`Typ konsultacji: ${bill.appointment?.consultation?.consultationType || "Konsultacja ogólna"}`);
+    doc.fontSize(10);
+    if (customFont) {
+      doc.font(customFont);
+    } else {
+      doc.font('Helvetica');
+    }
+    
+    currentY = doc.y + 20;
+    addText(`Data: ${appointmentDate}`, 50, currentY);
+    addText(`Godzina: ${bill.appointment?.startTime || "Brak danych"}`, 50, currentY + 12);
+    addText(`Lekarz: ${bill.appointment?.doctor?.name?.first || ""} ${bill.appointment?.doctor?.name?.last || ""}`, 50, currentY + 24);
+    addText(`Typ konsultacji: ${bill.appointment?.consultation?.consultationType || "Konsultacja ogólna"}`, 50, currentY + 36);
 
     // Bill items table header
-    doc.fontSize(12)
-      .moveDown(2)
-      .text("SZCZEGÓŁY PŁATNOŚCI:", 50, doc.y, { underline: true });
+    doc.y = currentY + 60;
+    doc.fontSize(12);
+    if (customFont) {
+      doc.font(customFont + '-Bold');
+    } else {
+      doc.font('Helvetica-Bold');
+    }
+    addText("SZCZEGÓŁY PŁATNOŚCI:", 50, doc.y, { underline: true });
     
     // Table headers
-    doc.fontSize(10)
-      .moveDown(1);
+    doc.fontSize(10);
+    doc.y += 20;
     
     const tableTop = doc.y;
-    doc.font('Helvetica-Bold')
-      .text("Pozycja", 50, tableTop)
-      .text("Cena", 350, tableTop, { width: 90, align: "right" })
-      .text("Status", 450, tableTop, { width: 90, align: "right" });
+    if (customFont) {
+      doc.font(customFont + '-Bold');
+    } else {
+      doc.font('Helvetica-Bold');
+    }
+    addText("Pozycja", 50, tableTop);
+    addText("Cena", 350, tableTop, { width: 90, align: "right" });
+    addText("Status", 450, tableTop, { width: 90, align: "right" });
     
     // Add horizontal line
-    doc.moveDown(0.5)
-      .moveTo(50, doc.y)
+    doc.y = tableTop + 15;
+    doc.moveTo(50, doc.y)
       .lineTo(550, doc.y)
       .stroke();
 
     // Table rows for services
-    doc.font('Helvetica');
+    if (customFont) {
+      doc.font(customFont);
+    } else {
+      doc.font('Helvetica');
+    }
     let y = doc.y + 10;
     
     // Translate service status
@@ -603,16 +672,16 @@ exports.generateInvoice = async (req, res) => {
     // Add consultation charge as first item if present
     if (bill.consultationCharges > 0) {
       const consultationType = bill.appointment?.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni";
-      doc.text(consultationType, 50, y)
-        .text(`${bill.consultationCharges.toFixed(2)} PLN`, 350, y, { width: 90, align: "right" })
-        .text("zakończony", 450, y, { width: 90, align: "right" });
+      addText(consultationType, 50, y);
+      addText(`${bill.consultationCharges.toFixed(2)} PLN`, 350, y, { width: 90, align: "right" });
+      addText("zakończony", 450, y, { width: 90, align: "right" });
       y += 20;
     }
     
     bill.services.forEach((service) => {
-      doc.text(service.title, 50, y)
-        .text(`${service.price} PLN`, 350, y, { width: 90, align: "right" })
-        .text(translateStatus(service.status), 450, y, { width: 90, align: "right" });
+      addText(service.title, 50, y);
+      addText(`${service.price} PLN`, 350, y, { width: 90, align: "right" });
+      addText(translateStatus(service.status), 450, y, { width: 90, align: "right" });
       y += 20;
     });
 
@@ -623,39 +692,43 @@ exports.generateInvoice = async (req, res) => {
 
     // Billing summary
     y += 30;
-    doc.text("Suma częściowa:", 350, y, { width: 90, align: "right" })
-      .text(`${bill.subtotal.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
+    addText("Suma częściowa:", 350, y, { width: 90, align: "right" });
+    addText(`${bill.subtotal.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
     
     y += 20;
     if (bill.taxPercentage > 0) {
-      doc.text(`Podatek VAT (${bill.taxPercentage}%):`, 350, y, { width: 90, align: "right" })
-        .text(`${bill.taxAmount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
+      addText(`Podatek VAT (${bill.taxPercentage}%):`, 350, y, { width: 90, align: "right" });
+      addText(`${bill.taxAmount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
       y += 20;
     }
     
     if (bill.discount > 0) {
-      doc.text("Zniżka:", 350, y, { width: 90, align: "right" })
-        .text(`-${bill.discount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
+      addText("Zniżka:", 350, y, { width: 90, align: "right" });
+      addText(`-${bill.discount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
       y += 20;
     }
     
     if (bill.additionalCharges > 0) {
-      doc.text("Dodatkowe opłaty:", 350, y, { width: 90, align: "right" })
-        .text(`${bill.additionalCharges.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
+      addText("Dodatkowe opłaty:", 350, y, { width: 90, align: "right" });
+      addText(`${bill.additionalCharges.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
       
       if (bill.additionalChargeNote) {
         y += 15;
-        doc.fontSize(8)
-          .text(`(${bill.additionalChargeNote})`, 350, y, { width: 180, align: "right" });
+        doc.fontSize(8);
+        addText(`(${bill.additionalChargeNote})`, 350, y, { width: 180, align: "right" });
       }
       y += 20;
     }
 
     // Total amount
-    doc.fontSize(12)
-      .font('Helvetica-Bold')
-      .text("RAZEM DO ZAPŁATY:", 350, y, { width: 90, align: "right" })
-      .text(`${bill.totalAmount} PLN`, 450, y, { width: 90, align: "right" });
+    doc.fontSize(12);
+    if (customFont) {
+      doc.font(customFont + '-Bold');
+    } else {
+      doc.font('Helvetica-Bold');
+    }
+    addText("RAZEM DO ZAPŁATY:", 350, y, { width: 90, align: "right" });
+    addText(`${bill.totalAmount} PLN`, 450, y, { width: 90, align: "right" });
 
     // Payment information
     // Translate payment status and method
@@ -680,22 +753,26 @@ exports.generateInvoice = async (req, res) => {
       return methodMap[method] || method.toUpperCase();
     };
     
-    doc.fontSize(10)
-      .font('Helvetica')
-      .moveDown(3)
-      .text(`Status płatności: ${translatePaymentStatus(bill.paymentStatus)}`, 50, doc.y)
-      .text(`Metoda płatności: ${translatePaymentMethod(bill.paymentMethod)}`);
+    doc.fontSize(10);
+    if (customFont) {
+      doc.font(customFont);
+    } else {
+      doc.font('Helvetica');
+    }
+    y += 30;
+    addText(`Status płatności: ${translatePaymentStatus(bill.paymentStatus)}`, 50, y);
+    addText(`Metoda płatności: ${translatePaymentMethod(bill.paymentMethod)}`, 50, y + 12);
 
     // Notes if any
     if (bill.notes) {
-      doc.moveDown(1)
-        .text(`Uwagi: ${bill.notes}`);
+      y += 30;
+      addText(`Uwagi: ${bill.notes}`, 50, y);
     }
 
     // Footer
-    doc.fontSize(10)
-      .text("Dziękujemy za wybór Centrum Medycznego dla Twoich potrzeb zdrowotnych.", 50, 700, { align: "center" })
-      .text("W sprawie płatności, prosimy o kontakt: kontakt@centrummedyczne7.pl", { align: "center" });
+    doc.fontSize(10);
+    addText("Dziękujemy za wybór Centrum Medycznego dla Twoich potrzeb zdrowotnych.", 50, 750, { align: "center" });
+    addText("W sprawie płatności, prosimy o kontakt: kontakt@centrummedyczne7.pl", 50, 765, { align: "center" });
 
     // Finalize the PDF
     doc.end();
@@ -760,7 +837,6 @@ exports.generateInvoice = async (req, res) => {
     });
   }
 };
-
 // Update bill details
 exports.updateBillDetails = async (req, res) => {
   try {

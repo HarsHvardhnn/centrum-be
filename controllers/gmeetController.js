@@ -71,14 +71,19 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
       ${mode === 'online' ? `
         ${meetingLink ? `
           <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">If it's a stationary visit, don't send this message. If it's an online visit, leave a space here for the link to the meeting</p>
+            <p style="margin: 0;">To jest wizyta online. Osobne spotkanie na Google Meet zostanie zorganizowane w późniejszym czasie.</p>
           </div>
         ` : `
           <div style="background-color: #fff3e0; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">This is an online appointment, but the meeting link could not be generated automatically. The doctor's office will contact you with further instructions.</p>
+            <p style="margin: 0;">To jest wizyta online, ale link do spotkania nie został automatycznie wygenerowany. Rejestracja skontaktuje się z Tobą w celu przekazania dalszych instrukcji.</p>
           </div>
         `}
-      ` : ''}
+      ` : `
+        <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+          <p style="margin: 0;">To jest wizyta stacjonarna. Nie wysyłaj tej wiadomości, jeśli spotkanie nie odbywa się online.</p>
+        </div>
+      `}
+      
 
       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
         <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>

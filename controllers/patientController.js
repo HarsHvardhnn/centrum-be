@@ -1174,7 +1174,7 @@ exports.getAppointmentsList = async (req, res) => {
         status: appointment.status || "booked",
         doctor: doctorName,
         _id: appointment._id,
-        patient_id: appointment.patient._id,
+        patient_id: appointment.patient?._id,
         mode: appointment.mode || "offline",
         startTime: appointment.startTime,
         endTime: appointment.endTime
