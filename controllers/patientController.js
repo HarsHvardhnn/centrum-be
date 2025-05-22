@@ -49,6 +49,15 @@ exports.createPatient = async (req, res) => {
       referrerNumber,
       referrerType,
       consents = [],
+      // New fields
+      isAdult,
+      contactPerson,
+      fatherPhone,
+      motherPhone,
+      relationToPatient,
+      allergies,
+      nationality,
+      preferredLanguage,
     } = req.body;
 
     const documents = (req.files || []).map((file) => ({
@@ -121,6 +130,15 @@ exports.createPatient = async (req, res) => {
       referrerType,
       consents,
       documents,
+      // New fields
+      isAdult:isAdult=="NIE" ? false : true,
+      contactPerson,
+      fatherPhone,
+      motherPhone,
+      relationToPatient,
+      allergies,
+      nationality,
+      preferredLanguage,
     });
 
     await newPatient.save();
@@ -629,19 +647,25 @@ exports.getPatientDetails = async (req, res) => {
       phone: patient.phone,
       birthDate: patient.dateOfBirth,
       disease: patient.disease || "",
-      avatar:
-        patient.profilePicture ||
-        null,
+      avatar: patient.profilePicture || null,
       isInternationalPatient: patient.isInternationalPatient || false,
       notes: patient.notes || "",
       roomNumber: patient.currentStatus?.roomNumber || "",
       riskStatus: patient.currentStatus?.riskStatus || "Risky",
-      treatmentStatus:
-        patient.currentStatus?.treatmentStatus || "Under Treatment",
+      treatmentStatus: patient.currentStatus?.treatmentStatus || "Under Treatment",
       bloodPressure: patient.bloodPressure?.value || "141/90 mmHg",
       temperature: patient?.temperature || "29°C",
       weight: patient?.weight || "78kg",
       height: patient?.height || "5'6\" inc",
+      // New fields
+      isAdult: patient.isAdult,
+      contactPerson: patient.contactPerson || null,
+      fatherPhone: patient.fatherPhone || "",
+      motherPhone: patient.motherPhone || "",
+      relationToPatient: patient.relationToPatient || "",
+      allergies: patient.allergies.join(",") || "",
+      nationality: patient.nationality || "",
+      preferredLanguage: patient.preferredLanguage || "",
     };
 
     // Get latest consultation if exists
@@ -945,9 +969,17 @@ exports.updatePatient = async (req, res) => {
       referrerEmail,
       referrerNumber,
       referrerType,
-
       consents,
       mobileNumber,
+      // New fields
+      isAdult,
+      contactPerson,
+      fatherPhone,
+      motherPhone,
+      relationToPatient,
+      allergies,
+      nationality,
+      preferredLanguage,
     } = req.body;
 
     console.log("date of birth", dateOfBirth);
@@ -1037,6 +1069,15 @@ exports.updatePatient = async (req, res) => {
       ...(referrerEmail !== undefined && { referrerEmail }),
       ...(referrerNumber !== undefined && { referrerNumber }),
       ...(referrerType !== undefined && { referrerType }),
+      // New fields
+      ...(isAdult !== undefined && { isAdult }),
+      ...(contactPerson && { contactPerson }),
+      ...(fatherPhone && { fatherPhone }),
+      ...(motherPhone && { motherPhone }),
+      ...(relationToPatient && { relationToPatient }),
+      ...(allergies && { allergies }),
+      ...(nationality && { nationality }),
+      ...(preferredLanguage && { preferredLanguage }),
     };
 
     // Handle consents update

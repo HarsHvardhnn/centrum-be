@@ -26,6 +26,23 @@ const patientSchema = new mongoose.Schema({
   occupation: String,
   patientId: String,
 
+  // New fields
+  isAdult: {
+    type: Boolean,
+    default: true
+  },
+  contactPerson: {
+    name: String,
+    phone: String,
+    relation: String
+  },
+  fatherPhone: String,
+  motherPhone: String,
+  relationToPatient: String,
+  allergies: String,
+  nationality: String,
+  preferredLanguage: String,
+
   // Contact and address
   address: String,
   city: String,

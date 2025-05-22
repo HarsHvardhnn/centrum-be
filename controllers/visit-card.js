@@ -60,15 +60,14 @@ exports.generateVisitCard = async (req, res) => {
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
-
     // Create a PDF document
     const doc = new PDFDocument({
       size: "A4",
       margin: 50,
       info: {
-        Title: `Visit Card - ${patient.name?.first || ""} ${
+        Title: `karta_wizyty_[${patient.name?.first || ""} ${
           patient.name?.last || ""
-        }`,
+        }][${visitDate}]_CM7`,
         Author: "Hospital Management System",
       },
     });

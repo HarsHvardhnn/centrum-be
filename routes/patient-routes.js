@@ -12,8 +12,8 @@ router.post("/", upload.array("files", 10), patientController.createPatient);
 router.put("/:id", upload.array("files", 10), patientController.updatePatient);
 
 
-router.get("/", patientController.getAllPatients);
 router.get("/:id", patientController.getPatientById);
+router.get("/", patientController.getAllPatients);
 router.get("/data/simple", patientController.getPatientsList);
 router.get("/data/appointments", patientController.getAppointmentsList);
 // router.get('/details/:id', async (req, res) => {
