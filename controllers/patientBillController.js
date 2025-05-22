@@ -8,6 +8,7 @@ const path = require("path");
 const cloudinary = require("../utils/cloudinary");
 const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
+const { generateNextInvoiceId } = require("./invoiceName");
 
 // Generate a new bill for an appointment
 exports.generateBill = async (req, res) => {
@@ -488,22 +489,26 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
+    const nextId = await generateNextInvoiceId();
+    // Replace forward slashes with underscores for filename safety
+    const safeInvoiceId = nextId.replace(/\//g, '_');
     // Create a unique filename
-    const filename = `faktura_${bill._id}_${uuidv4()}.pdf`;
+    const filename = `faktura_${safeInvoiceId}_${uuidv4()}.pdf`;
     const tempFilePath = path.join(__dirname, "..", "temp", filename);
-
+    
     // Make sure temp directory exists
     const tempDir = path.join(__dirname, "..", "temp");
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
+
     // Create a PDF document with proper font support
     const doc = new PDFDocument({
       size: "A4",
       margin: 50,
       info: {
-        Title: `Faktura #${bill._id}`,
+        Title: `Faktura #${nextId}`,
         Author: "Centrum Medyczne",
       },
     });
@@ -792,6 +797,7 @@ exports.generateInvoice = async (req, res) => {
         // Update bill with invoice URL if it doesn't have one yet
         if (!bill.invoiceUrl) {
           bill.invoiceUrl = result.secure_url;
+          bill.invoiceId = nextId;
           await bill.save();
         }
 

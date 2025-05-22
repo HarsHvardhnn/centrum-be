@@ -96,6 +96,10 @@ const patientBillSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    invoiceId: {
+      type: String,
+      default: "",
+    },
   },
   {
     timestamps: true,
