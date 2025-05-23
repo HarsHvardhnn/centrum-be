@@ -763,7 +763,7 @@ exports.cancelAppointment = async (req, res) => {
 
     // Get doctor and patient details for SMS
     const doctorDetails = await doctor.findById(appointment.doctor._id);
-    const patientDetails = await user.findById(appointment.patient._id);
+    const patientDetails = await user.findById(appointment.patient?._id);
 
     if (!doctorDetails || !patientDetails) {
       return res.status(404).json({
@@ -1376,7 +1376,7 @@ exports.getAppointments = async (req, res) => {
 
       // Status filter
       if (status && status !== 'all') {
-          query.status = status;
+          query.status = status.toLowerCase();
       }
 
       // Date range filter
@@ -1393,9 +1393,9 @@ exports.getAppointments = async (req, res) => {
       }
 
       // Add offline mode filter for isClinicIp=true
-      if (isClinicIp === 'true') {
-          query.mode = 'offline';
-      }
+      // if (isClinicIp === 'true') {
+      //     query.mode = 'offline';
+      // }
 
       // Search by patient name or disease
       if (searchTerm) {

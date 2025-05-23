@@ -139,7 +139,9 @@ router.post(
       patient.checkedInDate = new Date();
       // Set checkInStatus to true
        // Push new documents into existing array
+       patient.documents = patient.documents ?? [];
        patient.documents.push(...uploadedDocuments);
+       
       await patient.save();
       res.status(200).json({
         success: true,

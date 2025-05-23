@@ -16,20 +16,21 @@ async function generateNextInvoiceId() {
     // Find the latest invoice for the current month and year
     // Using regex to match invoices with the current month/year prefix
     const latestInvoice = await PatientBill.findOne({
-      invoice_id: { 
+      invoiceId: { 
         $regex: `^${monthYearPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` 
       },
       isDeleted: false
     })
-    .sort({ invoice_id: -1 }) // Sort by invoice_id descending to get the latest
-    .select('invoice_id')
+    .sort({ invoiceId: -1 }) // Sort by invoice_id descending to get the latest
+    .select('invoiceId')
     .lean();
+    console.log("latest invoice ", latestInvoice);
     
     let nextSequentialNumber = 1;
     
-    if (latestInvoice && latestInvoice.invoice_id) {
+    if (latestInvoice && latestInvoice.invoiceId) {
       // Extract the sequential number from the latest invoice
-      const parts = latestInvoice.invoice_id.split('/');
+      const parts = latestInvoice.invoiceId.split('/');
       if (parts.length === 4) {
         const lastSequentialNumber = parseInt(parts[3], 10);
         if (!isNaN(lastSequentialNumber)) {
@@ -97,9 +98,72 @@ async function generateInvoiceIdForDate(month, year) {
   }
 }
 
+/**
+ * API handler for generating next invoice ID
+ */
+async function handleGenerateNextInvoiceId(req, res) {
+  try {
+    const invoiceId = await generateNextInvoiceId();
+    res.json({ success: true, invoiceId });
+  } catch (error) {
+    console.error('API Error - Generate Next Invoice ID:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to generate invoice ID',
+      error: error.message 
+    });
+  }
+}
+
+/**
+ * API handler for generating invoice ID for specific date
+ */
+async function handleGenerateInvoiceIdForDate(req, res) {
+  try {
+    const { month, year } = req.body;
+    
+    // Validate input
+    if (!month || !year) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Month and year are required' 
+      });
+    }
+
+    // Validate month range
+    if (month < 1 || month > 12) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Month must be between 1 and 12' 
+      });
+    }
+
+    // Validate year (basic validation for reasonable range)
+    const currentYear = new Date().getFullYear();
+    if (year < 2020 || year > currentYear + 5) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Year must be between 2020 and ${currentYear + 5}` 
+      });
+    }
+
+    const invoiceId = await generateInvoiceIdForDate(month, year);
+    res.json({ success: true, invoiceId });
+  } catch (error) {
+    console.error('API Error - Generate Invoice ID for Date:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to generate invoice ID',
+      error: error.message 
+    });
+  }
+}
+
 module.exports = {
   generateNextInvoiceId,
-  generateInvoiceIdForDate
+  generateInvoiceIdForDate,
+  handleGenerateNextInvoiceId,
+  handleGenerateInvoiceIdForDate
 };
 
 // Usage examples:

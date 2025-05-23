@@ -663,7 +663,7 @@ exports.getPatientDetails = async (req, res) => {
       fatherPhone: patient.fatherPhone || "",
       motherPhone: patient.motherPhone || "",
       relationToPatient: patient.relationToPatient || "",
-      allergies: patient.allergies.join(",") || "",
+      allergies: patient.allergies|| "",
       nationality: patient.nationality || "",
       preferredLanguage: patient.preferredLanguage || "",
     };
