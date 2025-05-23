@@ -13,21 +13,21 @@ router.get(
 // Route to get appointment statistics for a doctor
 router.get(
   "/:doctorId/appointment-stats",
-  authorizeRoles(["admin", "doctor"]), 
+  authorizeRoles(["admin", "doctor", "receptionist"]), 
   doctorStatsController.getDoctorAppointmentStats
 );
 
 // Route to get appointment distribution statistics for a doctor
 router.get(
   "/:doctorId/distribution",
-  authorizeRoles(["admin", "doctor"]),
+  authorizeRoles(["admin", "doctor", "receptionist"]),
   doctorStatsController.getDoctorDistributionStats
 );
 
 // Route to get performance metrics for a doctor
 router.get(
   "/:doctorId/performance",
-  authorizeRoles(["admin", "doctor"]),
+  authorizeRoles(["admin", "doctor", "receptionist"]),
   doctorStatsController.getDoctorPerformanceMetrics
 );
 

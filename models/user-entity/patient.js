@@ -101,8 +101,7 @@ const patientSchema = new mongoose.Schema({
   roomNumber: Number,
   isRisky: Boolean,
   treatmentStatus: {
-    type: String,
-    enum: ["Under Treatment", "Completed", "Pending", "Scheduled"],
+    type: String
   },
 
   // Additional fields
