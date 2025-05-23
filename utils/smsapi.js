@@ -68,7 +68,7 @@ async function sendSMS(phoneNumber, message) {
         access_token: SMSAPI_TOKEN,
         to: formattedPhone,
         message: message,
-        from: "Test",
+        from: "Przychodnia",
       },
     });
 
