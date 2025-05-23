@@ -79,7 +79,7 @@ router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), u
 
 
 
-router.get("/users", authorizeRoles(["admin"]), async (req, res) => {
+router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) => {
   try {
     // Parse query parameters with defaults
     const page = parseInt(req.query.page) || 1;

@@ -128,6 +128,7 @@ const patientSchema = new mongoose.Schema({
   referrerName: String,
   referrerEmail: String,
   referrerNumber: String,
+  riskStatus: String,
   referrerType: String,
   medicalHistory: [String],
   emergencyContact: {

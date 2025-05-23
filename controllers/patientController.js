@@ -190,9 +190,11 @@ exports.getPatientById = async (req, res) => {
       info = await patient.findById(req.params.id).lean();
     }
 
+    
     if (!info) {
       return res.status(404).json({ message: "Patient not found" });
     }
+    delete info.password;
 
     let parsedConsents = [];
     console.log(info.consents);
@@ -650,9 +652,9 @@ exports.getPatientDetails = async (req, res) => {
       avatar: patient.profilePicture || null,
       isInternationalPatient: patient.isInternationalPatient || false,
       notes: patient.notes || "",
-      roomNumber: patient.currentStatus?.roomNumber || "",
-      riskStatus: patient.currentStatus?.riskStatus || "Risky",
-      treatmentStatus: patient.currentStatus?.treatmentStatus || "Under Treatment",
+      roomNumber: patient?.roomNumber || "",
+      riskStatus: patient?.riskStatus || "Risky",
+      treatmentStatus: patient?.treatmentStatus || "Under Treatment",
       bloodPressure: patient.bloodPressure?.value || "141/90 mmHg",
       temperature: patient?.temperature || "29°C",
       weight: patient?.weight || "78kg",

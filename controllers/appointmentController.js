@@ -13,7 +13,7 @@ const mongoose = require("mongoose");
 const PatientService = require("../models/patientServices");
 const Service = require("../models/services");
 const bcrypt = require("bcrypt");
-const { sendEmail } = require("../utils/mailer");
+const  sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
 const patient = require("../models/user-entity/patient");
 
@@ -444,11 +444,6 @@ exports.createAppointment = async (req, res) => {
         ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
         : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
       
-      // Add temporary password to SMS if new patient
-      // if (isNewlyCreated && temporaryPassword) {
-      //   message += ` Your temporary password is: ${temporaryPassword}. Please change it after login.`;
-      // }
-      
       if (hasPatientConsentedToSMS(patientDetails)) {
         const batchId = uuidv4();
         await MessageReceipt.create({
@@ -467,6 +462,37 @@ exports.createAppointment = async (req, res) => {
       console.error("Error sending appointment confirmation SMS:", smsError);
     }
 
+    // Send email notification
+    try {
+      const formattedDate = format(new Date(date), "EEEE, MMMM dd, yyyy");
+      
+      // Email data
+      const emailData = {
+        patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
+        doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+        date: formattedDate,
+        time: `${startTime} - ${endTime}`,
+        department: visitType || "General",
+        mode: mode || "offline",
+        notes: notes || "",
+        isNewUser: isNewlyCreated,
+        temporaryPassword: isNewlyCreated ? temporaryPassword : null,
+      };
+      
+      // Send email
+      await sendEmail({
+          to: patientDetails.email,
+          subject: "Twoja wizyta została pomyślnie zaplanowana - Centrum Medyczne",
+        html: createAppointmentEmailHtml(emailData),
+        text: `Dear ${emailData.patientName},\n\nYour appointment with ${emailData.doctorName} has been scheduled for ${formattedDate} at ${startTime}.\n\nThank you for choosing Centrum Medyczne.`
+      });
+      
+      console.log(`Appointment confirmation email sent to ${patientDetails.email}`);
+    } catch (emailError) {
+      console.error("Failed to send appointment email:", emailError);
+      // Continue with the response - don't fail the whole appointment just because email failed
+    }
+
     // Populate and return response
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("doctor", "name email")
@@ -483,6 +509,10 @@ exports.createAppointment = async (req, res) => {
         } : {
           sent: false,
           error: "SMS notification not sent - patient consent not given"
+        },
+        email: {
+          sent: true,
+          error: null
         }
       },
       newPatientCreated: isNewlyCreated,
@@ -497,6 +527,60 @@ exports.createAppointment = async (req, res) => {
       error: error.message,
     });
   }
+};
+
+// Helper function to create HTML email template for appointments
+const createAppointmentEmailHtml = (data) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .appointment-details { margin-bottom: 20px; }
+        .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h2>Potwierdzenie Wizyty - Centrum Medyczne</h2>
+        </div>
+        
+        <p>Szanowny/a ${data.patientName},</p>
+        
+        <p>Twoja wizyta została pomyślnie zaplanowana.</p>
+        
+        <div class="appointment-details">
+          <h3>Szczegóły Wizyty:</h3>
+          <p><strong>Lekarz:</strong> ${data.doctorName}</p>
+          <p><strong>Data:</strong> ${data.date}</p>
+          <p><strong>Godzina:</strong> ${data.time}</p>
+          <p><strong>Oddział:</strong> ${data.department}</p>
+          <p><strong>Rodzaj wizyty:</strong> ${data.mode === 'online' ? 'Konsultacja online' : 'Wizyta w przychodni'}</p>
+          ${data.notes ? `<p><strong>Uwagi:</strong> ${data.notes}</p>` : ''}
+        </div>
+        
+        ${data.isNewUser ? `
+          <div class="login-details">
+            <h3>Twoje Dane Logowania:</h3>
+            <p>Jako nowy pacjent możesz zalogować się do swojego konta używając:</p>
+            <p><strong>Email:</strong> ${data.patientName}</p>
+            <p><strong>Tymczasowe Hasło:</strong> ${data.temporaryPassword}</p>
+            <p><em>Prosimy o zmianę hasła po pierwszym zalogowaniu.</em></p>
+          </div>
+        ` : ''}
+        
+        <div class="footer">
+          <p>Dziękujemy za wybór Centrum Medycznego.</p>
+          <p>W przypadku pytań dotyczących wizyty, prosimy o kontakt: kontakt@centrummedyczne7.pl</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
 };
 
 const calculateAge = (dob) => {
@@ -862,7 +946,7 @@ exports.updateAppointmentDetails = async (req, res) => {
 
     const {bloodPressure, temperature, weight, height, riskStatus, treatmentStatus, roomNumber, id: patientId} = patientData;
 
-    console.log("patient id ", patientId);
+    console.log("patient id ", roomNumber,riskStatus,treatmentStatus);
     // Update patient model with health information
     if (patientId) {
       try {
@@ -875,7 +959,8 @@ exports.updateAppointmentDetails = async (req, res) => {
             height,
             isRisky: riskStatus === "Risky",
             treatmentStatus,
-            roomNumber
+            roomNumber,
+            riskStatus
           },
           { new: true }
         );
@@ -1412,7 +1497,7 @@ exports.getAppointments = async (req, res) => {
       let appointments = await Appointment.find(query)
           .populate({
               path: 'patient',
-              select: 'name email profilePicture sex dateOfBirth mainComplaint patientId status'
+              select: 'name email profilePicture sex dateOfBirth mainComplaint patientId status phone'
           })
           .populate({
               path: 'doctor',
@@ -1452,7 +1537,7 @@ exports.getAppointments = async (req, res) => {
                   name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
                   sex: patientData?.sex,
                   age: age,
-                  disease: patientData?.mainComplaint,
+                  phoneNumber: patientData?.phone,
                   profilePicture: patientData?.profilePicture || null,
                   email: patientData?.email
               },

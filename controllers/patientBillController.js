@@ -450,6 +450,25 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
+    // Function to normalize Polish characters
+    const normalizePolishText = (text) => {
+      if (!text) return '';
+      
+      const polishCharMap = {
+        'ą': 'a', 'Ą': 'A',
+        'ć': 'c', 'Ć': 'C',
+        'ę': 'e', 'Ę': 'E',
+        'ł': 'l', 'Ł': 'L',
+        'ń': 'n', 'Ń': 'N',
+        'ó': 'o', 'Ó': 'O',
+        'ś': 's', 'Ś': 'S',
+        'ź': 'z', 'Ź': 'Z',
+        'ż': 'z', 'Ż': 'Z'
+      };
+      
+      return text.replace(/[ąĄćĆęĘłŁńŃóÓśŚźŹżŻ]/g, (match) => polishCharMap[match] || match);
+    };
+
     // Find the bill with populated data
     const bill = await PatientBill.findById(billId)
       .populate({
@@ -480,7 +499,7 @@ exports.generateInvoice = async (req, res) => {
     if (bill.invoiceUrl) {
       return res.status(200).json({
         success: true,
-        message: "Faktura jest już dostępna",
+        message: "Faktura jest juz dostepna",
         data: {
           invoiceUrl: bill.invoiceUrl,
           billId: bill._id,
@@ -502,37 +521,20 @@ exports.generateInvoice = async (req, res) => {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-
-    // Create a PDF document with proper font support
+    // Create a PDF document
     const doc = new PDFDocument({
       size: "A4",
       margin: 50,
       info: {
-        Title: `Faktura #${nextId}`,
+        Title: normalizePolishText(`Faktura #${nextId}`),
         Author: "Centrum Medyczne",
       },
     });
 
-    // Register a font that supports Polish characters (you'll need to add this font file)
-    // For now, we'll use built-in fonts and handle encoding properly
-    const fontPath = path.join(__dirname, "../fonts/DejaVuSans.ttf");
-    let customFont = null;
-    
-    // Check if custom font exists, otherwise use built-in fonts
-    if (fs.existsSync(fontPath)) {
-      doc.registerFont('DejaVuSans', fontPath);
-      doc.registerFont('DejaVuSans-Bold', path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf"));
-      customFont = 'DejaVuSans';
-    }
-
-    // Function to safely add text with proper encoding
+    // Function to safely add text with normalized Polish characters
     const addText = (text, x, y, options = {}) => {
-      // Ensure text is properly encoded
-      const safeText = Buffer.from(text, 'utf8').toString('utf8');
-      if (customFont) {
-        doc.font(customFont);
-      }
-      return doc.text(safeText, x, y, options);
+      const normalizedText = normalizePolishText(text);
+      return doc.text(normalizedText, x, y, options);
     };
 
     // Pipe the PDF into a file
@@ -548,11 +550,10 @@ exports.generateInvoice = async (req, res) => {
       doc.image(logoPath, 50, 30, { width: 80 });
     }
     
-    doc.fontSize(20);
-    if (customFont) doc.font(customFont);
+    doc.fontSize(20).font('Helvetica-Bold');
     addText("FAKTURA", 350, 40, { align: "right" });
     
-    doc.fontSize(10);
+    doc.fontSize(10).font('Helvetica');
     addText(`Faktura Nr: ${bill._id}`, 350, 65, { align: "right" });
     addText(`Data: ${new Date(bill.billedAt).toLocaleDateString('pl-PL')}`, 350, 80, { align: "right" });
 
@@ -565,37 +566,26 @@ exports.generateInvoice = async (req, res) => {
       .stroke();
 
     // Hospital and billing info
-    doc.fontSize(10);
-    if (customFont) doc.font(customFont);
+    doc.fontSize(10).font('Helvetica');
     doc.y += 15;
     let currentY = doc.y;
     
     addText("Centrum Medyczne", 50, currentY);
-    addText("Powstańców Warszawy 7/1.5", 50, currentY + 12);
-    addText("26-110 Skarżysko-Kamienna", 50, currentY + 24);
-    addText("Nagłe przypadki: (+48) 797 097 487, (+48) 797 127 487", 50, currentY + 36);
+    addText("Powstancow Warszawy 7/1.5", 50, currentY + 12);
+    addText("26-110 Skarzysko-Kamienna", 50, currentY + 24);
+    addText("Nagle przypadki: (+48) 797 097 487, (+48) 797 127 487", 50, currentY + 36);
     addText("Telefon: (+48) 797 097 487", 50, currentY + 48);
     addText("Email: kontakt@centrummedyczne7.pl", 50, currentY + 60);
 
     // Patient information
     doc.y = currentY + 85;
-    doc.fontSize(12);
-    if (customFont) {
-      doc.font(customFont + '-Bold');
-    } else {
-      doc.font('Helvetica-Bold');
-    }
+    doc.fontSize(12).font('Helvetica-Bold');
     addText("DANE PACJENTA:", 50, doc.y, { underline: true });
     
-    doc.fontSize(10);
-    if (customFont) {
-      doc.font(customFont);
-    } else {
-      doc.font('Helvetica');
-    }
+    doc.fontSize(10).font('Helvetica');
     
     currentY = doc.y + 20;
-    addText(`Imię i Nazwisko: ${bill.patient?.name?.first || ""} ${bill.patient?.name?.last || ""}`, 50, currentY);
+    addText(`Imie i Nazwisko: ${bill.patient?.name?.first || ""} ${bill.patient?.name?.last || ""}`, 50, currentY);
     addText(`ID Pacjenta: ${bill.patient?.patientId || ""}`, 50, currentY + 12);
     addText(`Email: ${bill.patient?.email || ""}`, 50, currentY + 24);
     addText(`Telefon: ${bill.patient?.phone || ""}`, 50, currentY + 36);
@@ -605,47 +595,28 @@ exports.generateInvoice = async (req, res) => {
       new Date(bill.appointment.date).toLocaleDateString('pl-PL') : "Brak danych";
     
     doc.y = currentY + 60;
-    doc.fontSize(12);
-    if (customFont) {
-      doc.font(customFont + '-Bold');
-    } else {
-      doc.font('Helvetica-Bold');
-    }
-    addText("SZCZEGÓŁY WIZYTY:", 50, doc.y, { underline: true });
+    doc.fontSize(12).font('Helvetica-Bold');
+    addText("SZCZEGOLY WIZYTY:", 50, doc.y, { underline: true });
     
-    doc.fontSize(10);
-    if (customFont) {
-      doc.font(customFont);
-    } else {
-      doc.font('Helvetica');
-    }
+    doc.fontSize(10).font('Helvetica');
     
     currentY = doc.y + 20;
     addText(`Data: ${appointmentDate}`, 50, currentY);
     addText(`Godzina: ${bill.appointment?.startTime || "Brak danych"}`, 50, currentY + 12);
     addText(`Lekarz: ${bill.appointment?.doctor?.name?.first || ""} ${bill.appointment?.doctor?.name?.last || ""}`, 50, currentY + 24);
-    addText(`Typ konsultacji: ${bill.appointment?.consultation?.consultationType || "Konsultacja ogólna"}`, 50, currentY + 36);
+    addText(`Typ konsultacji: ${bill.appointment?.consultation?.consultationType || "Konsultacja ogolna"}`, 50, currentY + 36);
 
     // Bill items table header
     doc.y = currentY + 60;
-    doc.fontSize(12);
-    if (customFont) {
-      doc.font(customFont + '-Bold');
-    } else {
-      doc.font('Helvetica-Bold');
-    }
-    addText("SZCZEGÓŁY PŁATNOŚCI:", 50, doc.y, { underline: true });
+    doc.fontSize(12).font('Helvetica-Bold');
+    addText("SZCZEGOLY PLATNOSCI:", 50, doc.y, { underline: true });
     
     // Table headers
     doc.fontSize(10);
     doc.y += 20;
     
     const tableTop = doc.y;
-    if (customFont) {
-      doc.font(customFont + '-Bold');
-    } else {
-      doc.font('Helvetica-Bold');
-    }
+    doc.font('Helvetica-Bold');
     addText("Pozycja", 50, tableTop);
     addText("Cena", 350, tableTop, { width: 90, align: "right" });
     addText("Status", 450, tableTop, { width: 90, align: "right" });
@@ -657,18 +628,14 @@ exports.generateInvoice = async (req, res) => {
       .stroke();
 
     // Table rows for services
-    if (customFont) {
-      doc.font(customFont);
-    } else {
-      doc.font('Helvetica');
-    }
+    doc.font('Helvetica');
     let y = doc.y + 10;
     
     // Translate service status
     const translateStatus = (status) => {
       const statusMap = {
         'active': 'aktywny',
-        'completed': 'zakończony',
+        'completed': 'zakonczony',
         'cancelled': 'anulowany'
       };
       return statusMap[status] || status;
@@ -679,7 +646,7 @@ exports.generateInvoice = async (req, res) => {
       const consultationType = bill.appointment?.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni";
       addText(consultationType, 50, y);
       addText(`${bill.consultationCharges.toFixed(2)} PLN`, 350, y, { width: 90, align: "right" });
-      addText("zakończony", 450, y, { width: 90, align: "right" });
+      addText("zakonczony", 450, y, { width: 90, align: "right" });
       y += 20;
     }
     
@@ -697,7 +664,7 @@ exports.generateInvoice = async (req, res) => {
 
     // Billing summary
     y += 30;
-    addText("Suma częściowa:", 350, y, { width: 90, align: "right" });
+    addText("Suma czesciowa:", 350, y, { width: 90, align: "right" });
     addText(`${bill.subtotal.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
     
     y += 20;
@@ -708,13 +675,13 @@ exports.generateInvoice = async (req, res) => {
     }
     
     if (bill.discount > 0) {
-      addText("Zniżka:", 350, y, { width: 90, align: "right" });
+      addText("Znizka:", 350, y, { width: 90, align: "right" });
       addText(`-${bill.discount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
       y += 20;
     }
     
     if (bill.additionalCharges > 0) {
-      addText("Dodatkowe opłaty:", 350, y, { width: 90, align: "right" });
+      addText("Dodatkowe oplaty:", 350, y, { width: 90, align: "right" });
       addText(`${bill.additionalCharges.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
       
       if (bill.additionalChargeNote) {
@@ -726,22 +693,17 @@ exports.generateInvoice = async (req, res) => {
     }
 
     // Total amount
-    doc.fontSize(12);
-    if (customFont) {
-      doc.font(customFont + '-Bold');
-    } else {
-      doc.font('Helvetica-Bold');
-    }
-    addText("RAZEM DO ZAPŁATY:", 350, y, { width: 90, align: "right" });
+    doc.fontSize(12).font('Helvetica-Bold');
+    addText("RAZEM DO ZAPLATY:", 350, y, { width: 90, align: "right" });
     addText(`${bill.totalAmount} PLN`, 450, y, { width: 90, align: "right" });
 
     // Payment information
     // Translate payment status and method
     const translatePaymentStatus = (status) => {
       const statusMap = {
-        'pending': 'OCZEKUJĄCA',
-        'paid': 'ZAPŁACONO',
-        'partial': 'CZĘŚCIOWO ZAPŁACONO',
+        'pending': 'OCZEKUJACA',
+        'paid': 'ZAPLACONO',
+        'partial': 'CZESCIOWO ZAPLACONO',
         'cancelled': 'ANULOWANO'
       };
       return statusMap[status] || status.toUpperCase();
@@ -749,7 +711,7 @@ exports.generateInvoice = async (req, res) => {
     
     const translatePaymentMethod = (method) => {
       const methodMap = {
-        'cash': 'GOTÓWKA',
+        'cash': 'GOTOWKA',
         'card': 'KARTA',
         'online': 'PRZELEW ONLINE',
         'insurance': 'UBEZPIECZENIE',
@@ -758,15 +720,10 @@ exports.generateInvoice = async (req, res) => {
       return methodMap[method] || method.toUpperCase();
     };
     
-    doc.fontSize(10);
-    if (customFont) {
-      doc.font(customFont);
-    } else {
-      doc.font('Helvetica');
-    }
+    doc.fontSize(10).font('Helvetica');
     y += 30;
-    addText(`Status płatności: ${translatePaymentStatus(bill.paymentStatus)}`, 50, y);
-    addText(`Metoda płatności: ${translatePaymentMethod(bill.paymentMethod)}`, 50, y + 12);
+    addText(`Status platnosci: ${translatePaymentStatus(bill.paymentStatus)}`, 50, y);
+    addText(`Metoda platnosci: ${translatePaymentMethod(bill.paymentMethod)}`, 50, y + 12);
 
     // Notes if any
     if (bill.notes) {
@@ -776,8 +733,8 @@ exports.generateInvoice = async (req, res) => {
 
     // Footer
     doc.fontSize(10);
-    addText("Dziękujemy za wybór Centrum Medycznego dla Twoich potrzeb zdrowotnych.", 50, 750, { align: "center" });
-    addText("W sprawie płatności, prosimy o kontakt: kontakt@centrummedyczne7.pl", 50, 765, { align: "center" });
+    addText("Dziekujemy za wybor Centrum Medycznego dla Twoich potrzeb zdrowotnych.", 50, 750, { align: "center" });
+    addText("W sprawie platnosci, prosimy o kontakt: kontakt@centrummedyczne7.pl", 50, 765, { align: "center" });
 
     // Finalize the PDF
     doc.end();
@@ -804,7 +761,7 @@ exports.generateInvoice = async (req, res) => {
         // Return the download URL
         return res.status(200).json({
           success: true,
-          message: "Faktura wygenerowana pomyślnie",
+          message: "Faktura wygenerowana pomyslnie",
           data: {
             invoiceUrl: result.secure_url,
             billId: bill._id,
@@ -816,7 +773,7 @@ exports.generateInvoice = async (req, res) => {
         // Return local path as fallback
         return res.status(200).json({
           success: true,
-          message: "Faktura wygenerowana, ale nie udało się przesłać do chmury",
+          message: "Faktura wygenerowana, ale nie udalo sie przeslac do chmury",
           data: {
             invoiceUrl: `/temp/${filename}`,
             billId: bill._id,
@@ -830,7 +787,7 @@ exports.generateInvoice = async (req, res) => {
       console.error("Error generating invoice PDF:", error);
       return res.status(500).json({
         success: false,
-        message: "Nie udało się wygenerować faktury",
+        message: "Nie udalo sie wygenerowac faktury",
         error: error.message,
       });
     });
@@ -838,7 +795,7 @@ exports.generateInvoice = async (req, res) => {
     console.error("Error generating invoice:", error);
     return res.status(500).json({
       success: false,
-      message: "Nie udało się wygenerować faktury",
+      message: "Nie udalo sie wygenerowac faktury",
       error: error.message,
     });
   }
