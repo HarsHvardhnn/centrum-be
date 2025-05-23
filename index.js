@@ -24,6 +24,7 @@ const doctorStatsRoutes = require("./routes/doctor-stats-routes");
 const contactRoutes = require("./routes/contactRoutes");
 const googleAuthRoutes = require("./utils/googleAccessToken");
 const invoiceRoutes = require("./routes/invoice-routes");
+const emailTestRoutes = require("./routes/email-test-routes");
 dotenv.config();
 
 // Initialize database and seed admin
@@ -73,6 +74,7 @@ app.use("/doctor-stats", doctorStatsRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/auth/google", googleAuthRoutes);
 app.use("/api/invoice", invoiceRoutes);
+app.use("/api/email", emailTestRoutes);
 // Import socket handler and pass io
 const socketHandler = require("./config/socketHandler");
 socketHandler(io);

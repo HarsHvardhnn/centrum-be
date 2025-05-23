@@ -600,7 +600,6 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
           </div>
         `}
       ` : `
-''
       `}
       
 

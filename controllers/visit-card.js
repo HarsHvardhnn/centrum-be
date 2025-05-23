@@ -16,6 +16,25 @@ const mongoose = require("mongoose");
  */
 exports.generateVisitCard = async (req, res) => {
   try {
+    // Function to normalize Polish characters
+    const normalizePolishText = (text) => {
+      if (!text) return '';
+      
+      const polishCharMap = {
+        'ą': 'a', 'Ą': 'A',
+        'ć': 'c', 'Ć': 'C',
+        'ę': 'e', 'Ę': 'E',
+        'ł': 'l', 'Ł': 'L',
+        'ń': 'n', 'Ń': 'N',
+        'ó': 'o', 'Ó': 'O',
+        'ś': 's', 'Ś': 'S',
+        'ź': 'z', 'Ź': 'Z',
+        'ż': 'z', 'Ż': 'Z'
+      };
+      
+      return text.replace(/[ąĄćĆęĘłŁńŃóÓśŚźŹżŻ]/g, (match) => polishCharMap[match] || match);
+    };
+
     // Get appointment ID from parameters
     const appointmentId = req.params.appointmentId;
 
@@ -48,6 +67,10 @@ exports.generateVisitCard = async (req, res) => {
       });
     }
 
+    const visitDate = appointment.date
+    ? new Date(appointment.date).toLocaleDateString("en-GB")
+    : new Date().toLocaleDateString("en-GB");
+
     // Get consultation data from appointment
     const consultationData = appointment.consultation || {};
 
@@ -60,17 +83,24 @@ exports.generateVisitCard = async (req, res) => {
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
+
     // Create a PDF document
     const doc = new PDFDocument({
       size: "A4",
       margin: 50,
       info: {
-        Title: `karta_wizyty_[${patient.name?.first || ""} ${
+        Title: normalizePolishText(`karta_wizyty_[${patient.name?.first || ""} ${
           patient.name?.last || ""
-        }][${visitDate}]_CM7`,
+        }][${visitDate}]_CM7`),
         Author: "Hospital Management System",
       },
     });
+
+    // Function to safely add text with normalized Polish characters
+    const addText = (text, x, y, options = {}) => {
+      const normalizedText = normalizePolishText(text);
+      return doc.text(normalizedText, x, y, options);
+    };
 
     // Pipe the PDF into a file
     const stream = fs.createWriteStream(tempFilePath);
@@ -78,11 +108,6 @@ exports.generateVisitCard = async (req, res) => {
 
     // Load logo
     const logoPath = path.join(__dirname, "../public/logo_new.png");
-
-    // Format visit date
-    const visitDate = appointment.date
-      ? new Date(appointment.date).toLocaleDateString("en-GB")
-      : new Date().toLocaleDateString("en-GB");
 
     // Format visit time
     const visitTime = appointment.startTime || 
@@ -117,12 +142,6 @@ exports.generateVisitCard = async (req, res) => {
     // Get patient's phone
     const phone = patient.phone || patient.phoneFormatted || "Not provided";
 
-    // Draw border
-    // doc
-    //   .rect(20, 20, doc.page.width - 40, doc.page.height - 40)
-    //   .dash(5, { space: 10 }) // Create a dashed line
-    //   .stroke();
-
     // Add logo
     if (fs.existsSync(logoPath)) {
       const logoWidth = 160;
@@ -132,31 +151,30 @@ exports.generateVisitCard = async (req, res) => {
       const startX = (doc.page.width - logoWidth) / 2;
     
       doc.image(logoPath, startX, topPosition, { width: logoWidth });
-    }else {
-  // If no logo, just display text in center position with black color
-  doc
-    .fillColor("black")
-    .fontSize(20)
-    .text("Centrum Medyczne", doc.page.width / 2 - 80, 40);
-}
+    } else {
+      // If no logo, just display text in center position with black color
+      doc
+        .fillColor("black")
+        .fontSize(20);
+      addText("Centrum Medyczne", doc.page.width / 2 - 80, 40);
+    }
+
     // Add visit information
     doc.moveDown(2);
     doc.fontSize(10);
-    doc.text(`Data wizyty: ${visitDate}`, 50, 100);
-    doc.text(`Godzina wizyty: ${visitTime}`, 50, 115);
-    doc.text(`Lekarz: ${doctorName}`, 50, 130);
+    addText(`Data wizyty: ${visitDate}`, 50, 100);
+    addText(`Godzina wizyty: ${visitTime}`, 50, 115);
+    addText(`Lekarz: ${doctorName}`, 50, 130);
     
     // Informacje o pacjencie
-    doc.text(`Imię i nazwisko: ${patientName}`, doc.page.width - 240, 100);
-    doc.text(`Data urodzenia: ${dob}`, doc.page.width - 240, 115);
-    doc.text(`Adres: ${address}`, doc.page.width - 240, 130);
-    doc.text(`Numer telefonu: ${phone}`, doc.page.width - 240, 145);
-    
+    addText(`Imie i nazwisko: ${patientName}`, doc.page.width - 240, 100);
+    addText(`Data urodzenia: ${dob}`, doc.page.width - 240, 115);
+    addText(`Adres: ${address}`, doc.page.width - 240, 130);
+    addText(`Numer telefonu: ${phone}`, doc.page.width - 240, 145);
 
     // Add visit card title
-    doc
-      .fontSize(16)
-      .text("Visit Card/ Karta Wizyty", doc.page.width / 2 - 80, 170);
+    doc.fontSize(16);
+    addText("Visit Card/ Karta Wizyty", doc.page.width / 2 - 80, 170);
 
     // Add consultation sections
     doc.fontSize(11);
@@ -165,71 +183,63 @@ exports.generateVisitCard = async (req, res) => {
     const sectionSpacing = 10;
 
     // Interview section
-    doc
-      .font("Helvetica-Bold")
-      .text("Interview with the patient/ Wywiad z pacjentem", 50, yPosition);
+    doc.font("Helvetica-Bold");
+    addText("Interview with the patient/ Wywiad z pacjentem", 50, yPosition);
     yPosition += lineHeight;
-    doc
-      .font("Helvetica")
-      .text(
-        consultationData.interview || "No interview data available",
-        50,
-        yPosition
-      );
+    doc.font("Helvetica");
+    addText(
+      consultationData.interview || "No interview data available",
+      50,
+      yPosition
+    );
     yPosition += lineHeight * 2 + sectionSpacing;
 
     // Physical examination section
-    doc
-      .font("Helvetica-Bold")
-      .text("Physical examination/ Badanie przedmiotowe", 50, yPosition);
+    doc.font("Helvetica-Bold");
+    addText("Physical examination/ Badanie przedmiotowe", 50, yPosition);
     yPosition += lineHeight;
-    doc
-      .font("Helvetica")
-      .text(
-        consultationData.physicalExamination || "No examination data available",
-        50,
-        yPosition
-      );
+    doc.font("Helvetica");
+    addText(
+      consultationData.physicalExamination || "No examination data available",
+      50,
+      yPosition
+    );
     yPosition += lineHeight * 2 + sectionSpacing;
 
     // Treatment section
-    doc
-      .font("Helvetica-Bold")
-      .text("The treatment used/ Zastosowane leczenie", 50, yPosition);
+    doc.font("Helvetica-Bold");
+    addText("The treatment used/ Zastosowane leczenie", 50, yPosition);
     yPosition += lineHeight;
-    doc
-      .font("Helvetica")
-      .text(
-        consultationData.treatment || "No treatment data available",
-        50,
-        yPosition
-      );
+    doc.font("Helvetica");
+    addText(
+      consultationData.treatment || "No treatment data available",
+      50,
+      yPosition
+    );
     yPosition += lineHeight * 2 + sectionSpacing;
 
     // Recommendations section
-    doc
-      .font("Helvetica-Bold")
-      .text("Recommendations/ Zalecenia", 50, yPosition);
+    doc.font("Helvetica-Bold");
+    addText("Recommendations/ Zalecenia", 50, yPosition);
     yPosition += lineHeight;
-    doc
-      .font("Helvetica")
-      .text(
-        consultationData.recommendations || "No recommendations available",
-        50,
-        yPosition
-      );
+    doc.font("Helvetica");
+    addText(
+      consultationData.recommendations || "No recommendations available",
+      50,
+      yPosition
+    );
     yPosition += lineHeight * 2 + sectionSpacing;
 
     // Notes section
-    doc.font("Helvetica-Bold").text("Notes/ Notatki", 50, yPosition);
+    doc.font("Helvetica-Bold");
+    addText("Notes/ Notatki", 50, yPosition);
     yPosition += lineHeight;
-    doc
-      .font("Helvetica")
-      .text(
-        consultationData.description || "No notes available",
-        50,
-        yPosition
-      );
+    doc.font("Helvetica");
+    addText(
+      consultationData.description || "No notes available",
+      50,
+      yPosition
+    );
 
     // Finalize the PDF
     doc.end();
@@ -241,25 +251,25 @@ exports.generateVisitCard = async (req, res) => {
     });
 
     // Upload to Cloudinary
- const result = await new Promise((resolve, reject) => {
-  cloudinary.uploader.upload(
-    tempFilePath,
-    {
-      folder: "hospital_app/images",
-      resource_type: "raw", // required for non-image files like PDFs
-      type: "upload",       // ensures it's treated as an uploaded file
-      use_filename: true,
-      unique_filename: true,
-      access_mode:"public",
-      public_id: filename.replace(".pdf", ""), // remove .pdf for public_id
-      format: "pdf",        // not needed if it's already a .pdf file
-    },
-    (error, result) => {
-      if (error) reject(error);
-      else resolve(result);
-    }
-  );
-});
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload(
+        tempFilePath,
+        {
+          folder: "hospital_app/images",
+          resource_type: "raw", // required for non-image files like PDFs
+          type: "upload",       // ensures it's treated as an uploaded file
+          use_filename: true,
+          unique_filename: true,
+          access_mode:"public",
+          public_id: filename.replace(".pdf", ""), // remove .pdf for public_id
+          format: "pdf",        // not needed if it's already a .pdf file
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+    });
   
     // Delete the temporary file
     fs.unlinkSync(tempFilePath);
