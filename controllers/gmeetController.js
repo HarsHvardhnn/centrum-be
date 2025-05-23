@@ -79,9 +79,7 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
           </div>
         `}
       ` : `
-        <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-          <p style="margin: 0;">To jest wizyta stacjonarna. Nie wysyłaj tej wiadomości, jeśli spotkanie nie odbywa się online.</p>
-        </div>
+
       `}
       
 
@@ -341,7 +339,7 @@ if(smsConsentAgreed){    try {
     
     // Send email to patient regardless of Google Calendar success/failure
     try {
-      const formattedDate = format(appointmentDate, "EEEE, MMMM dd, yyyy");
+      const formattedDate = format(appointmentDate, "dd.MM.yyyy");
       
       // Email data
       const emailData = {

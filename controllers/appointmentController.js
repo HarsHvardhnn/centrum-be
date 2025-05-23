@@ -16,6 +16,8 @@ const bcrypt = require("bcrypt");
 const  sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
 const patient = require("../models/user-entity/patient");
+const path = require("path");
+const fs = require("fs");
 
 // Helper function to check if patient has consented to SMS notifications
 const hasPatientConsentedToSMS = (patientDetails) => {
@@ -464,29 +466,39 @@ exports.createAppointment = async (req, res) => {
 
     // Send email notification
     try {
-      const formattedDate = format(new Date(date), "EEEE, MMMM dd, yyyy");
-      
-      // Email data
-      const emailData = {
-        patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
-        doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-        date: formattedDate,
-        time: `${startTime} - ${endTime}`,
-        department: visitType || "General",
-        mode: mode || "offline",
-        notes: notes || "",
-        isNewUser: isNewlyCreated,
-        temporaryPassword: isNewlyCreated ? temporaryPassword : null,
-      };
+  
       
       // Send email
-      await sendEmail({
+      try {
+        const formattedDate = format(new Date(date), "dd.MM.yyyy");
+        
+        // Email data
+        const emailData = {
+          patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
+          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+          date: formattedDate,
+          time: `${startTime} - ${endTime}`,
+          department: visitType || "General",
+          // meetingLink: consultationType.toLowerCase() === 'online' ? meetingLink : null,
+          notes: "" || "",
+          mode: "offline",
+          isNewUser: isNewlyCreated,
+          temporaryPassword: isNewlyCreated ? temporaryPassword : null,
+        };
+        
+        // Send email
+        await sendEmail({
           to: patientDetails.email,
-          subject: "Twoja wizyta została pomyślnie zaplanowana - Centrum Medyczne",
-        html: createAppointmentEmailHtml(emailData),
-        text: `Dear ${emailData.patientName},\n\nYour appointment with ${emailData.doctorName} has been scheduled for ${formattedDate} at ${startTime}.\n\nThank you for choosing Centrum Medyczne.`
-      });
-      
+          subject: "Your Appointment Confirmation",
+          html: createAppointmentEmailHtml(emailData),
+          // text: `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions."}`
+        });
+        
+        console.log(`Appointment confirmation email sent to ${patientDetails.email}`);
+      } catch (emailError) {
+        console.error("Failed to send appointment email:", emailError);
+        // Continue with the response - don't fail the whole appointment just because email failed
+      }
       console.log(`Appointment confirmation email sent to ${patientDetails.email}`);
     } catch (emailError) {
       console.error("Failed to send appointment email:", emailError);
@@ -529,57 +541,75 @@ exports.createAppointment = async (req, res) => {
   }
 };
 
+
+
 // Helper function to create HTML email template for appointments
-const createAppointmentEmailHtml = (data) => {
+// Function to create HTML email for appointment details
+const createAppointmentEmailHtml = (appointmentDetails) => {
+  const {
+    patientName,
+    doctorName,
+    date,
+    time,
+    department,
+    meetingLink,
+    notes,
+    mode,
+    isNewUser,
+    temporaryPassword,
+  } = appointmentDetails;
+
+  const logoPath = path.join(__dirname, '../public', 'logo_new.png');
+  console.log(logoPath,"logoPath");
+  
+  // Read and convert logo to base64
+  const logoBase64 = fs.readFileSync(logoPath, { encoding: 'base64' });
+
   return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .appointment-details { margin-bottom: 20px; }
-        .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #666; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h2>Potwierdzenie Wizyty - Centrum Medyczne</h2>
-        </div>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: left; margin-bottom: 20px;">
+        <img src="data:image/png;base64,${logoBase64}" alt="Centrum Medyczne 7" style="height: 50px;" />
+      </div>
+      
+      <div style="margin-bottom: 30px;">
+        <h2 style="color: #333; margin-bottom: 5px;">Appointment Confirmation | Potwierdzenie Wizyty</h2>
+        <p style="color: #666; font-size: 16px; margin-top: 0;">Twoja wizyta została umówiona pomyślnie.</p>
+      </div>
+      
+      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+        <h3 style="color: #333; margin-top: 0;">Szczegóły Wizyty:</h3>
         
-        <p>Szanowny/a ${data.patientName},</p>
-        
-        <p>Twoja wizyta została pomyślnie zaplanowana.</p>
-        
-        <div class="appointment-details">
-          <h3>Szczegóły Wizyty:</h3>
-          <p><strong>Lekarz:</strong> ${data.doctorName}</p>
-          <p><strong>Data:</strong> ${data.date}</p>
-          <p><strong>Godzina:</strong> ${data.time}</p>
-          <p><strong>Oddział:</strong> ${data.department}</p>
-          <p><strong>Rodzaj wizyty:</strong> ${data.mode === 'online' ? 'Konsultacja online' : 'Wizyta w przychodni'}</p>
-          ${data.notes ? `<p><strong>Uwagi:</strong> ${data.notes}</p>` : ''}
-        </div>
-        
-        ${data.isNewUser ? `
-          <div class="login-details">
-            <h3>Twoje Dane Logowania:</h3>
-            <p>Jako nowy pacjent możesz zalogować się do swojego konta używając:</p>
-            <p><strong>Email:</strong> ${data.patientName}</p>
-            <p><strong>Tymczasowe Hasło:</strong> ${data.temporaryPassword}</p>
-            <p><em>Prosimy o zmianę hasła po pierwszym zalogowaniu.</em></p>
-          </div>
-        ` : ''}
-        
-        <div class="footer">
-          <p>Dziękujemy za wybór Centrum Medycznego.</p>
-          <p>W przypadku pytań dotyczących wizyty, prosimy o kontakt: kontakt@centrummedyczne7.pl</p>
+        <div style="margin-bottom: 15px;">
+          <p style="margin: 5px 0;"><strong>Pacjent:</strong> ${patientName}</p>
+          <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
+          <p style="margin: 5px 0;"><strong>Data:</strong> ${date}</p>
+          <p style="margin: 5px 0;"><strong>Godzina:</strong> ${time}</p>
+          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${mode === 'online' ? 'Online' : 'Stacjonarna'}</p>
+          ${notes ? `<p style="margin: 5px 0;"><strong>Uwagi pacjenta:</strong> ${notes}</p>` : ''}
         </div>
       </div>
-    </body>
-    </html>
+      
+      ${mode === 'online' ? `
+        ${meetingLink ? `
+          <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+            <p style="margin: 0;">To jest wizyta online. Osobne spotkanie na Google Meet zostanie zorganizowane w późniejszym czasie.</p>
+          </div>
+        ` : `
+          <div style="background-color: #fff3e0; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+            <p style="margin: 0;">To jest wizyta online, ale link do spotkania nie został automatycznie wygenerowany. Rejestracja skontaktuje się z Tobą w celu przekazania dalszych instrukcji.</p>
+          </div>
+        `}
+      ` : `
+''
+      `}
+      
+
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+        <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>
+        <p style="color: #666; margin-bottom: 10px;">Dziękujemy za zaufanie!</p>
+        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - All rights reserved</p>
+      </div>
+    </div>
   `;
 };
 
