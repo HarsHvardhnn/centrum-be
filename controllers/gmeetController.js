@@ -5,10 +5,10 @@ const bcrypt = require("bcrypt");
 const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
 const MessageReceipt = require("../models/smsData");
-const {sendSMS} = require("../utils/smsapi");
+const { sendSMS } = require("../utils/smsapi");
 const { getCalendarClient } = require("../config/googleCalendar");
-const path = require('path');
-const fs = require('fs');
+const path = require("path");
+const fs = require("fs");
 // const doctor = require("../models/user-entity/doctor");
 // const Service = require("../models/service");
 // const PatientService = require("../models/patientService");
@@ -38,11 +38,11 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
     temporaryPassword,
   } = appointmentDetails;
 
-  const logoPath = path.join(__dirname, '../public', 'logo_new.png');
-  console.log(logoPath,"logoPath");
-  
+  const logoPath = path.join(__dirname, "../public", "logo_new.png");
+  console.log(logoPath, "logoPath");
+
   // Read and convert logo to base64
-  const logoBase64 = fs.readFileSync(logoPath, { encoding: 'base64' });
+  const logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -51,7 +51,7 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
       </div>
       
       <div style="margin-bottom: 30px;">
-        <h2 style="color: #333; margin-bottom: 5px;">Appointment Confirmation | Potwierdzenie Wizyty</h2>
+        <h2 style="color: #333; margin-bottom: 5px;">Potwierdzenie Wizyty</h2>
         <p style="color: #666; font-size: 16px; margin-top: 0;">Twoja wizyta została umówiona pomyślnie.</p>
       </div>
       
@@ -63,24 +63,35 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
           <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
           <p style="margin: 5px 0;"><strong>Data:</strong> ${date}</p>
           <p style="margin: 5px 0;"><strong>Godzina:</strong> ${time}</p>
-          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${mode === 'online' ? 'Online' : 'Stacjonarna'}</p>
-          ${notes ? `<p style="margin: 5px 0;"><strong>Uwagi pacjenta:</strong> ${notes}</p>` : ''}
+          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${
+            mode === "online" ? "Online" : "Stacjonarna"
+          }</p>
+          ${
+            notes
+              ? `<p style="margin: 5px 0;"><strong>Uwagi pacjenta:</strong> ${notes}</p>`
+              : ""
+          }
         </div>
       </div>
       
-      ${mode === 'online' ? `
-        ${meetingLink ? `
+      ${
+        mode === "online"
+          ? `
+        ${
+          meetingLink
+            ? `
           <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">To jest wizyta online. Osobne spotkanie na Google Meet zostanie zorganizowane w późniejszym czasie.</p>
+            <p style="margin: 0;">To będzie konsultacja online. Link do spotkania w Google Meet zostanie automatycznie wysłany na Twój adres e-mail bezpośrednio z Kalendarza Google. Jeśli nie otrzymasz linku najpóźniej godzinę przed wizytą, skontaktuj się z Recepcją!</p>
           </div>
-        ` : `
-          <div style="background-color: #fff3e0; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">To jest wizyta online, ale link do spotkania nie został automatycznie wygenerowany. Rejestracja skontaktuje się z Tobą w celu przekazania dalszych instrukcji.</p>
-          </div>
-        `}
-      ` : `
+        `
+            : `
+        `
+        }
+      `
+          : `
 
-      `}
+      `
+      }
       
 
       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
@@ -110,17 +121,29 @@ exports.bookAppointment = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!date || !doctorId || !email || !name || !phone || !time || !consultationType) {
+    if (
+      !date ||
+      !doctorId ||
+      !email ||
+      !name ||
+      !phone ||
+      !time ||
+      !consultationType
+    ) {
       return res
         .status(400)
         .json({ success: false, message: "Missing required fields" });
     }
 
     // Validate consultationType
-    if (!['online', 'offline'].includes(consultationType.toLowerCase())) {
+    if (!["online", "offline"].includes(consultationType.toLowerCase())) {
       return res
         .status(400)
-        .json({ success: false, message: "Invalid consultation type. Must be either 'online' or 'offline'" });
+        .json({
+          success: false,
+          message:
+            "Invalid consultation type. Must be either 'online' or 'offline'",
+        });
     }
 
     // Parse name into first and last
@@ -143,26 +166,27 @@ exports.bookAppointment = async (req, res) => {
     const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
     const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
     const endTime = `${endTimeHour}:${endTimeMinute}`;
-    
+
     // Check for existing appointments
     const startOfDay = new Date(appointmentDate);
     startOfDay.setHours(0, 0, 0, 0);
-    
+
     const endOfDay = new Date(appointmentDate);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     const existingAppointment = await Appointment.findOne({
       doctor: doctorId,
       date: { $gte: startOfDay, $lte: endOfDay },
       startTime: time,
-      status: "booked"
+      status: "booked",
     });
-    
+
     if (existingAppointment) {
       return res.status(409).json({
         success: false,
-        message: "There is already an appointment booked with this doctor at this time.",
-        conflict: true
+        message:
+          "There is already an appointment booked with this doctor at this time.",
+        conflict: true,
       });
     }
 
@@ -174,21 +198,21 @@ exports.bookAppointment = async (req, res) => {
     let isNewUser = false;
     const temporaryPassword = "centrum123";
 
-    console.log("smsConsentAgreed",smsConsentAgreed)
-    
+    console.log("smsConsentAgreed", smsConsentAgreed);
+
     const smsConsent = {
       id: Date.now(),
       text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
-      agreed: smsConsentAgreed
+      agreed: smsConsentAgreed,
     };
 
     // If patient doesn't exist, create a new one
     if (!patient) {
       isNewUser = true;
       patient = await User.findOne({
-        email: email.toLowerCase()
+        email: email.toLowerCase(),
       });
-      
+
       if (!patient) {
         const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
@@ -198,13 +222,18 @@ exports.bookAppointment = async (req, res) => {
             last: lastName || "",
           },
           email: email.toLowerCase(),
-          sex: gender === "Male" ? "Male" : gender === "Female" ? "Female" : "Others",
+          sex:
+            gender === "Male"
+              ? "Male"
+              : gender === "Female"
+              ? "Female"
+              : "Others",
           phone,
           password: hashedPassword,
           role: "patient",
           signupMethod: "email",
           smsConsentAgreed: smsConsentAgreed,
-          consents: JSON.stringify([smsConsent])
+          consents: JSON.stringify([smsConsent]),
         });
 
         try {
@@ -212,7 +241,7 @@ exports.bookAppointment = async (req, res) => {
         } catch (saveError) {
           if (saveError.code === 11000) {
             patient = await User.findOne({
-              email: email.toLowerCase()
+              email: email.toLowerCase(),
             });
             if (!patient) {
               throw saveError;
@@ -236,8 +265,10 @@ exports.bookAppointment = async (req, res) => {
         existingConsents = [];
       }
 
-      const consentIndex = existingConsents.findIndex(c => c.text === smsConsent.text);
-      
+      const consentIndex = existingConsents.findIndex(
+        (c) => c.text === smsConsent.text
+      );
+
       if (consentIndex === -1) {
         // Consent doesn't exist, add it
         existingConsents.push(smsConsent);
@@ -269,16 +300,16 @@ exports.bookAppointment = async (req, res) => {
     // Prepare appointment data for email
     let meetingLink = "";
     let calendarSetupNeeded = false;
-    
+
     // Create Google Meet event only for online consultations
-    if (consultationType.toLowerCase() === 'online') {
+    if (consultationType.toLowerCase() === "online") {
       try {
         // Get calendar client with fresh token
         const calendar = await getCalendarClient();
 
         // Convert appointment time to Polish timezone
         const appointmentDateTime = new Date(appointmentDate);
-        const [hours, minutes] = time.split(':').map(Number);
+        const [hours, minutes] = time.split(":").map(Number);
         appointmentDateTime.setHours(hours, minutes, 0, 0);
 
         // Calculate end time
@@ -287,13 +318,13 @@ exports.bookAppointment = async (req, res) => {
 
         // Create the calendar event
         const event = {
-          summary: `Medical Appointment: ${department || "Consultation"}`,
+          summary: `Wizyta Medyczna: ${department || "Konsultacja"}`,
           description: `
-Patient: ${patient.name.first} ${patient.name.last}
-Doctor: Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}
-Department: ${department || "General"}
-Mode: ${appointment.mode} Consultation
-${message ? `\nNotes: ${message}` : ""}
+Pacjent: ${patient.name.first} ${patient.name.last}
+Lekarz: Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}
+Oddział: ${department || "Ogólny"}
+Tryb: ${appointment.mode === "online" ? "Online" : "Stacjonarna"} Konsultacja
+${message ? `\nUwagi: ${message}` : ""}
           `.trim(),
           start: {
             dateTime: appointmentDateTime.toISOString(),
@@ -303,9 +334,23 @@ ${message ? `\nNotes: ${message}` : ""}
             dateTime: endDateTime.toISOString(),
             timeZone: "Europe/Warsaw",
           },
+          organizer: {
+            email: doctorDetails.email,
+            displayName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+            self: true
+          },
           attendees: [
-            { email: doctorDetails.email, displayName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}` }, 
-            { email: patient.email, displayName: `${patient.name.first} ${patient.name.last}` }
+            {
+              email: doctorDetails.email,
+              displayName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+              organizer: true,
+              responseStatus: "accepted"
+            },
+            {
+              email: patient.email,
+              displayName: `${patient.name.first} ${patient.name.last}`,
+              responseStatus: "accepted"
+            },
           ],
           conferenceData: {
             createRequest: {
@@ -313,33 +358,36 @@ ${message ? `\nNotes: ${message}` : ""}
               conferenceSolutionKey: { type: "hangoutsMeet" },
             },
           },
+          guestsCanModify: true,
+          anyoneCanAddSelf: true,
           reminders: {
             useDefault: false,
             overrides: [
-              { method: 'email', minutes: 60 },
-              { method: 'popup', minutes: 30 }
-            ]
-          }
+              { method: "email", minutes: 60 },
+              { method: "popup", minutes: 30 },
+            ],
+          },
         };
 
         const calendarResponse = await calendar.events.insert({
-          calendarId: 'primary',
+          calendarId: "primary",
           resource: event,
           conferenceDataVersion: 1,
           sendNotifications: true,
         });
 
         if (!calendarResponse?.data?.hangoutLink) {
-          throw new Error("Failed to get Google Meet link from calendar response");
+          throw new Error(
+            "Failed to get Google Meet link from calendar response"
+          );
         }
 
         // Update appointment with the meeting link
         meetingLink = calendarResponse.data.hangoutLink;
         appointment.joining_link = meetingLink;
         await appointment.save();
-        
+
         console.log("Successfully created Google Meet link:", meetingLink);
-        
       } catch (googleError) {
         console.error("Google Calendar error:", googleError);
         calendarSetupNeeded = true;
@@ -348,32 +396,35 @@ ${message ? `\nNotes: ${message}` : ""}
 
     // Send SMS notification without checking consent
     let smsResult = null;
-if(smsConsentAgreed){    try {
-      const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-      const message = appointment.mode === "online" 
-        ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-        : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+    if (smsConsentAgreed) {
+      try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const message =
+          appointment.mode === "online"
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
-      const batchId = uuidv4();
-      await MessageReceipt.create({
-        content: message,
-        batchId,
-        recipient: {
-          userId: patient._id.toString(),
-          phone: phone,
-        },
-        status: "PENDING",
-      });
-      
-      smsResult = await sendSMS(phone, message);
-    } catch (smsError) {
-      console.error("Error sending appointment confirmation SMS:", smsError);
-    }}
-    
+        const batchId = uuidv4();
+        await MessageReceipt.create({
+          content: message,
+          batchId,
+          recipient: {
+            userId: patient._id.toString(),
+            phone: phone,
+          },
+          status: "PENDING",
+        });
+
+        smsResult = await sendSMS(phone, message);
+      } catch (smsError) {
+        console.error("Error sending appointment confirmation SMS:", smsError);
+      }
+    }
+
     // Send email to patient regardless of Google Calendar success/failure
     try {
       const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-      
+
       // Email data
       const emailData = {
         patientName: `${patient.name.first} ${patient.name.last}`,
@@ -381,21 +432,28 @@ if(smsConsentAgreed){    try {
         date: formattedDate,
         time: `${time} - ${endTime}`,
         department: department || "General",
-        meetingLink: consultationType.toLowerCase() === 'online' ? meetingLink : null,
+        meetingLink:
+          consultationType.toLowerCase() === "online" ? meetingLink : null,
         notes: message || "",
         mode: consultationType.toLowerCase(),
         isNewUser,
         temporaryPassword: isNewUser ? temporaryPassword : null,
       };
-      
+
       // Send email
       await sendEmail({
         to: patient.email,
-        subject: "Your Appointment Confirmation",
+        subject: "Potwierdzenie Wizyty",
         html: createAppointmentEmailHtml(emailData),
-        text: `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions."}`
+        text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
+          doctorDetails.name.last
+        } została zaplanowana na ${formattedDate} o godz ${time}. ${
+          meetingLink
+            ? `Dołącz do spotkania pod adresem: ${meetingLink}`
+            : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
+        }`,
       });
-      
+
       console.log(`Appointment confirmation email sent to ${patient.email}`);
     } catch (emailError) {
       console.error("Failed to send appointment email:", emailError);
@@ -403,86 +461,93 @@ if(smsConsentAgreed){    try {
     }
 
     // Return appropriate response based on consultation type and Google Meet creation result
-    if (consultationType.toLowerCase() === 'online') {
+    if (consultationType.toLowerCase() === "online") {
       if (meetingLink) {
         return res.status(201).json({
           success: true,
-          message: "Online appointment booked successfully with Google Meet",
+          message: "Wizyta online została pomyślnie zarezerwowana z Google Meet",
           data: appointment,
           meetLink: meetingLink,
           isNewUser,
           emailSent: true,
           notifications: {
-            sms: smsResult ? {
-              sent: smsResult.success,
-              error: smsResult.error
-            } : {
-              sent: false,
-              error: "Failed to send SMS notification"
-            }
-          }
+            sms: smsResult
+              ? {
+                  sent: smsResult.success,
+                  error: smsResult.error,
+                }
+              : {
+                  sent: false,
+                  error: "Nie udało się wysłać powiadomienia SMS",
+                },
+          },
         });
       } else if (calendarSetupNeeded) {
         return res.status(201).json({
           success: true,
-          message: "Online appointment booked but Google Calendar integration needs to be set up",
+          message: "Wizyta online została zarezerwowana, ale wymagana jest konfiguracja integracji z Google Calendar",
           data: appointment,
           isNewUser,
           calendarSetupNeeded: true,
           emailSent: true,
           notifications: {
-            sms: smsResult ? {
-              sent: smsResult.success,
-              error: smsResult.error
-            } : {
-              sent: false,
-              error: "Failed to send SMS notification"
-            }
-          }
+            sms: smsResult
+              ? {
+                  sent: smsResult.success,
+                  error: smsResult.error,
+                }
+              : {
+                  sent: false,
+                  error: "Nie udało się wysłać powiadomienia SMS",
+                },
+          },
         });
       } else {
         return res.status(201).json({
           success: true,
-          message: "Online appointment booked but failed to create Google Meet event",
+          message: "Wizyta online została zarezerwowana, ale nie udało się utworzyć wydarzenia Google Meet",
           data: appointment,
           isNewUser,
           emailSent: true,
           notifications: {
-            sms: smsResult ? {
-              sent: smsResult.success,
-              error: smsResult.error
-            } : {
-              sent: false,
-              error: "Failed to send SMS notification"
-            }
-          }
+            sms: smsResult
+              ? {
+                  sent: smsResult.success,
+                  error: smsResult.error,
+                }
+              : {
+                  sent: false,
+                  error: "Nie udało się wysłać powiadomienia SMS",
+                },
+          },
         });
       }
     } else {
       return res.status(201).json({
         success: true,
-        message: "Offline appointment booked successfully",
+        message: "Wizyta stacjonarna została pomyślnie zarezerwowana",
         data: appointment,
         isNewUser,
         emailSent: true,
         notifications: {
-          sms: smsResult ? {
-            sent: smsResult.success,
-            error: smsResult.error
-          } : {
-            sent: false,
-            error: "Failed to send SMS notification"
-          }
-        }
+          sms: smsResult
+            ? {
+                sent: smsResult.success,
+                error: smsResult.error,
+              }
+            : {
+                sent: false,
+                error: "Nie udało się wysłać powiadomienia SMS",
+              },
+        },
       });
     }
-
   } catch (error) {
     console.error("Error booking appointment:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to book appointment",
-      error: error.message
+      message: "Nie udało się zarezerwować wizyty",
+      error: error.message,
     });
   }
 };

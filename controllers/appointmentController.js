@@ -592,12 +592,9 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
       ${mode === 'online' ? `
         ${meetingLink ? `
           <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">To jest wizyta online. Osobne spotkanie na Google Meet zostanie zorganizowane w późniejszym czasie.</p>
+            <p style="margin: 0;">To będzie konsultacja online. Link do spotkania w Google Meet zostanie automatycznie wysłany na Twój adres e-mail bezpośrednio z Kalendarza Google. Jeśli nie otrzymasz linku najpóźniej godzinę przed wizytą, skontaktuj się z Recepcją!</p>
           </div>
         ` : `
-          <div style="background-color: #fff3e0; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">To jest wizyta online, ale link do spotkania nie został automatycznie wygenerowany. Rejestracja skontaktuje się z Tobą w celu przekazania dalszych instrukcji.</p>
-          </div>
         `}
       ` : `
       `}
