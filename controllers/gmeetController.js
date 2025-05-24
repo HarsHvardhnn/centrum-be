@@ -174,6 +174,14 @@ exports.bookAppointment = async (req, res) => {
     let isNewUser = false;
     const temporaryPassword = "centrum123";
 
+    console.log("smsConsentAgreed",smsConsentAgreed)
+    
+    const smsConsent = {
+      id: Date.now(),
+      text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
+      agreed: smsConsentAgreed
+    };
+
     // If patient doesn't exist, create a new one
     if (!patient) {
       isNewUser = true;
@@ -196,6 +204,7 @@ exports.bookAppointment = async (req, res) => {
           role: "patient",
           signupMethod: "email",
           smsConsentAgreed: smsConsentAgreed,
+          consents: JSON.stringify([smsConsent])
         });
 
         try {
@@ -216,6 +225,30 @@ exports.bookAppointment = async (req, res) => {
       } else {
         isNewUser = false;
       }
+    }
+
+    // Handle consents for existing user
+    if (!isNewUser) {
+      let existingConsents = [];
+      try {
+        existingConsents = patient.consents ? JSON.parse(patient.consents) : [];
+      } catch (e) {
+        existingConsents = [];
+      }
+
+      const consentIndex = existingConsents.findIndex(c => c.text === smsConsent.text);
+      
+      if (consentIndex === -1) {
+        // Consent doesn't exist, add it
+        existingConsents.push(smsConsent);
+      } else {
+        // Update existing consent's agreed status
+        existingConsents[consentIndex].agreed = smsConsentAgreed;
+      }
+
+      patient.smsConsentAgreed = smsConsentAgreed;
+      patient.consents = JSON.stringify(existingConsents);
+      await patient.save();
     }
 
     // Create appointment
