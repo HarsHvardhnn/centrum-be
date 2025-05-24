@@ -698,7 +698,7 @@ const getDoctorProfile = async (req, res) => {
     query.role = "doctor";
 
     const doctor = await Doctor.findOne(query)
-      .select("name email experience profilePicture consultationFee offlineConsultationFee bio qualifications specialization")
+      .select("name email experience profilePicture onlineConsultationFee offlineConsultationFee bio qualifications specialization")
       .populate("specialization", "name");
 
     if (!doctor) {
@@ -715,7 +715,7 @@ const getDoctorProfile = async (req, res) => {
       email: doctor.email,
       experience: doctor.experience || 0,
       profilePicture: doctor.profilePicture,
-      onlineConsultationPrice: doctor.consultationFee || 0,
+      onlineConsultationPrice: doctor.onlineConsultationFee || 0,
       offlineConsultationPrice: doctor.offlineConsultationFee || 0,
       bio: doctor.bio || "",
       qualifications: doctor.qualifications || [],
@@ -879,6 +879,156 @@ const getNextAvailableDate = async (req, res) => {
   }
 };
 
+/**
+ * Get detailed information about a doctor
+ * @param {Object} req - Request object
+ * @param {Object} res - Response object
+ */
+const getDoctorDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+
+    const doctor = await Doctor.findOne({ _id: id })
+      .select("-password -refreshTokens -__v")
+      .populate("specialization");
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+
+    // Format response object
+    const responseDoctor = {
+      id: doctor._id,
+      name: {
+        first: doctor.name.first,
+        last: doctor.name.last
+      },
+      email: doctor.email,
+      phone: doctor.phone,
+      specializations: doctor.specialization,
+      qualifications: doctor.qualifications,
+      experience: doctor.experience,
+      bio: doctor.bio,
+      onlineConsultationFee: doctor.onlineConsultationFee,
+      offlineConsultationFee: doctor.offlineConsultationFee,
+      weeklyShifts: doctor.weeklyShifts,
+      offSchedule: doctor.offSchedule,
+      profilePicture: doctor.profilePicture,
+      singleSessionMode: doctor.singleSessionMode,
+      signupMethod: doctor.signupMethod,
+      isAvailable: doctor.isAvailable
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responseDoctor,
+    });
+  } catch (error) {
+    console.error("Error fetching doctor details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch doctor details",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update doctor information
+ * @param {Object} req - Request object
+ * @param {Object} res - Response object
+ */
+const updateDoctor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Find the doctor first
+    const doctor = await Doctor.findOne({ _id: id });
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+
+    // Update fields
+    const allowedUpdates = [
+      'name',
+      'phone',
+      'specialization',
+      'qualifications',
+      'experience',
+      'bio',
+      'onlineConsultationFee',
+      'offlineConsultationFee',
+      'weeklyShifts',
+      'offSchedule',
+      'singleSessionMode'
+    ];
+
+    // Filter out fields that are not allowed to be updated
+    const filteredUpdates = Object.keys(updateData)
+      .filter(key => allowedUpdates.includes(key))
+      .reduce((obj, key) => {
+        obj[key] = updateData[key];
+        return obj;
+      }, {});
+
+    // Only add profilePicture to updates if a new file was uploaded
+    if (req.file?.path) {
+      filteredUpdates.profilePicture = req.file.path;
+    }
+
+    // Update the doctor
+    const updatedDoctor = await Doctor.findOneAndUpdate(
+      { _id: id },
+      { $set: filteredUpdates },
+      { new: true, runValidators: true }
+    ).select("-password -refreshTokens -__v");
+
+    // Format response object
+    const responseDoctor = {
+      id: updatedDoctor.d_id,
+      name: {
+        first: updatedDoctor.name.first,
+        last: updatedDoctor.name.last
+      },
+      email: updatedDoctor.email,
+      phone: updatedDoctor.phone,
+      specializations: updatedDoctor.specialization,
+      qualifications: updatedDoctor.qualifications,
+      experience: updatedDoctor.experience,
+      bio: updatedDoctor.bio,
+      onlineConsultationFee: updatedDoctor.onlineConsultationFee,
+      offlineConsultationFee: updatedDoctor.offlineConsultationFee,
+      weeklyShifts: updatedDoctor.weeklyShifts,
+      offSchedule: updatedDoctor.offSchedule,
+      profilePicture: updatedDoctor.profilePicture,
+      singleSessionMode: updatedDoctor.singleSessionMode,
+      signupMethod: updatedDoctor.signupMethod,
+      isAvailable: updatedDoctor.isAvailable
+    };
+
+    res.status(200).json({
+      success: true,
+      message: "Doctor updated successfully",
+      data: responseDoctor,
+    });
+  } catch (error) {
+    console.error("Error updating doctor:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update doctor",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   addDoctor,
   getAllDoctors,
@@ -891,4 +1041,6 @@ module.exports = {
   getWeeklyShifts,
   getDoctorProfile,
   getNextAvailableDate,
+  getDoctorDetails,
+  updateDoctor,
 };

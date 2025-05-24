@@ -671,7 +671,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       }`,
       patient_id: appt.patient?._id || null,
       username: `@${appt.patient?.name.first?.toLowerCase() || "user"}`,
-      avatar: appt.patient?.profilePicture || "https://i.pravatar.cc/150",
+      avatar: appt.patient?.profilePicture || null,
       sex: appt.patient?.sex || "Unknown",
       mode: appt.mode || "offline",
       joining_link: appt.joining_link || null,

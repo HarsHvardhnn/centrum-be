@@ -141,6 +141,20 @@ router.post("/send-bulk-sms", async (req, res) => {
           continue;
         }
 
+        // Check SMS consent
+        if (!recipient.smsConsentAgreed) {
+          await updateReceiptStatus(receipt, 'FAILED', {
+            error: 'Użytkownik nie wyraził zgody na otrzymywanie wiadomości SMS'
+          });
+          
+          failed.push({
+            userId: recipient.userId,
+            phone: recipient.phone,
+            reason: "Użytkownik nie wyraził zgody na otrzymywanie wiadomości SMS",
+          });
+          continue;
+        }
+
         // Send the SMS
         const result = await sendSMS(recipient.phone, content);
 

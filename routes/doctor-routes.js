@@ -12,6 +12,8 @@ const {
   getAvailableSlots,
   getDoctorProfile,
   getNextAvailableDate,
+  getDoctorDetails,
+  updateDoctor,
 } = require("../controllers/doctorController");
 const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
@@ -66,6 +68,21 @@ router.get(
 router.get(
   "/schedule/next-available/:id",
   getNextAvailableDate
+);
+
+// Get detailed doctor information
+router.get(
+  "/details/:id",
+  authorizeRoles(["doctor", "admin","receptionist"]),
+  getDoctorDetails
+);
+
+// Update doctor information
+router.patch(
+  "/details/:id",
+  authorizeRoles(["doctor", "admin","receptionist"]),
+  upload.single("file"),
+  updateDoctor
 );
 
 module.exports = router;

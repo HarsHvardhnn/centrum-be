@@ -754,11 +754,13 @@ const getProfile = async (req, res) => {
   try {
     const userId = req.user.id;
 
+    console.log("userId", userId);
     // Find user by id but exclude sensitive information
     const userData = await user
       .findById(userId)
       .select("-password -refreshTokens");
 
+    console.log("userData", userData);
     if (!userData) {
       return res.status(404).json({ message: "User not found" });
     }

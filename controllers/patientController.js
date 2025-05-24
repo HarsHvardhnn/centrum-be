@@ -17,7 +17,6 @@ exports.createPatient = async (req, res) => {
       fatherName,
       email,
       motherName,
-      smsConsentAgreed,
       spouseName,
       sex,
       dateOfBirth,
@@ -60,6 +59,25 @@ exports.createPatient = async (req, res) => {
       preferredLanguage,
     } = req.body;
 
+    
+
+    const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
+
+    let parsedConsents = [];
+    if (consents && consents.length > 0) {
+      parsedConsents = JSON.parse(consents);
+    }
+    
+    console.log("parsedConsents", parsedConsents);
+    
+    const hasAgreedToSms = parsedConsents.some(
+      (consent) => consent.text === TARGET_TEXT && consent.agreed === true
+    );
+    
+    if (hasAgreedToSms) {
+      // ✅ Do something here
+      smsConsentAgreed=true;
+    }
     const documents = (req.files || []).map((file) => ({
       fileName: `${new Date().toISOString().split('T')[0]}`,
       path: file.path,
@@ -870,7 +888,7 @@ exports.getPatientDetailsAndReports = async (req, res) => {
         patient.patientId ||
         patient.hospId ||
         `#${patient._id.toString().slice(-8)}`,
-      avatar: patient.profilePicture || "/path/to/patient-avatar.jpg",
+      avatar: patient.profilePicture || null,
       email: patient.email,
       phone: patient.phone || patient.phoneFormatted || "Not available",
       lastChecked,
@@ -983,6 +1001,31 @@ exports.updatePatient = async (req, res) => {
       nationality,
       preferredLanguage,
     } = req.body;
+    console.log(
+      "consents",consents
+    )
+
+    const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
+
+let parsedConsents = [];
+let smsConsentAgreed = false;
+
+if (consents && consents.length > 0) {
+  parsedConsents = JSON.parse(consents);
+}
+
+console.log("parsedConsents", parsedConsents);
+
+const hasAgreedToSms = parsedConsents.some(
+  (consent) => consent.text === TARGET_TEXT && consent.agreed === true
+);
+
+if (hasAgreedToSms) {
+  smsConsentAgreed = true;
+}
+
+console.log("smsConsentAgreed",smsConsentAgreed)
+
 
     console.log("date of birth", dateOfBirth);
 
@@ -1034,6 +1077,7 @@ exports.updatePatient = async (req, res) => {
         },
       }),
       ...(email && { email }),
+     smsConsentAgreed,
       ...(mobileNumber && { phone: mobileNumber }),
       ...(fatherName !== undefined && { fatherName }),
       ...(motherName !== undefined && { motherName }),
