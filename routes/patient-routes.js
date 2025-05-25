@@ -112,6 +112,7 @@ router.post(
           .status(400)
           .json({ success: false, message: "No files uploaded" });
       }
+      console.log("patientId",patientId,"appointmentId",appointmentId)
 
       // Check if patient exists
       const patient = await User.findById(patientId);
