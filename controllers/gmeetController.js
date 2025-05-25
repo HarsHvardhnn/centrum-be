@@ -9,6 +9,7 @@ const { sendSMS } = require("../utils/smsapi");
 const { getCalendarClient } = require("../config/googleCalendar");
 const path = require("path");
 const fs = require("fs");
+const { getMeetingsClient } = require("../utils/zohoMeetings");
 // const doctor = require("../models/user-entity/doctor");
 // const Service = require("../models/service");
 // const PatientService = require("../models/patientService");
@@ -301,95 +302,53 @@ exports.bookAppointment = async (req, res) => {
     let meetingLink = "";
     let calendarSetupNeeded = false;
 
-    // Create Google Meet event only for online consultations
+    // Create Zoho Meeting event only for online consultations
     if (consultationType.toLowerCase() === "online") {
       try {
-        // Get calendar client with fresh token
-        const calendar = await getCalendarClient();
+        // Get meetings client with fresh token
+        const meetingsClient = await getMeetingsClient(doctorDetails._id);
 
         // Convert appointment time to Polish timezone
         const appointmentDateTime = new Date(appointmentDate);
         const [hours, minutes] = time.split(":").map(Number);
         appointmentDateTime.setHours(hours, minutes, 0, 0);
 
-        // Calculate end time
-        const endDateTime = new Date(appointmentDateTime);
-        endDateTime.setMinutes(endDateTime.getMinutes() + duration);
+        // Format the date for Zoho
+        const formattedDate = format(appointmentDateTime, "MMM dd, yyyy hh:mm a");
 
-        // Create the calendar event
-        const event = {
-          summary: `Wizyta Medyczna: ${department || "Konsultacja"}`,
-          description: `
-Pacjent: ${patient.name.first} ${patient.name.last}
-Lekarz: Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}
-Oddział: ${department || "Ogólny"}
-Tryb: ${appointment.mode === "online" ? "Online" : "Stacjonarna"} Konsultacja
-${message ? `\nUwagi: ${message}` : ""}
-          `.trim(),
-          start: {
-            dateTime: appointmentDateTime.toISOString(),
-            timeZone: "Europe/Warsaw",
-          },
-          end: {
-            dateTime: endDateTime.toISOString(),
-            timeZone: "Europe/Warsaw",
-          },
-          organizer: {
-            email: doctorDetails.email,
-            displayName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-            self: true
-          },
-          attendees: [
-            {
-              email: doctorDetails.email,
-              displayName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-              organizer: true,
-              responseStatus: "accepted"
-            },
-            {
-              email: patient.email,
-              displayName: `${patient.name.first} ${patient.name.last}`,
-              responseStatus: "accepted"
-            },
-          ],
-          conferenceData: {
-            createRequest: {
-              requestId: uuidv4(),
-              conferenceSolutionKey: { type: "hangoutsMeet" },
-            },
-          },
-          guestsCanModify: true,
-          anyoneCanAddSelf: true,
-          reminders: {
-            useDefault: false,
-            overrides: [
-              { method: "email", minutes: 60 },
-              { method: "popup", minutes: 30 },
-            ],
-          },
+        // Create the meeting
+        const meetingDetails = {
+          session: {
+            topic: `Wizyta Medyczna: ${department || "Konsultacja"}`,
+            agenda: message || "Regular medical consultation",
+            presenter: 20105821462,
+            startTime: formattedDate,
+            timezone: "Europe/Warsaw",
+            participants: [
+              {
+                email: patient.email
+              },
+              {
+                email: doctorDetails.email
+              }
+            ]
+          }
         };
 
-        const calendarResponse = await calendar.events.insert({
-          calendarId: "primary",
-          resource: event,
-          conferenceDataVersion: 1,
-          sendNotifications: true,
-        });
+        const meetingResponse = await meetingsClient.createMeeting(meetingDetails);
 
-        if (!calendarResponse?.data?.hangoutLink) {
-          throw new Error(
-            "Failed to get Google Meet link from calendar response"
-          );
+        if (!meetingResponse?.session?.joinLink) {
+          throw new Error("Failed to get Zoho Meeting link from response");
         }
 
         // Update appointment with the meeting link
-        meetingLink = calendarResponse.data.hangoutLink;
+        meetingLink = meetingResponse.session.joinLink;
         appointment.joining_link = meetingLink;
         await appointment.save();
 
-        console.log("Successfully created Google Meet link:", meetingLink);
-      } catch (googleError) {
-        console.error("Google Calendar error:", googleError);
+        console.log("Successfully created Zoho Meeting link:", meetingLink);
+      } catch (zohoError) {
+        console.error("Zoho Meetings error:", zohoError);
         calendarSetupNeeded = true;
       }
     }
@@ -465,7 +424,7 @@ ${message ? `\nUwagi: ${message}` : ""}
       if (meetingLink) {
         return res.status(201).json({
           success: true,
-          message: "Wizyta online została pomyślnie zarezerwowana z Google Meet",
+          message: "Wizyta online została pomyślnie zarezerwowana z Zoho Meetings",
           data: appointment,
           meetLink: meetingLink,
           isNewUser,
@@ -485,7 +444,7 @@ ${message ? `\nUwagi: ${message}` : ""}
       } else if (calendarSetupNeeded) {
         return res.status(201).json({
           success: true,
-          message: "Wizyta online została zarezerwowana, ale wymagana jest konfiguracja integracji z Google Calendar",
+          message: "Wizyta online została zarezerwowana, ale wymagana jest konfiguracja integracji z Zoho Meetings",
           data: appointment,
           isNewUser,
           calendarSetupNeeded: true,
@@ -505,7 +464,7 @@ ${message ? `\nUwagi: ${message}` : ""}
       } else {
         return res.status(201).json({
           success: true,
-          message: "Wizyta online została zarezerwowana, ale nie udało się utworzyć wydarzenia Google Meet",
+          message: "Wizyta online została zarezerwowana, ale nie udało się utworzyć wydarzenia Zoho Meetings",
           data: appointment,
           isNewUser,
           emailSent: true,
