@@ -25,6 +25,7 @@ const contactRoutes = require("./routes/contactRoutes");
 const googleAuthRoutes = require("./utils/googleAccessToken");
 const invoiceRoutes = require("./routes/invoice-routes");
 const emailTestRoutes = require("./routes/email-test-routes");
+const zohoAuthRoutes = require("./routes/zoho-auth-routes");
 dotenv.config();
 
 // Initialize database and seed admin
@@ -75,6 +76,7 @@ app.use("/api/contact", contactRoutes);
 app.use("/auth/google", googleAuthRoutes);
 app.use("/api/invoice", invoiceRoutes);
 app.use("/api/email", emailTestRoutes);
+app.use("/zoho", zohoAuthRoutes);
 // Import socket handler and pass io
 const socketHandler = require("./config/socketHandler");
 socketHandler(io);
