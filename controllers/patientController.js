@@ -59,25 +59,87 @@ exports.createPatient = async (req, res) => {
       preferredLanguage,
     } = req.body;
 
+    // Remove leading zeros from phone number
+    const phoneNumber = req.body.mobileNumber?.replace(/^0+/, '') || '';
     
+    if (!phoneNumber) {
+      return res.status(400).json({
+        message: "Phone number is required",
+      });
+    }
+
+    // Check for existing patient with same phone number
+    const existingPatientByPhone = await patient.findOne({ phone: phoneNumber });
+    if (existingPatientByPhone) {
+      return res.status(409).json({
+        message: "A patient with this phone number already exists.",
+        patient: existingPatientByPhone,
+      });
+    }
+
+    // Email validation regex
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    // Handle email - check if it's actually provided and not "undefined"
+    const emailToSave = email && email !== "undefined" ? email.trim() : "";
+    
+    // If email is provided, validate its format
+    if (emailToSave && !emailRegex.test(emailToSave)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
+    }
+    
+    // If email is provided and valid, check for existing patient with same email
+    if (emailToSave) {
+      const existingPatientByEmail = await patient.findOne({ email: emailToSave });
+      if (existingPatientByEmail) {
+        return res.status(409).json({
+          message: "A patient with this email already exists.",
+          patient: existingPatientByEmail,
+        });
+      }
+    }
 
     const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
 
+    // Initialize consent variables
     let parsedConsents = [];
-    if (consents && consents.length > 0) {
-      parsedConsents = JSON.parse(consents);
+    let smsConsentAgreed = false;
+
+    // Validate and parse consents
+    if (consents && consents.length > 0 && consents !== "undefined") {
+      try {
+        const parsed = JSON.parse(consents);
+        // Validate that parsed result is an array and not empty
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Additional validation to ensure each consent has required properties
+          const isValidConsent = parsed.every(consent => 
+            consent && 
+            typeof consent === 'object' && 
+            'text' in consent && 
+            'agreed' in consent &&
+            typeof consent.text === 'string' &&
+            typeof consent.agreed === 'boolean'
+          );
+          
+          if (isValidConsent) {
+            parsedConsents = parsed;
+            // Check for SMS consent
+            smsConsentAgreed = parsedConsents.some(
+              (consent) => consent.text === TARGET_TEXT && consent.agreed === true
+            );
+          } else {
+            console.warn("Invalid consent format detected");
+            parsedConsents = []; // Reset to empty array if invalid
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing consents:", error);
+        parsedConsents = []; // Reset to empty array if parsing fails
+      }
     }
-    
-    console.log("parsedConsents", parsedConsents);
-    
-    const hasAgreedToSms = parsedConsents.some(
-      (consent) => consent.text === TARGET_TEXT && consent.agreed === true
-    );
-    
-    if (hasAgreedToSms) {
-      // ✅ Do something here
-      smsConsentAgreed=true;
-    }
+
     const documents = (req.files || []).map((file) => ({
       fileName: `${new Date().toISOString().split('T')[0]}`,
       path: file.path,
@@ -85,13 +147,6 @@ exports.createPatient = async (req, res) => {
       mimetype: file.mimetype,
     }));
 
-    const existingPatient = await patient.findOne({ email });
-    if (existingPatient) {
-      return res.status(409).json({
-        message: "A patient with this email already exists.",
-        patient: existingPatient,
-      });
-    }
     console.log(consultingSpecialization);  
     const consultSpec = await Specialization.findOne({
       _id: consultingSpecialization,
@@ -105,9 +160,9 @@ exports.createPatient = async (req, res) => {
         first: fullName.split(" ")[0],
         last: fullName.split(" ").slice(1).join(" "),
       },
-      email: req.body.email,
+      email: emailToSave, // Use validated email
       patientId: `P-${new Date().getTime()}`,
-      phone: req.body.mobileNumber,
+      phone: phoneNumber, // Store phone number without leading zeros
       password: "defaultPassword123",
       role: "patient",
       signupMethod: "email",
@@ -146,7 +201,7 @@ exports.createPatient = async (req, res) => {
       referrerEmail,
       referrerNumber,
       referrerType,
-      consents,
+      consents: parsedConsents, // Store validated consents
       documents,
       // New fields
       isAdult:isAdult=="NIE" ? false : true,
@@ -951,9 +1006,6 @@ exports.updatePatient = async (req, res) => {
   try {
     const patientId = req.params.id;
 
-    
-
-
     const {
       fullName,
       fatherName,
@@ -1001,61 +1053,98 @@ exports.updatePatient = async (req, res) => {
       nationality,
       preferredLanguage,
     } = req.body;
-    console.log(
-      "consents",consents
-    )
 
-    const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
+    // Remove leading zeros from phone number if provided
+    const phoneNumber = mobileNumber?.replace(/^0+/, '') || '';
 
-let parsedConsents = [];
-let smsConsentAgreed = false;
+    // Find the existing patient first
+    const existingPatient = await patient.findOne({_id: patientId});
+    if (!existingPatient) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
 
-if (consents && consents.length > 0) {
-  parsedConsents = JSON.parse(consents);
-}
-
-console.log("parsedConsents", parsedConsents);
-
-const hasAgreedToSms = parsedConsents.some(
-  (consent) => consent.text === TARGET_TEXT && consent.agreed === true
-);
-
-if (hasAgreedToSms) {
-  smsConsentAgreed = true;
-}
-
-console.log("smsConsentAgreed",smsConsentAgreed)
-
-
-    console.log("date of birth", dateOfBirth);
-
-    console.log(":req.",req.files)
-    const newDocuments = (req.files || []).map((file) => ({
-      fileName: `${new Date().toISOString().split('T')[0]}`,
-      path: file.path,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-    }));
-
-    // Check if another patient with the same email exists (excluding current patient)
-    if (email) {
-      const existingPatient = await patient.findOne({
-        email,
-        _id: { $ne: patientId },
+    // Check for phone number uniqueness if being updated
+    if (phoneNumber && phoneNumber !== existingPatient.phone) {
+      const existingPatientByPhone = await patient.findOne({
+        phone: phoneNumber,
+        _id: { $ne: patientId }
       });
+      if (existingPatientByPhone) {
+        return res.status(409).json({
+          message: "Another patient with this phone number already exists.",
+        });
+      }
+    }
 
-      if (existingPatient) {
+    // Email validation regex
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    // Handle email - check if it's actually provided and not "undefined"
+    const emailToSave = email && email !== "undefined" ? email.trim() : existingPatient.email;
+    
+    // If email is being updated, validate its format
+    if (emailToSave !== existingPatient.email && !emailRegex.test(emailToSave)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
+    }
+    
+    // Check for email uniqueness if being updated
+    if (emailToSave && emailToSave !== existingPatient.email) {
+      const existingPatientByEmail = await patient.findOne({
+        email: emailToSave,
+        _id: { $ne: patientId }
+      });
+      if (existingPatientByEmail) {
         return res.status(409).json({
           message: "Another patient with this email already exists.",
         });
       }
     }
 
-    // Find the existing patient
-    const existingPatient = await patient.findOne({_id:patientId});
-    if (!existingPatient) {
-      return res.status(404).json({ error: "Patient not found" });
+    // Handle consents validation
+    const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
+    let parsedConsents = [];
+    let smsConsentAgreed = existingPatient.smsConsentAgreed; // Keep existing value by default
+
+    if (consents && consents.length > 0 && consents !== "undefined") {
+      try {
+        const parsed = JSON.parse(consents);
+        // Validate that parsed result is an array and not empty
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Additional validation to ensure each consent has required properties
+          const isValidConsent = parsed.every(consent => 
+            consent && 
+            typeof consent === 'object' && 
+            'text' in consent && 
+            'agreed' in consent &&
+            typeof consent.text === 'string' &&
+            typeof consent.agreed === 'boolean'
+          );
+          
+          if (isValidConsent) {
+            parsedConsents = parsed;
+            // Check for SMS consent
+            smsConsentAgreed = parsedConsents.some(
+              (consent) => consent.text === TARGET_TEXT && consent.agreed === true
+            );
+          } else {
+            console.warn("Invalid consent format detected");
+            parsedConsents = existingPatient.consents || []; // Keep existing consents if invalid
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing consents:", error);
+        parsedConsents = existingPatient.consents || []; // Keep existing consents if parsing fails
+      }
     }
+
+    const newDocuments = (req.files || []).map((file) => ({
+      fileName: `${new Date().toISOString().split('T')[0]}`,
+      path: file.path,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+    }));
 
     // Handle consulting specialization
     let consultingSpecName = existingPatient.consultingSpecialization;
@@ -1076,59 +1165,59 @@ console.log("smsConsentAgreed",smsConsentAgreed)
           last: fullName.split(" ").slice(1).join(" "),
         },
       }),
-      ...(email && { email }),
-     smsConsentAgreed,
-      ...(mobileNumber && { phone: mobileNumber }),
-      ...(fatherName !== undefined && { fatherName }),
-      ...(motherName !== undefined && { motherName }),
-      ...(spouseName !== undefined && { spouseName }),
-      ...(sex !== undefined && { sex }),
-      ...(dateOfBirth !== undefined && {dateOfBirth: new Date(dateOfBirth) }),
-      ...(birthWeight !== undefined && { birthWeight }),
-      ...(maritalStatus !== undefined && { maritalStatus }),
-      ...(motherTongue !== undefined && { motherTongue }),
-      ...(religion !== undefined && { religion }),
-      ...(ethnicity !== undefined && { ethnicity }),
-      ...(education !== undefined && { education }),
-      ...(occupation !== undefined && { occupation }),
-      ...(address !== undefined && { address }),
-      ...(city !== undefined && { city }),
-      ...(district !== undefined && { district }),
-      ...(state !== undefined && { state }),
-      ...(country !== undefined && { country }),
-      ...(pinCode !== undefined && { pinCode }),
-      ...(alternateContact !== undefined && { alternateContact }),
-      ...(govtId !== undefined && { govtId }),
-      ...(isInternationalPatient !== undefined && { isInternationalPatient }),
-      ...(ivrLanguage !== undefined && { ivrLanguage }),
-      ...(mainComplaint !== undefined && { mainComplaint }),
-      ...(reviewNotes !== undefined && { reviewNotes }),
+      ...(emailToSave && { email: emailToSave }),
+      smsConsentAgreed,
+      ...(phoneNumber && { phone: phoneNumber }),
+      ...(fatherName !== undefined && fatherName !== "undefined" && { fatherName }),
+      ...(motherName !== undefined && motherName !== "undefined" && { motherName }),
+      ...(spouseName !== undefined && spouseName !== "undefined" && { spouseName }),
+      ...(sex !== undefined && sex !== "undefined" && { sex }),
+      ...(dateOfBirth !== undefined && dateOfBirth !== "undefined" && {dateOfBirth: new Date(dateOfBirth) }),
+      ...(birthWeight !== undefined && birthWeight !== "undefined" && { birthWeight }),
+      ...(maritalStatus !== undefined && maritalStatus !== "undefined" && { maritalStatus }),
+      ...(motherTongue !== undefined && motherTongue !== "undefined" && { motherTongue }),
+      ...(religion !== undefined && religion !== "undefined" && { religion }),
+      ...(ethnicity !== undefined && ethnicity !== "undefined" && { ethnicity }),
+      ...(education !== undefined && education !== "undefined" && { education }),
+      ...(occupation !== undefined && occupation !== "undefined" && { occupation }),
+      ...(address !== undefined && address !== "undefined" && { address }),
+      ...(city !== undefined && city !== "undefined" && { city }),
+      ...(district !== undefined && district !== "undefined" && { district }),
+      ...(state !== undefined && state !== "undefined" && { state }),
+      ...(country !== undefined && country !== "undefined" && { country }),
+      ...(pinCode !== undefined && pinCode !== "undefined" && { pinCode }),
+      ...(alternateContact !== undefined && alternateContact !== "undefined" && { alternateContact }),
+      ...(govtId !== undefined && govtId !== "undefined" && { govtId }),
+      ...(isInternationalPatient !== undefined && isInternationalPatient !== "undefined" && { isInternationalPatient }),
+      ...(ivrLanguage !== undefined && ivrLanguage !== "undefined" && { ivrLanguage }),
+      ...(mainComplaint !== undefined && mainComplaint !== "undefined" && { mainComplaint }),
+      ...(reviewNotes !== undefined && reviewNotes !== "undefined" && { reviewNotes }),
       ...(consultingSpecialization && {
         consultingSpecialization: consultingSpecName,
       }),
       ...(consultingDoctor && {
         consultingDoctor: new mongoose.Types.ObjectId(consultingDoctor),
       }),
-      ...(photo !== undefined && { photo }),
-      ...(otherHospitalIds !== undefined && { otherHospitalIds }),
-      ...(referrerName !== undefined && { referrerName }),
-      ...(referrerEmail !== undefined && { referrerEmail }),
-      ...(referrerNumber !== undefined && { referrerNumber }),
-      ...(referrerType !== undefined && { referrerType }),
+      ...(photo !== undefined && photo !== "undefined" && { photo }),
+      ...(otherHospitalIds !== undefined && otherHospitalIds !== "undefined" && { otherHospitalIds }),
+      ...(referrerName !== undefined && referrerName !== "undefined" && { referrerName }),
+      ...(referrerEmail !== undefined && referrerEmail !== "undefined" && { referrerEmail }),
+      ...(referrerNumber !== undefined && referrerNumber !== "undefined" && { referrerNumber }),
+      ...(referrerType !== undefined && referrerType !== "undefined" && { referrerType }),
       // New fields
-      ...(isAdult !== undefined && { isAdult }),
-      ...(contactPerson && { contactPerson }),
-      ...(fatherPhone && { fatherPhone }),
-      ...(motherPhone && { motherPhone }),
-      ...(relationToPatient && { relationToPatient }),
-      ...(allergies && { allergies }),
-      ...(nationality && { nationality }),
-      ...(preferredLanguage && { preferredLanguage }),
+      ...(isAdult !== undefined && isAdult !== "undefined" && { isAdult }),
+      ...(contactPerson !== undefined && contactPerson !== "undefined" && { contactPerson }),
+      ...(fatherPhone !== undefined && fatherPhone !== "undefined" && { fatherPhone }),
+      ...(motherPhone !== undefined && motherPhone !== "undefined" && { motherPhone }),
+      ...(relationToPatient !== undefined && relationToPatient !== "undefined" && { relationToPatient }),
+      ...(allergies !== undefined && allergies !== "undefined" && { allergies }),
+      ...(nationality !== undefined && nationality !== "undefined" && { nationality }),
+      ...(preferredLanguage !== undefined && preferredLanguage !== "undefined" && { preferredLanguage }),
     };
 
-    // Handle consents update
-    if (consents) {
-      updateData.consents = consents;
+    // Handle consents update - only if we have valid parsed consents
+    if (parsedConsents.length > 0) {
+      updateData.consents = parsedConsents;
     }
 
     // Handle documents update - append new documents to existing ones
@@ -1138,7 +1227,7 @@ console.log("smsConsentAgreed",smsConsentAgreed)
 
     // Update patient with new data
     const updatedPatient = await patient.findOneAndUpdate(
-      {_id:patientId},
+      {_id: patientId},
       updateData,
       { new: true, runValidators: true }
     );

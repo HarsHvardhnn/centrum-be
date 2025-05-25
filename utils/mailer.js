@@ -33,6 +33,15 @@ transporter.verify(function(error, success) {
 
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
+    // Email validation regex
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    // Check if email is valid
+    if (!to || !emailRegex.test(to)) {
+      console.log("Invalid email address, skipping email send:", to);
+      return null;
+    }
+
     const mailOptions = {
       from: `"Centrum Medyczne" <${process.env.ZOHO_USER}>`,
       to,

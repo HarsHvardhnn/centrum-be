@@ -233,304 +233,264 @@ Thank you for choosing our services - Regards,Centrum Medyczne.
   }
 };
 
+// Create appointment
 exports.createAppointment = async (req, res) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const {
-      doctor: doctorId,
-      patient,
       date,
+      doctorId,
+      email,
+      firstName,
+      lastName,
+      phone,
       startTime,
-      endTime,
-      patientSource,
-      visitType,
-      isInternational,
-      isWalkin,
-      needsAttention,
-      markAsArrived,
-      notes,
-      enableRepeats,
-      isNewPatient,
-      newPatient,
-      mode,
-      services
+      consultationType="offline",
+      message,
+      smsConsentAgreed,
+      patient: patientId,
     } = req.body;
 
-    let patientId = patient;
-    let patientDetails;
-    let isNewlyCreated = false;
-    let temporaryPassword = null;
-
-    // Get doctor details for SMS
-    const doctorDetails = await doctor.findById(doctorId);
-    if (!doctorDetails) {
-      return res.status(404).json({
+    let name = `${firstName} ${lastName}`;
+    let time = startTime;
+    console.log("whats missing",date,doctorId,time,consultationType)
+    // Validate required fields
+    if (!date || !doctorId || !time || !consultationType) {
+      return res.status(400).json({
         success: false,
-        message: "Doctor not found"
+        message: "Missing required fields",
       });
     }
 
-    // HANDLE NEW PATIENT CREATION
-    if (isNewPatient && newPatient) {
-      try {
-        // Check if patient with this email already exists
-        const existingPatient = await user.findOne({ email: newPatient.email });
-        
-        if (existingPatient) {
-          patientDetails = existingPatient;
-          patientId = existingPatient._id;
-        } else {
-          // Create new patient
-          temporaryPassword = generateTemporaryPassword();
-          const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-          
-          patientDetails = new user({
-            name: {
-              first: newPatient.firstName,
-              last: newPatient.lastName || "",
-            },
-            email: newPatient.email,
-            phone: newPatient.phone,
-            password: hashedPassword,
-            role: "patient",
-            patientId: `P-${new Date().getTime()}`,
-            signupMethod: "email",
-            profilePicture: "",
-            isVerified: false,
-            sex: newPatient.sex || "",
-          });
-          
-          await patientDetails.save();
-          patientId = patientDetails._id;
-          isNewlyCreated = true;
-
-          // Send welcome email with temporary credentials
-          try {
-            await sendEmail({
-              to: patientDetails.email,
-              subject: "Welcome to Centrum Medyczne",
-              html: createWelcomeEmailHtml({
-                name: `${patientDetails.name.first} ${patientDetails.name.last}`,
-                email: patientDetails.email,
-                temporaryPassword
-              }),
-              text: `Welcome to Centrum Medyczne! Your temporary password is: ${temporaryPassword}. Please change it after your first login.`
-            });
-          } catch (emailError) {
-            console.error("Failed to send welcome email:", emailError);
-          }
-        }
-      } catch (error) {
-        return res.status(500).json({
-          success: false,
-          message: "Failed to create new patient",
-          error: error.message,
-        });
-      }
-    } else {
-      // Get existing patient details
-      patientDetails = await user.findById(patientId);
-      if (!patientDetails) {
-        return res.status(404).json({
-          success: false,
-          message: "Patient not found"
-        });
-      }
+    // Find the doctor
+    const doctorDetails = await doctor.findById(doctorId);
+    if (!doctorDetails || doctorDetails.role !== "doctor") {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
     }
 
-    // Get the consultation fee based on appointment mode
-    const doctorModel = await doctor.findById(doctorId);
-    const consultationFee = mode === "online" 
-      ? doctorModel?.consultationFee || 0 
-      : doctorModel?.offlineConsultationFee || 0;
+    // Calculate appointment dates and times
+    const appointmentDate = new Date(`${date}T${time}:00`);
+    const duration = 30; // Default duration in minutes
+    const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
+    const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
+    const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
+    const endTime = `${endTimeHour}:${endTimeMinute}`;
 
-    // Check if appointment already exists at the same time
+    // Check for existing appointments
+    const startOfDay = new Date(appointmentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(appointmentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
     const existingAppointment = await Appointment.findOne({
       doctor: doctorId,
-      date: new Date(date),
-      $or: [
-        {
-          startTime: { $lt: endTime },
-          endTime: { $gt: startTime },
-        },
-      ],
-      status: { $ne: "cancelled" }
+      date: { $gte: startOfDay, $lte: endOfDay },
+      startTime: time,
+      status: "booked",
     });
 
     if (existingAppointment) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
-        message: "Appointment slot is already booked at this time",
+        message: "There is already an appointment booked with this doctor at this time.",
+        conflict: true,
       });
     }
 
-    // Calculate duration
-    const calculateDuration = (start, end) => {
-      const [startHour, startMinute] = start.split(":").map(Number);
-      const [endHour, endMinute] = end.split(":").map(Number);
-      return endHour * 60 + endMinute - (startHour * 60 + startMinute);
-    };
+    let patient;
+    let isNewUser = false;
+    const temporaryPassword = "centrum123";
 
-    const duration = calculateDuration(startTime, endTime);
+    // If patient ID is provided, use that
+    if (patientId) {
+      patient = await user.findById(patientId);
+      if (!patient || patient.role !== "patient") {
+        return res.status(404).json({
+          success: false,
+          message: "Patient not found",
+        });
+      }
+    } else {
+      // Handle new patient creation
+      if (!name || !phone) {
+        return res.status(400).json({
+          success: false,
+          message: "Name and phone are required for new patient",
+        });
+      }
 
-    // Create new appointment
-    const newAppointment = new Appointment({
-      doctor: doctorId,
-      patient: patientId,
-      bookedBy: req.user.id,
-      date: new Date(date),
-      startTime,
-      endTime,
-      duration,
-      mode: mode || "offline",
-      notes,
-      status: markAsArrived ? "completed" : "booked",
-      metadata: {
-        patientSource,
-        visitType,
-        isInternational,
-        isWalkin,
-        needsAttention,
-        enableRepeats,
-        isNewPatient: isNewPatient || false,
-        consultationFee
-      },
-    });
+      // Remove leading zeros from phone number
+      const phoneNumber = phone.replace(/^0+/, '');
+      
+      // Email validation regex
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-    // Update patient consulting doctor
-    patientDetails.consultingDoctor = doctorId;
-    await patientDetails.save();
+      // Handle email - check if it's actually provided and not "undefined"
+      const emailToSave = email && email !== "undefined" ? email.trim() : "";
+      
+      // Validate email format if provided
+      if (emailToSave && !emailRegex.test(emailToSave)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid email format",
+        });
+      }
 
-    await newAppointment.save();
+      // Parse name into first and last
+      const nameParts = name.trim().split(" ");
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(" ");
 
-    // Handle services if provided
-    if (services && Array.isArray(services) && services.length > 0) {
-      try {
-        const serviceIds = services.map(s => s.serviceId);
-        const existingServices = await Service.find({ 
-          _id: { $in: serviceIds },
-          isDeleted: false
+      // Look for existing patient by phone first
+      patient = await user.findOne({
+        phone: phoneNumber,
+        role: "patient",
+      });
+
+      // If not found by phone and email is provided, look by email
+      if (!patient && emailToSave) {
+        patient = await user.findOne({
+          email: emailToSave.toLowerCase(),
+          role: "patient",
+        });
+      }
+
+      // If patient not found, create new patient
+      if (!patient) {
+        const newPatient = new user({
+          name: {
+            first: firstName,
+            last: lastName,
+          },
+          email: emailToSave,
+          phone: phoneNumber,
+          password: temporaryPassword,
+          role: "patient",
+          signupMethod: "email",
+          smsConsentAgreed: smsConsentAgreed || false,
+          consents: JSON.stringify([{
+            id: Date.now(),
+            text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
+            agreed: smsConsentAgreed || false,
+          }]),
         });
 
-        if (existingServices.length === serviceIds.length) {
-          const formattedServices = services.map(s => ({
-            service: s.serviceId,
-            notes: s.notes || "",
-            status: s.status || "active",
-            assignedDate: new Date(),
-          }));
+        patient = await newPatient.save();
+        isNewUser = true;
+      }
 
-          await PatientService.create({
-            patient: patientId,
-            appointment: newAppointment._id,
-            services: formattedServices,
-            assignedBy: req.user.id,
-            isDeleted: false
-          });
+      // Handle consents for existing user
+      if (!isNewUser) {
+        let existingConsents = [];
+        try {
+          existingConsents = patient.consents ? JSON.parse(patient.consents) : [];
+        } catch (e) {
+          existingConsents = [];
         }
-      } catch (serviceError) {
-        console.error("Error creating patient services:", serviceError);
+
+        const smsConsent = {
+          id: Date.now(),
+          text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
+          agreed: smsConsentAgreed,
+        };
+
+        const consentIndex = existingConsents.findIndex(
+          (c) => c.text === smsConsent.text
+        );
+
+        if (consentIndex === -1) {
+          // Consent doesn't exist, add it
+          existingConsents.push(smsConsent);
+        } else {
+          // Update existing consent's agreed status
+          existingConsents[consentIndex].agreed = smsConsentAgreed;
+        }
+
+        patient.smsConsentAgreed = smsConsentAgreed;
+        patient.consents = JSON.stringify(existingConsents);
+        await patient.save();
       }
     }
 
-    // Send SMS notification
-    let smsResult = null;
-    try {
-      const formattedDate = format(new Date(date), "dd.MM.yyyy");
-      const message = mode === "online" 
-        ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-        : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
-      
-      if (hasPatientConsentedToSMS(patientDetails)) {
+    // Create appointment
+    const appointment = new Appointment({
+      doctor: doctorId,
+      patient: patient._id,
+      bookedBy: patient._id,
+      date: appointmentDate,
+      startTime: time,
+      endTime: endTime,
+      duration: duration,
+      mode: consultationType.toLowerCase(),
+      notes: message || "",
+    });
+
+    await appointment.save();
+
+    // Send email only if valid email is provided
+    let emailSent = false;
+    if (patient.email) {
+      try {
+        await sendEmail({
+          to: patient.email,
+          subject: "Appointment Confirmation",
+          html: `
+            <h1>Appointment Confirmation</h1>
+            <p>Dear ${patient.name.first} ${patient.name.last},</p>
+            <p>Your appointment has been successfully booked.</p>
+            <p>Date: ${date}</p>
+            <p>Time: ${time}</p>
+            <p>Doctor: Dr. ${doctor.name.first} ${doctor.name.last}</p>
+            <p>Mode: ${consultationType}</p>
+            ${isNewUser ? `<p>Your temporary password is: ${temporaryPassword}</p>` : ''}
+          `,
+        });
+        emailSent = true;
+      } catch (emailError) {
+        console.error("Error sending email:", emailError);
+      }
+    }
+
+
+
+    if (patient.smsConsentAgreed) {
+      try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const message =
+          appointment.mode === "online"
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+
         const batchId = uuidv4();
         await MessageReceipt.create({
           content: message,
           batchId,
           recipient: {
-            userId: patientDetails._id.toString(),
-            phone: patientDetails.phone,
+            userId: patient._id.toString(),
+            phone: phone,
           },
           status: "PENDING",
         });
-        
-        smsResult = await sendSMS(patientDetails.phone, message);
-      }
-    } catch (smsError) {
-      console.error("Error sending appointment confirmation SMS:", smsError);
-    }
 
-    // Send email notification
-    try {
-  
-      
-      // Send email
-      try {
-        const formattedDate = format(new Date(date), "dd.MM.yyyy");
-        
-        // Email data
-        const emailData = {
-          patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
-          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-          date: formattedDate,
-          time: `${startTime} - ${endTime}`,
-          department: visitType || "General",
-          // meetingLink: consultationType.toLowerCase() === 'online' ? meetingLink : null,
-          notes: "" || "",
-          mode: "offline",
-          isNewUser: isNewlyCreated,
-          temporaryPassword: isNewlyCreated ? temporaryPassword : null,
-        };
-        
-        // Send email
-        await sendEmail({
-          to: patientDetails.email,
-          subject: "Your Appointment Confirmation",
-          html: createAppointmentEmailHtml(emailData),
-          // text: `Your appointment with Dr. ${doctorDetails.name.first} ${doctorDetails.name.last} has been scheduled for ${formattedDate} at ${time}. ${meetingLink ? `Join the meeting at: ${meetingLink}` : "The doctor's office will contact you with further instructions."}`
-        });
-        
-        console.log(`Appointment confirmation email sent to ${patientDetails.email}`);
-      } catch (emailError) {
-        console.error("Failed to send appointment email:", emailError);
-        // Continue with the response - don't fail the whole appointment just because email failed
+        smsResult = await sendSMS(phone, message);
+      } catch (smsError) {
+        console.error("Error sending appointment confirmation SMS:", smsError);
       }
-      console.log(`Appointment confirmation email sent to ${patientDetails.email}`);
-    } catch (emailError) {
-      console.error("Failed to send appointment email:", emailError);
-      // Continue with the response - don't fail the whole appointment just because email failed
     }
-
-    // Populate and return response
-    const populatedAppointment = await Appointment.findById(newAppointment._id)
-      .populate("doctor", "name email")
-      .populate("patient", "name email phone mobile")
-      .populate("bookedBy", "name email");
 
     res.status(201).json({
       success: true,
-      data: populatedAppointment,
-      notifications: {
-        sms: smsResult ? {
-          sent: smsResult.success,
-          error: smsResult.error
-        } : {
-          sent: false,
-          error: "SMS notification not sent - patient consent not given"
-        },
-        email: {
-          sent: true,
-          error: null
-        }
+      message: "Appointment created successfully",
+      data: {
+        appointment,
+        isNewUser,
+        temporaryPassword: isNewUser ? temporaryPassword : undefined,
+        emailSent,
       },
-      newPatientCreated: isNewlyCreated,
-      temporaryPassword: isNewlyCreated ? temporaryPassword : undefined
     });
-
   } catch (error) {
     console.error("Error creating appointment:", error);
     res.status(500).json({
@@ -540,8 +500,6 @@ exports.createAppointment = async (req, res) => {
     });
   }
 };
-
-
 
 // Helper function to create HTML email template for appointments
 // Function to create HTML email for appointment details

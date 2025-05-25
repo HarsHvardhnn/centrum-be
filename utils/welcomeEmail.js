@@ -121,8 +121,10 @@ W razie pytań prosimy o kontakt z naszym zespołem wsparcia.
 const   sendWelcomeEmail = async (userData, language = 'english') => {
   try {
     // Validate required user data
-    if (!userData.email || !userData.password) {
-      throw new Error('Email and password are required to send welcome email');
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    if (!emailRegex.test(userData.email)) {
+return
     }
 
     // Prepare user data with defaults

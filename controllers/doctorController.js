@@ -32,21 +32,63 @@ const addDoctor = async (req, res) => {
   try {
     const doctorData = req.body;
 
-    const existingDoctor = await User.findOne({ email: doctorData.email });
-    if (existingDoctor) {
+    // Remove leading zeros from phone number
+    const phoneNumber = doctorData.phone?.replace(/^0+/, '') || '';
+    
+    if (!phoneNumber) {
       return res.status(400).json({
         success: false,
-        message: "Doctor with this email already exists",
+        message: "Phone number is required",
       });
-    } 
+    }
+
+    // Check for existing doctor with same phone number
+    const existingDoctorByPhone = await User.findOne({ phone: phoneNumber });
+    if (existingDoctorByPhone) {
+      return res.status(409).json({
+        success: false,
+        message: "A doctor with this phone number already exists.",
+      });
+    }
+
+    // Email validation regex
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    // Handle email - check if it's actually provided and not "undefined"
+    const emailToSave = doctorData.email && doctorData.email !== "undefined" ? doctorData.email.trim() : "";
+    
+    if (!emailToSave) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    // Validate email format
+    if (!emailRegex.test(emailToSave)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+    }
+
+    // Check for existing doctor with same email
+    const existingDoctor = await User.findOne({ email: emailToSave });
+    if (existingDoctor) {
+      return res.status(409).json({
+        success: false,
+        message: "A doctor with this email already exists",
+      });
+    }
+
     // Create the base user document
     const userData = {
       name: {
         first: doctorData.name?.first || "",
         last: doctorData.name?.last || "",
       },
-      email: doctorData.email,
-      phone: doctorData.phone,
+      email: emailToSave,
+      phone: phoneNumber,
       specializations: doctorData.specializations,
       password: doctorData.password, // In production, this should be hashed
       role: "doctor", // This triggers the discriminator
@@ -82,7 +124,7 @@ const addDoctor = async (req, res) => {
       id: newDoctor.d_id,
       name: `${newDoctor.name.first} ${newDoctor.name.last}`,
       specialty: newDoctor.specialization[0] || "",
-      available: newDoctor.isAvailable, // This uses the virtual property from your schema
+      available: newDoctor.isAvailable,
       status: newDoctor.isAvailable ? "Available" : "Unavailable",
       experience: `${newDoctor.experience} years`,
       image: newDoctor.profilePicture,
@@ -956,10 +998,64 @@ const updateDoctor = async (req, res) => {
       });
     }
 
+    // Handle phone number update if provided
+    if (updateData.phone) {
+      // Remove leading zeros from phone number
+      const phoneNumber = updateData.phone.replace(/^0+/, '');
+      
+      // Check for uniqueness if phone is being changed
+      if (phoneNumber !== doctor.phone) {
+        const existingDoctorByPhone = await User.findOne({
+          phone: phoneNumber,
+          _id: { $ne: id }
+        });
+        if (existingDoctorByPhone) {
+          return res.status(409).json({
+            success: false,
+            message: "Another doctor with this phone number already exists.",
+          });
+        }
+        updateData.phone = phoneNumber;
+      }
+    }
+
+    // Handle email update if provided
+    if (updateData.email) {
+      // Email validation regex
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      
+      // Handle email - check if it's actually provided and not "undefined"
+      const emailToSave = updateData.email !== "undefined" ? updateData.email.trim() : doctor.email;
+      
+      // Validate email format
+      if (!emailRegex.test(emailToSave)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid email format",
+        });
+      }
+
+      // Check for uniqueness if email is being changed
+      if (emailToSave !== doctor.email) {
+        const existingDoctorByEmail = await User.findOne({
+          email: emailToSave,
+          _id: { $ne: id }
+        });
+        if (existingDoctorByEmail) {
+          return res.status(409).json({
+            success: false,
+            message: "Another doctor with this email already exists.",
+          });
+        }
+        updateData.email = emailToSave;
+      }
+    }
+
     // Update fields
     const allowedUpdates = [
       'name',
       'phone',
+      'email',
       'specialization',
       'qualifications',
       'experience',
