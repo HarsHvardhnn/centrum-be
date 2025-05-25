@@ -820,14 +820,16 @@ exports.getAppointmentsDashboard = async (req, res) => {
     const formattedAppointments = await Promise.all(
       appointments.map(async (appt) => {
         const doctorUser = appt.doctor;
+        console.log(doctorUser,"doctorUser");
         const doctorProfile = await doctor.findOne({
-          patients: doctorUser._id,
-        });
+          _id: doctorUser._id,
+        }).populate("specialization");
+        console.log(doctorProfile,"doctorProfile");
 
         return {
           id: appt._id,
           name: `Dr. ${doctorUser.name.first} ${doctorUser.name.last}`,
-          specialty: doctorProfile?.specialization?.[0] || "General",
+          specialty: doctorProfile?.specialization?.[0]?.name || "General",
           avatar: doctorUser.profilePicture || `/api/placeholder/40/40`,
           date: new Date(appt.date).toLocaleDateString("en-GB", {
             day: "2-digit",

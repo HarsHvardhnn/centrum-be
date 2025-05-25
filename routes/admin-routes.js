@@ -135,7 +135,7 @@ router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (r
 
     // Execute query with pagination and only select needed fields
     const users = await User.find(filter)
-      .select("name email phone role")
+      .select("name email phone role smsConsentAgreed")
       .sort(sortOptions)
       .skip(skip)
       .limit(limit)
@@ -155,6 +155,7 @@ router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (r
           email: user.email,
           phone: user.phone || "Not provided",
           role: user.role,
+          smsConsentAgreed: user.smsConsentAgreed,
         })),
         pagination: {
           page,
