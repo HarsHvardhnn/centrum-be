@@ -98,7 +98,7 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
         <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>
         <p style="color: #666; margin-bottom: 10px;">Dziękujemy za zaufanie!</p>
-        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - All rights reserved</p>
+        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 -  Wszelkie prawa zastrzeżone</p>
       </div>
     </div>
   `;
@@ -125,9 +125,8 @@ exports.bookAppointment = async (req, res) => {
     if (
       !date ||
       !doctorId ||
-      !email ||
+      !phone ||  // Changed to prioritize phone
       !name ||
-      !phone ||
       !time ||
       !consultationType
     ) {
@@ -135,6 +134,10 @@ exports.bookAppointment = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Missing required fields" });
     }
+
+    // Email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const isValidEmail = email ? emailRegex.test(email) : false;
 
     // Validate consultationType
     if (!["online", "offline"].includes(consultationType.toLowerCase())) {
@@ -191,11 +194,20 @@ exports.bookAppointment = async (req, res) => {
       });
     }
 
-    // Look for existing patient by email
+    // Look for existing patient by phone number first
     let patient = await User.findOne({
-      email: email.toLowerCase(),
+      phone: phone,
       role: "patient",
     });
+
+    // If not found by phone and email is valid, try finding by email
+    if (!patient && isValidEmail) {
+      patient = await User.findOne({
+        email: email.toLowerCase(),
+        role: "patient",
+      });
+    }
+
     let isNewUser = false;
     const temporaryPassword = "centrum123";
 
@@ -210,11 +222,24 @@ exports.bookAppointment = async (req, res) => {
     // If patient doesn't exist, create a new one
     if (!patient) {
       isNewUser = true;
-      patient = await User.findOne({
-        email: email.toLowerCase(),
-      });
 
-      if (!patient) {
+      // Double check for any existing user with either phone or email
+      const existingUserByPhone = await User.findOne({ phone: phone });
+      const existingUserByEmail = isValidEmail ? await User.findOne({ email: email.toLowerCase() }) : null;
+
+      if (existingUserByPhone) {
+        patient = existingUserByPhone;
+        isNewUser = false;
+      } else if (existingUserByEmail) {
+        patient = existingUserByEmail;
+        isNewUser = false;
+        // Update phone number if it doesn't exist
+        if (!patient.phone) {
+          patient.phone = phone;
+          await patient.save();
+        }
+      } else {
+        // Create new user if no existing user found
         const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
         patient = new User({
@@ -222,7 +247,7 @@ exports.bookAppointment = async (req, res) => {
             first: firstName,
             last: lastName || "",
           },
-          email: email.toLowerCase(),
+          email: isValidEmail ? email.toLowerCase() : null,
           sex:
             gender === "Male"
               ? "Male"
@@ -232,18 +257,24 @@ exports.bookAppointment = async (req, res) => {
           phone,
           password: hashedPassword,
           role: "patient",
-          signupMethod: "email",
+          signupMethod: "phone",
           smsConsentAgreed: smsConsentAgreed,
-          consents: JSON.stringify([smsConsent]),
+          consents: [smsConsent], // Store directly as array
         });
 
         try {
           await patient.save();
         } catch (saveError) {
           if (saveError.code === 11000) {
+            // If we get here, there might be a race condition or unique constraint violation
+            // Try one final lookup
             patient = await User.findOne({
-              email: email.toLowerCase(),
+              $or: [
+                { phone: phone },
+                ...(isValidEmail ? [{ email: email.toLowerCase() }] : [])
+              ]
             });
+            
             if (!patient) {
               throw saveError;
             }
@@ -252,20 +283,14 @@ exports.bookAppointment = async (req, res) => {
             throw saveError;
           }
         }
-      } else {
-        isNewUser = false;
       }
     }
 
     // Handle consents for existing user
     if (!isNewUser) {
-      let existingConsents = [];
-      try {
-        existingConsents = patient.consents ? JSON.parse(patient.consents) : [];
-      } catch (e) {
-        existingConsents = [];
-      }
-
+      // Ensure consents is always an array
+      const existingConsents = Array.isArray(patient.consents) ? patient.consents : [];
+      
       const consentIndex = existingConsents.findIndex(
         (c) => c.text === smsConsent.text
       );
@@ -279,7 +304,7 @@ exports.bookAppointment = async (req, res) => {
       }
 
       patient.smsConsentAgreed = smsConsentAgreed;
-      patient.consents = JSON.stringify(existingConsents);
+      patient.consents = existingConsents; // Store directly as array
       await patient.save();
     }
 
@@ -325,9 +350,7 @@ exports.bookAppointment = async (req, res) => {
             startTime: formattedDate,
             timezone: "Europe/Warsaw",
             participants: [
-              {
-                email: patient.email
-              },
+              ...(isValidEmail ? [{ email: patient.email }] : []),
               {
                 email: doctorDetails.email
               }
@@ -353,14 +376,14 @@ exports.bookAppointment = async (req, res) => {
       }
     }
 
-    // Send SMS notification without checking consent
+    // Send SMS notification if consent is agreed
     let smsResult = null;
     if (smsConsentAgreed) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. ${isValidEmail ? 'Link do wizyty otrzymaja Panstwo na adres e-mail.' : 'Prosimy o kontakt w celu otrzymania linku do wizyty.'}`
             : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
@@ -380,46 +403,49 @@ exports.bookAppointment = async (req, res) => {
       }
     }
 
-    // Send email to patient regardless of Google Calendar success/failure
-    try {
-      const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+    // Send email to patient only if email is valid
+    let emailSent = false;
+    if (isValidEmail && patient.email) {
+      try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
 
-      // Email data
-      const emailData = {
-        patientName: `${patient.name.first} ${patient.name.last}`,
-        doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-        date: formattedDate,
-        time: `${time} - ${endTime}`,
-        department: department || "General",
-        meetingLink:
-          consultationType.toLowerCase() === "online" ? meetingLink : null,
-        notes: message || "",
-        mode: consultationType.toLowerCase(),
-        isNewUser,
-        temporaryPassword: isNewUser ? temporaryPassword : null,
-      };
+        // Email data
+        const emailData = {
+          patientName: `${patient.name.first} ${patient.name.last}`,
+          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+          date: formattedDate,
+          time: `${time} - ${endTime}`,
+          department: department || "General",
+          meetingLink:
+            consultationType.toLowerCase() === "online" ? meetingLink : null,
+          notes: message || "",
+          mode: consultationType.toLowerCase(),
+          isNewUser,
+          temporaryPassword: isNewUser ? temporaryPassword : null,
+        };
 
-      // Send email
-      await sendEmail({
-        to: patient.email,
-        subject: "Potwierdzenie Wizyty",
-        html: createAppointmentEmailHtml(emailData),
-        text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
-          doctorDetails.name.last
-        } została zaplanowana na ${formattedDate} o godz ${time}. ${
-          meetingLink
-            ? `Dołącz do spotkania pod adresem: ${meetingLink}`
-            : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
-        }`,
-      });
+        // Send email
+        await sendEmail({
+          to: patient.email,
+          subject: "Potwierdzenie Wizyty",
+          html: createAppointmentEmailHtml(emailData),
+          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
+            doctorDetails.name.last
+          } została zaplanowana na ${formattedDate} o godz ${time}. ${
+            meetingLink
+              ? `Dołącz do spotkania pod adresem: ${meetingLink}`
+              : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
+          }`,
+        });
 
-      console.log(`Appointment confirmation email sent to ${patient.email}`);
-    } catch (emailError) {
-      console.error("Failed to send appointment email:", emailError);
-      // Continue with the response - don't fail the whole appointment just because email failed
+        console.log(`Appointment confirmation email sent to ${patient.email}`);
+        emailSent = true;
+      } catch (emailError) {
+        console.error("Failed to send appointment email:", emailError);
+      }
     }
 
-    // Return appropriate response based on consultation type and Google Meet creation result
+    // Return appropriate response based on consultation type and meeting creation result
     if (consultationType.toLowerCase() === "online") {
       if (meetingLink) {
         return res.status(201).json({
@@ -428,7 +454,7 @@ exports.bookAppointment = async (req, res) => {
           data: appointment,
           meetLink: meetingLink,
           isNewUser,
-          emailSent: true,
+          emailSent,
           notifications: {
             sms: smsResult
               ? {
@@ -448,7 +474,7 @@ exports.bookAppointment = async (req, res) => {
           data: appointment,
           isNewUser,
           calendarSetupNeeded: true,
-          emailSent: true,
+          emailSent,
           notifications: {
             sms: smsResult
               ? {
@@ -467,7 +493,7 @@ exports.bookAppointment = async (req, res) => {
           message: "Wizyta online została zarezerwowana, ale nie udało się utworzyć wydarzenia Zoho Meetings",
           data: appointment,
           isNewUser,
-          emailSent: true,
+          emailSent,
           notifications: {
             sms: smsResult
               ? {
@@ -487,7 +513,7 @@ exports.bookAppointment = async (req, res) => {
         message: "Wizyta stacjonarna została pomyślnie zarezerwowana",
         data: appointment,
         isNewUser,
-        emailSent: true,
+        emailSent,
         notifications: {
           sms: smsResult
             ? {

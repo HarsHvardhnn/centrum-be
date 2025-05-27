@@ -237,7 +237,7 @@ Thank you for choosing our services - Regards,Centrum Medyczne.
 exports.createAppointment = async (req, res) => {
   try {
     const {
-      date,
+      date,dob,
       doctorId,
       email,
       firstName,
@@ -295,7 +295,7 @@ exports.createAppointment = async (req, res) => {
     if (existingAppointment) {
       return res.status(409).json({
         success: false,
-        message: "There is already an appointment booked with this doctor at this time.",
+        message: "Jest już umówiona wizyta u tego lekarza w tym czasie.",
         conflict: true,
       });
     }
@@ -310,7 +310,7 @@ exports.createAppointment = async (req, res) => {
       if (!patient || patient.role !== "patient") {
         return res.status(404).json({
           success: false,
-          message: "Patient not found",
+          message: "Pacjent nie znaleziony",
         });
       }
     } else {
@@ -318,7 +318,7 @@ exports.createAppointment = async (req, res) => {
       if (!name || !phone) {
         return res.status(400).json({
           success: false,
-          message: "Name and phone are required for new patient",
+          message: "Wystąpił błąd",
         });
       }
 
@@ -335,7 +335,7 @@ exports.createAppointment = async (req, res) => {
       if (emailToSave && !emailRegex.test(emailToSave)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid email format",
+          message: "Nieprawidłowy format adresu e-mail",
         });
       }
 
@@ -370,12 +370,13 @@ exports.createAppointment = async (req, res) => {
           password: temporaryPassword,
           role: "patient",
           signupMethod: "email",
+          dateOfBirth:dob,
           smsConsentAgreed: smsConsentAgreed || false,
-          consents: JSON.stringify([{
+          consents: [{
             id: Date.now(),
             text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
             agreed: smsConsentAgreed || false,
-          }]),
+          }],
         });
 
         patient = await newPatient.save();
@@ -450,7 +451,7 @@ exports.createAppointment = async (req, res) => {
         });
         emailSent = true;
       } catch (emailError) {
-        console.error("Error sending email:", emailError);
+        console.error("Wystąpił błąd podczas wysyłania e-maila:", emailError);
       }
     }
 
@@ -477,13 +478,13 @@ exports.createAppointment = async (req, res) => {
 
         smsResult = await sendSMS(phone, message);
       } catch (smsError) {
-        console.error("Error sending appointment confirmation SMS:", smsError);
+        console.error("Wystąpił błąd podczas wysyłania powiadomienia SMS:", smsError);
       }
     }
 
     res.status(201).json({
       success: true,
-      message: "Appointment created successfully",
+      message: "Wizyta została umówiona pomyślnie",
       data: {
         appointment,
         isNewUser,
@@ -492,10 +493,10 @@ exports.createAppointment = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error creating appointment:", error);
+    console.error("Wystąpił błąd podczas tworzenia wizyty:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create appointment",
+      message: "Nie udało się utworzyć wizyty",
       error: error.message,
     });
   }
@@ -561,7 +562,7 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
         <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>
         <p style="color: #666; margin-bottom: 10px;">Dziękujemy za zaufanie!</p>
-        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - All rights reserved</p>
+        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - Wszelkie prawa zastrzeżone</p>
       </div>
     </div>
   `;

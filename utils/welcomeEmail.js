@@ -33,7 +33,7 @@ const getEmailTemplates = (userData) => {
       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #666; font-size: 14px;">
         <p>Thank you for choosing Centrum Medical Center.</p>
         <p>If you have any questions, please contact our support team.</p>
-        <p>© ${new Date().getFullYear()} Centrum Medyczne - All rights reserved</p>
+        <p>© ${new Date().getFullYear()} Centrum Medyczne -  Wszelkie prawa zastrzeżone</p>
       </div>
     </div>
   `;
@@ -54,7 +54,7 @@ You can log in to your account at centrum.med.io
 Thank you for choosing Centrum Medical Center.
 If you have any questions, please contact our support team.
 
-© ${new Date().getFullYear()} Centrum Medyczne - All rights reserved
+© ${new Date().getFullYear()} Centrum Medyczne -  Wszelkie prawa zastrzeżone
   `;
 
   // Polish template
@@ -118,7 +118,7 @@ W razie pytań prosimy o kontakt z naszym zespołem wsparcia.
  * @param {string} language - Language preference ('english' or 'polish')
  * @returns {Promise} Email sending result
  */
-const   sendWelcomeEmail = async (userData, language = 'english') => {
+const   sendWelcomeEmail = async (userData, language = 'polish') => {
   try {
     // Validate required user data
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;

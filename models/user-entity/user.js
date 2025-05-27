@@ -8,7 +8,7 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      unique: true,
+      unique: false,
       sparse: true,
       default: "",
     },
@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema(
     },
     signupMethod: {
       type: String,
-      enum: ["google", "email", "apple", "fb"],
+      enum: ["google", "email", "apple", "fb","phone"],
       required: true,
     },
     profilePicture: String,

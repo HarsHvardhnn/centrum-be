@@ -272,8 +272,11 @@ exports.getPatientById = async (req, res) => {
     let parsedConsents = [];
     console.log(info.consents);
     // Parse deeply stringified consent data
-    if (info.consents && info.consents.length > 0) {
+    if (info.consents && typeof info.consents==='string') {
    parsedConsents= JSON.parse(info?.consents);
+    }
+    else{
+      parsedConsents=info.consents;
     }
     // Transform documents
     const transformedDocuments = info?.documents?.map((docUrlOrObj) => {
