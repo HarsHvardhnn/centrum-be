@@ -67,9 +67,7 @@ exports.generateBill = async (req, res) => {
     
     if (appointment.mode === "online") {
       consultationCharges = copiedDoctor.onlineConsultationFee || 0;
-    } else {
-      consultationCharges = copiedDoctor.offlineConsultationFee || 0;
-    }
+    } 
     console.log(consultationCharges,"consultationCharges");
 
     // Create new bill
@@ -84,7 +82,7 @@ exports.generateBill = async (req, res) => {
       discount,
       additionalCharges,
       additionalChargeNote,
-      totalAmount:parseFloat(totalAmount) + parseFloat(consultationCharges),
+      totalAmount: parseFloat(totalAmount),
       paymentMethod,
       billedAt: new Date(),
       billedBy: req.user._id,
@@ -339,6 +337,35 @@ exports.updateBillPaymentStatus = async (req, res) => {
 
     await bill.save();
 
+    console.log(bill,"bill")
+    console.log(bill.invoiceUrl,"bill.invoiceUrl")
+    // If bill is marked as paid and doesn't have an invoice, generate one
+    if (paymentStatus === 'paid' && !bill.invoiceUrl) {
+      try {
+        // Create a mock request object for generateInvoice
+        const mockReq = {
+          params: { billId: bill._id }
+        };
+        const mockRes = {
+          status: (code) => ({
+            json: (data) => {
+              if (data.success && data.data?.invoiceUrl) {
+                bill.invoiceUrl = data.data.invoiceUrl;
+                // bill.invoiceId = data.data.billId;
+                bill.save();
+              }
+            }
+          })
+        };
+        
+        // Call generateInvoice
+        await exports.generateInvoice(mockReq, mockRes);
+      } catch (invoiceError) {
+        console.error("Error auto-generating invoice:", invoiceError);
+        // Don't fail the payment status update if invoice generation fails
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Bill payment status updated successfully",
@@ -477,7 +504,7 @@ exports.generateInvoice = async (req, res) => {
       })
       .populate({
         path: "appointment",
-        select: "date startTime endTime doctor consultation",
+        select: "date startTime endTime doctor consultation mode",
         populate: {
           path: "doctor",
           select: "name email",
@@ -512,7 +539,7 @@ exports.generateInvoice = async (req, res) => {
     // Replace forward slashes with underscores for filename safety
     const safeInvoiceId = nextId.replace(/\//g, '_');
     // Create a unique filename
-    const filename = `faktura_${safeInvoiceId}_${uuidv4()}.pdf`;
+    const filename = `faktura_${safeInvoiceId}}.pdf`;
     const tempFilePath = path.join(__dirname, "..", "temp", filename);
     
     // Make sure temp directory exists
@@ -554,7 +581,7 @@ exports.generateInvoice = async (req, res) => {
     addText("FAKTURA", 350, 40, { align: "right" });
     
     doc.fontSize(10).font('Helvetica');
-    addText(`Faktura Nr: ${bill._id}`, 350, 65, { align: "right" });
+    addText(`Faktura Nr: ${nextId}`, 350, 65, { align: "right" });
     addText(`Data: ${new Date(bill.billedAt).toLocaleDateString('pl-PL')}`, 350, 80, { align: "right" });
 
     // Move to next section
@@ -642,14 +669,7 @@ exports.generateInvoice = async (req, res) => {
     };
     
     // Add consultation charge as first item if present
-    if (bill.consultationCharges > 0) {
-      const consultationType = bill.appointment?.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni";
-      addText(consultationType, 50, y);
-      addText(`${bill.consultationCharges.toFixed(2)} PLN`, 350, y, { width: 90, align: "right" });
-      addText("zakonczony", 450, y, { width: 90, align: "right" });
-      y += 20;
-    }
-    
+ 
     bill.services.forEach((service) => {
       addText(service.title, 50, y);
       addText(`${service.price} PLN`, 350, y, { width: 90, align: "right" });
@@ -677,6 +697,15 @@ exports.generateInvoice = async (req, res) => {
     if (bill.discount > 0) {
       addText("Znizka:", 350, y, { width: 90, align: "right" });
       addText(`-${bill.discount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
+      y += 20;
+    }
+    
+    if ( bill.appointment?.mode === "online") {
+      console.log(bill.consultationCharges,"bill.consultationCharges")
+      const consultationType = "Konsultacja online";
+      addText(consultationType, 350, y, { width: 90, align: "right" });
+      // addText(`${bill.consultationCharges.toFixed(2)} PLN`, 350, y, { width: 90, align: "right" });
+      addText("OPŁACONO", 450, y, { width: 90, align: "right" });
       y += 20;
     }
     
