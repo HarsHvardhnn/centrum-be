@@ -793,7 +793,7 @@ exports.generateInvoice = async (req, res) => {
         const result = await cloudinary.uploader.upload(tempFilePath, {
           folder: "invoices",
           resource_type: "raw",
-          public_id:bill.invoiceId
+          public_id:bill.invoiceId?.replace(/\//g, '_')
         });
 
         // Remove the temp file
