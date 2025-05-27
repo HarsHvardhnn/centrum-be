@@ -431,27 +431,46 @@ exports.createAppointment = async (req, res) => {
 
     await appointment.save();
 
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     // Send email only if valid email is provided
     let emailSent = false;
-    if (patient.email) {
+    if (emailRegex.test(patient.email) && patient.email) {
       try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+
+        // Email data
+        const emailData = {
+          patientName: `${patient.name.first} ${patient.name.last}`,
+          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+          date: formattedDate,
+          time: `${time} - ${endTime}`,
+          department: doctorDetails.specialization || "General",
+          meetingLink:
+            consultationType.toLowerCase() === "online" ? meetingLink : null,
+          notes: message || "",
+          mode: consultationType.toLowerCase(),
+          isNewUser,
+          temporaryPassword: isNewUser ? temporaryPassword : null,
+        };
+
+        // Send email
         await sendEmail({
           to: patient.email,
-          subject: "Appointment Confirmation",
-          html: `
-            <h1>Appointment Confirmation</h1>
-            <p>Dear ${patient.name.first} ${patient.name.last},</p>
-            <p>Your appointment has been successfully booked.</p>
-            <p>Date: ${date}</p>
-            <p>Time: ${time}</p>
-            <p>Doctor: Dr. ${doctor.name.first} ${doctor.name.last}</p>
-            <p>Mode: ${consultationType}</p>
-            ${isNewUser ? `<p>Your temporary password is: ${temporaryPassword}</p>` : ''}
-          `,
+          subject: "Potwierdzenie Wizyty",
+          html: createAppointmentEmailHtml(emailData),
+          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
+            doctorDetails.name.last
+          } została zaplanowana na ${formattedDate} o godz ${time}. ${
+            false
+              ? `Dołącz do spotkania pod adresem: ${false}`
+              : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
+          }`,
         });
+
+        console.log(`Appointment confirmation email sent to ${patient.email}`);
         emailSent = true;
       } catch (emailError) {
-        console.error("Wystąpił błąd podczas wysyłania e-maila:", emailError);
+        console.error("Failed to send appointment email:", emailError);
       }
     }
 
@@ -1576,20 +1595,28 @@ exports.getAppointments = async (req, res) => {
           // Filter for unique patients when not in clinic IP mode
           const uniquePatients = new Map();
           
-          // Get only the most recent appointment for each patient
+          // Sort appointments by date first (newest to oldest)
+          appointmentsWithAge.sort((a, b) => new Date(b.date) - new Date(a.date));
+          
+          // Get only the latest appointment for each patient
           appointmentsWithAge.forEach(appointment => {
               const patientId = appointment.patient?.id;
               
               if (patientId) {
-                  // If patient not seen yet or this appointment is more recent (based on sort)
+                  // Store only the latest appointment (first one after sorting)
                   if (!uniquePatients.has(patientId)) {
                       uniquePatients.set(patientId, appointment);
                   }
               }
           });
           
-          // Convert map values back to array and apply pagination
+          // Convert map values back to array
           uniqueAppointments = Array.from(uniquePatients.values());
+          
+          // Sort unique appointments by date (newest to oldest)
+          uniqueAppointments.sort((a, b) => new Date(b.date) - new Date(a.date));
+          
+          // Apply pagination
           responseData = uniqueAppointments.slice(skip, skip + parseInt(limit));
       }
 

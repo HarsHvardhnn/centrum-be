@@ -9,13 +9,13 @@ const cloudinary = require("../utils/cloudinary");
 const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
 const { generateNextInvoiceId } = require("./invoiceName");
+const patientServices = require("../models/patientServices");
 
 // Generate a new bill for an appointment
 exports.generateBill = async (req, res) => {
   try {
     const { appointmentId } = req.params;
     const {
-      services,
       subtotal,
       taxPercentage,
       taxAmount,
@@ -27,6 +27,22 @@ exports.generateBill = async (req, res) => {
       notes,
     } = req.body;
 
+    const pat_services = await patientServices
+    .find({ appointment: appointmentId, isDeleted: false })
+    .populate("services.service")
+    .lean();
+  
+   let services_temp = pat_services.reduce((allServices, doc) => {
+      return allServices.concat(doc.services || []);
+    }, []);
+  // Extract all services from all documents
+  const services = (services_temp || []).map(serviceItem => ({
+    serviceId: serviceItem.service._id,
+    title: serviceItem.service?.title || "", // assuming 'name' field in Service model
+    price: serviceItem.service.price,
+    status: serviceItem.status
+  }));
+  console.log(services,"services")
     // Find appointment and check if it exists
     const appointment = await Appointment.findById(appointmentId).populate({
       path: "doctor",
@@ -57,10 +73,11 @@ exports.generateBill = async (req, res) => {
     if (existingBill) {
       return res.status(400).json({
         success: false,
-        message: "Bill already exists for this appointment",
+        message: "Faktura już istnieje dla tej wizyty",
       });
     }
 
+    const invoiceId=await generateNextInvoiceId();
  
     // Get consultation charges
     let consultationCharges = 0;
@@ -81,6 +98,7 @@ exports.generateBill = async (req, res) => {
       taxAmount,
       discount,
       additionalCharges,
+      invoiceId,
       additionalChargeNote,
       totalAmount: parseFloat(totalAmount),
       paymentMethod,
@@ -535,7 +553,7 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    const nextId = await generateNextInvoiceId();
+    const nextId = bill?.invoiceId || await generateNextInvoiceId();
     // Replace forward slashes with underscores for filename safety
     const safeInvoiceId = nextId.replace(/\//g, '_');
     // Create a unique filename
@@ -775,6 +793,7 @@ exports.generateInvoice = async (req, res) => {
         const result = await cloudinary.uploader.upload(tempFilePath, {
           folder: "invoices",
           resource_type: "raw",
+          public_id:bill.invoiceId
         });
 
         // Remove the temp file
