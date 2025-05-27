@@ -867,12 +867,12 @@ exports.getPatientDetailsAndReports = async (req, res) => {
     }
 
     // Format last checked date - use appointment date if available
-    let lastChecked = "Not available";
+    let lastChecked = "Nie nagrane";
     if (appointment && appointment.date) {
       const doctor = appointment.doctor
         ? `Dr. ${appointment.doctor.name.first} ${appointment.doctor.name.last}`
         : "Unknown doctor";
-      const date = new Date(appointment.date).toLocaleDateString("en-US", {
+      const date = new Date(appointment.date).toLocaleDateString("pl-PL", {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -881,10 +881,10 @@ exports.getPatientDetailsAndReports = async (req, res) => {
     } else if (patient.consultations && patient.consultations.consultationDate) {
       const doctor = patient.consultingDoctor
         ? `Dr. ${patient.consultingDoctor.name.first} ${patient.consultingDoctor.name.last}`
-        : "Unknown doctor";
+        : "Nie nagrane";
       const date = new Date(
         patient.consultations.consultationDate
-      ).toLocaleDateString("en-US", {
+      ).toLocaleDateString("pl-PL", {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -896,12 +896,12 @@ exports.getPatientDetailsAndReports = async (req, res) => {
     const healthData = appointment?.healthData || patient.healthData || {};
     
     // Format blood pressure
-    const bp = healthData.bloodPressure?.value || "Not recorded";
+    const bp = healthData.bloodPressure?.value || "Nie nagrane";
 
     // Get weight
     const weight = healthData.bodyWeight?.value 
       ? `${healthData.bodyWeight.value} kg` 
-      : "Not recorded";
+      : "Nie nagrane";
 
     // Format medications - use appointment data if available
     const medications = appointment?.medications 
@@ -913,8 +913,8 @@ exports.getPatientDetailsAndReports = async (req, res) => {
             ? `X ${Math.ceil(
                 (new Date(med.endDate) - new Date(med.startDate)) /
                   (1000 * 60 * 60 * 24)
-              )} Days`
-            : "As prescribed",
+              )} Dni`
+            : "Jak przepisano",
         }))
       : patient.medications
         ? patient.medications.map((med) => ({
@@ -925,8 +925,8 @@ exports.getPatientDetailsAndReports = async (req, res) => {
               ? `X ${Math.ceil(
                   (new Date(med.endDate) - new Date(med.startDate)) /
                     (1000 * 60 * 60 * 24)
-                )} Days`
-              : "As prescribed",
+                )} Dni`
+              : "Jak przepisano",
           }))
         : [];
 
@@ -941,22 +941,22 @@ exports.getPatientDetailsAndReports = async (req, res) => {
 
     // Format final response
     const formattedPatient = {
-      name: patient.name || "Unknown",
+      name: patient.name || "Nie nagrane",
       patientId:
         patient.patientId ||
         patient.hospId ||
         `#${patient._id.toString().slice(-8)}`,
       avatar: patient.profilePicture || null,
       email: patient.email,
-      phone: patient.phone || patient.phoneFormatted || "Not available",
+      phone: patient.phone || patient.phoneFormatted || "Niedostępny",
       lastChecked,
       prescription: appointment?.consultation || consultation
         ? `#${Date.now().toString().slice(-8)}`
-        : "Not available",
+        : "Niedostępny",
       weight,
       bp,
-      pulseRate: "Normal", // This doesn't seem to be in your model, so using a default
-      observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "No observations recorded",
+      pulseRate: "Normalny", // This doesn't seem to be in your model, so using a default
+      observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "Brak obserwacji",
       medications,
       reports,
       appointmentId: appointment?._id || null

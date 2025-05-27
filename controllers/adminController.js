@@ -102,11 +102,19 @@ exports.getAllNonAdminUsers = async (req, res) => {
     
 
     if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase().trim();
       query.$or = [
-        { "name.first": { $regex: searchTerm, $options: "i" } },
-        { "name.last": { $regex: searchTerm, $options: "i" } },
-        { email: { $regex: searchTerm, $options: "i" } },
-        { phone: { $regex: searchTerm, $options: "i" } },
+        { 
+          $expr: {
+            $regexMatch: {
+              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              regex: searchLower,
+              options: "i"
+            }
+          }
+        },
+        { email: { $regex: searchLower, $options: "i" } },
+        { phone: { $regex: searchLower, $options: "i" } }
       ];
     }
 

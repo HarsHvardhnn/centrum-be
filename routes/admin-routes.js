@@ -79,12 +79,13 @@ router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), u
 
 
 
-router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) => {
+router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (req, res) => {
   try {
     // Parse query parameters with defaults
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const sort = req.query.sort || "createdAt";
+    console.log("soqieryt",req.query)
     const order = req.query.order === "asc" ? 1 : -1;
     const search = req.query.search || "";
     const role = req.query.role || "";
@@ -106,12 +107,22 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
       filter.role = role;
     }
 
+    console.log("search",search)
     // Add search filter if provided
     if (search) {
+      console.log("search",search)
+      const searchLower = search.toLowerCase().trim();
       filter.$or = [
-        { "name.first": { $regex: search, $options: "i" } },
-        { "name.last": { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
+        { 
+          $expr: {
+            $regexMatch: {
+              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              regex: searchLower,
+              options: "i"
+            }
+          }
+        },
+        { email: { $regex: searchLower, $options: "i" } }
       ];
     }
 
@@ -124,7 +135,7 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
 
     // Execute query with pagination and only select needed fields
     const users = await User.find(filter)
-      .select("name email phone role")
+      .select("name email phone role smsConsentAgreed")
       .sort(sortOptions)
       .skip(skip)
       .limit(limit)
@@ -144,6 +155,7 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
           email: user.email,
           phone: user.phone || "Not provided",
           role: user.role,
+          smsConsentAgreed: user.smsConsentAgreed,
         })),
         pagination: {
           page,
