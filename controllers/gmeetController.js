@@ -330,8 +330,9 @@ exports.bookAppointment = async (req, res) => {
     // Create Zoho Meeting event only for online consultations
     if (consultationType.toLowerCase() === "online") {
       try {
+        const adminUser = await User.findOne({ role: "admin" });
         // Get meetings client with fresh token
-        const meetingsClient = await getMeetingsClient(doctorDetails._id);
+        const meetingsClient = await getMeetingsClient(adminUser._id);
 
         // Convert appointment time to Polish timezone
         const appointmentDateTime = new Date(appointmentDate);
