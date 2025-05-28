@@ -550,7 +550,7 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
       </div>
       
       <div style="margin-bottom: 30px;">
-        <h2 style="color: #333; margin-bottom: 5px;">Appointment Confirmation | Potwierdzenie Wizyty</h2>
+        <h2 style="color: #333; margin-bottom: 5px;"> Potwierdzenie Wizyty</h2>
         <p style="color: #666; font-size: 16px; margin-top: 0;">Twoja wizyta została umówiona pomyślnie.</p>
       </div>
       
@@ -1483,15 +1483,29 @@ exports.getAppointments = async (req, res) => {
           query.doctor = doctorId;
       }
 
-      // Add offline mode filter for isClinicIp=true
-      // if (isClinicIp === 'true') {
-      //     query.mode = 'offline';
-      // }
-
       // Search by patient name or disease
       if (searchTerm) {
           query.$or = [
               { 'mainComplaint': { $regex: searchTerm, $options: 'i' } }
+          ];
+
+          // Add lookup pipeline for patient fields
+          const patientLookup = {
+              $lookup: {
+                  from: 'users',
+                  localField: 'patient',
+                  foreignField: '_id',
+                  as: 'patientData'
+              }
+          };
+
+          // Add match conditions for patient fields
+          query.$or = [
+              { 'mainComplaint': { $regex: searchTerm, $options: 'i' } },
+              { 'patientData.name.first': { $regex: searchTerm, $options: 'i' } },
+              { 'patientData.name.last': { $regex: searchTerm, $options: 'i' } },
+              { 'patientData.email': { $regex: searchTerm, $options: 'i' } },
+              { 'patientData.phone': { $regex: searchTerm, $options: 'i' } }
           ];
       }
 
@@ -1499,139 +1513,251 @@ exports.getAppointments = async (req, res) => {
       const sortObject = {};
       sortObject[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-      // Get appointments
-      let appointments = await Appointment.find(query)
-          .populate({
-              path: 'patient',
-              select: 'name email profilePicture sex dateOfBirth mainComplaint patientId status phone'
-          })
-          .populate({
-              path: 'doctor',
-              select: 'name email'
-          })
-          .sort(sortObject)
-          .lean();
-
-      // Process appointments data
-      let appointmentsWithAge = appointments.map(appointment => {
-          const patientData = appointment.patient;
-          let age = null;
-          if (patientData?.dateOfBirth) {
-              const today = new Date();
-              const birthDate = new Date(patientData.dateOfBirth);
-              age = today.getFullYear() - birthDate.getFullYear();
-              const monthDiff = today.getMonth() - birthDate.getMonth();
-              if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-                  age--;
-              }
-          }
-
-          return {
-              id: appointment._id,
-              date: appointment.date,
-              startTime: appointment.startTime,
-              endTime: appointment.endTime,
-              meetLink: appointment?.joining_link || "",
-              status: appointment.status,
-              mode: appointment.mode,
-              checkIn: appointment.checkedIn,
-              checkInDate: appointment.checkInDate,
-              patient: {
-                  patient_status: patientData?.status,  
-                  id: patientData?._id,
-                  patientId: patientData?.patientId,
-                  name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
-                  sex: patientData?.sex,
-                  age: age,
-                  phoneNumber: patientData?.phone,
-                  profilePicture: patientData?.profilePicture || null,
-                  email: patientData?.email
-              },
-              doctor: appointment.doctor ? {
-                  id: appointment.doctor._id,
-                  name: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
-                  email: appointment.doctor.email
-              } : null,
-              metadata: appointment.metadata || {}
-          };
-      });
-
-      // Calculate total before any filtering
-      const total = await Appointment.countDocuments(query);
-      
-      // Calculate skip for pagination
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      
       let responseData;
       let uniqueAppointments = [];  // Define it here so it's always available
       
       // Handle isClinicIp=true case - Group by date but keep response format the same
       if (isClinicIp === 'true') {
-          // First, group by date for organization
+          // Get appointments using aggregation pipeline for better search
+          let appointmentsPipeline = [
+              // First lookup to get patient details
+              {
+                  $lookup: {
+                      from: 'users',
+                      localField: 'patient',
+                      foreignField: '_id',
+                      as: 'patientData'
+                  }
+              },
+              // Unwind the patient data array
+              {
+                  $unwind: '$patientData'
+              },
+              // Lookup to get doctor details
+              {
+                  $lookup: {
+                      from: 'users',
+                      localField: 'doctor',
+                      foreignField: '_id',
+                      as: 'doctorData'
+                  }
+              },
+              {
+                  $unwind: '$doctorData'
+              }
+          ];
+
+          // Add base query conditions if they exist
+          if (Object.keys(query).length > 0) {
+              appointmentsPipeline.push({
+                  $match: query
+              });
+          }
+
+          // Add search conditions if searchTerm exists
+          if (searchTerm) {
+              appointmentsPipeline.push({
+                  $match: {
+                      $or: [
+                          // Patient name search (first and last)
+                          { 'patientData.name.first': { $regex: searchTerm, $options: 'i' } },
+                          { 'patientData.name.last': { $regex: searchTerm, $options: 'i' } },
+                          // Full name search (combined first and last)
+                          {
+                              $expr: {
+                                  $regexMatch: {
+                                      input: { $concat: ['$patientData.name.first', ' ', '$patientData.name.last'] },
+                                      regex: searchTerm,
+                                      options: 'i'
+                                  }
+                              }
+                          },
+                          // Patient contact details
+                          { 'patientData.email': { $regex: searchTerm, $options: 'i' } },
+                          { 'patientData.phone': { $regex: searchTerm, $options: 'i' } },
+                          // Patient ID
+                          { 'patientData.patientId': { $regex: searchTerm, $options: 'i' } },
+                          // Appointment details
+                          { 'notes': { $regex: searchTerm, $options: 'i' } },
+                          { 'consultation.consultationNotes': { $regex: searchTerm, $options: 'i' } },
+                          { 'consultation.description': { $regex: searchTerm, $options: 'i' } },
+                          { 'consultation.interview': { $regex: searchTerm, $options: 'i' } },
+                          { 'consultation.physicalExamination': { $regex: searchTerm, $options: 'i' } },
+                          { 'consultation.treatment': { $regex: searchTerm, $options: 'i' } },
+                          { 'consultation.recommendations': { $regex: searchTerm, $options: 'i' } }
+                      ]
+                  }
+              });
+          }
+
+          // Add sorting
+          appointmentsPipeline.push({ $sort: sortObject });
+
+          let appointments = await Appointment.aggregate(appointmentsPipeline);
+
+          // Process appointments data
+          let appointmentsWithAge = appointments.map(appointment => {
+              const patientData = appointment.patientData;
+              let age = null;
+              if (patientData?.dateOfBirth) {
+                  const today = new Date();
+                  const birthDate = new Date(patientData.dateOfBirth);
+                  age = today.getFullYear() - birthDate.getFullYear();
+                  const monthDiff = today.getMonth() - birthDate.getMonth();
+                  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                      age--;
+                  }
+              }
+
+              return {
+                  id: appointment._id,
+                  date: appointment.date,
+                  startTime: appointment.startTime,
+                  endTime: appointment.endTime,
+                  meetLink: appointment?.joining_link || "",
+                  status: appointment.status,
+                  mode: appointment.mode,
+                  checkIn: appointment.checkedIn,
+                  checkInDate: appointment.checkInDate,
+                  patient: {
+                      patient_status: patientData?.status,
+                      id: patientData?._id,
+                      patientId: patientData?.patientId,
+                      name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
+                      sex: patientData?.sex,
+                      age: age,
+                      phoneNumber: patientData?.phone,
+                      profilePicture: patientData?.profilePicture || null,
+                      email: patientData?.email
+                  },
+                  doctor: appointment.doctorData ? {
+                      id: appointment.doctorData._id,
+                      name: `${appointment.doctorData.name.first} ${appointment.doctorData.name.last}`,
+                      email: appointment.doctorData.email
+                  } : null,
+                  metadata: appointment.metadata || {}
+              };
+          });
+
+          // Group by date and apply pagination
           const groupedByDate = {};
-          
           appointmentsWithAge.forEach(appointment => {
-              // Format date as YYYY-MM-DD for grouping
               const appointmentDate = new Date(appointment.date);
               const dateKey = appointmentDate.toISOString().split('T')[0];
-              
               if (!groupedByDate[dateKey]) {
                   groupedByDate[dateKey] = [];
               }
-              
-              // Add a dateGroup field to each appointment
               appointment.dateGroup = dateKey;
               groupedByDate[dateKey].push(appointment);
           });
-          
-          // Flatten back into array but now sorted by date first
+
           const sortedAppointments = Object.keys(groupedByDate)
               .sort((a, b) => sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b))
               .flatMap(date => groupedByDate[date]);
-          
-          // Apply pagination after grouping
+
+          const skip = (parseInt(page) - 1) * parseInt(limit);
           responseData = sortedAppointments.slice(skip, skip + parseInt(limit));
-      } else {
-          // Filter for unique patients when not in clinic IP mode
-          const uniquePatients = new Map();
-          
-          // Sort appointments by date first (newest to oldest)
-          appointmentsWithAge.sort((a, b) => new Date(b.date) - new Date(a.date));
-          
-          // Get only the latest appointment for each patient
-          appointmentsWithAge.forEach(appointment => {
-              const patientId = appointment.patient?.id;
-              
-              if (patientId) {
-                  // Store only the latest appointment (first one after sorting)
-                  if (!uniquePatients.has(patientId)) {
-                      uniquePatients.set(patientId, appointment);
-                  }
+
+          const total = sortedAppointments.length;
+
+          return res.status(200).json({
+              success: true,
+              data: responseData,
+              pagination: {
+                  total: total,
+                  page: parseInt(page),
+                  pages: Math.ceil(total / parseInt(limit)),
+                  limit: parseInt(limit)
               }
           });
-          
-          // Convert map values back to array
-          uniqueAppointments = Array.from(uniquePatients.values());
-          
-          // Sort unique appointments by date (newest to oldest)
-          uniqueAppointments.sort((a, b) => new Date(b.date) - new Date(a.date));
+      } else {
+          // For non-clinic mode, get all patients
+          const patients = await user.find({ role: 'patient' })
+              .select('name email profilePicture sex dateOfBirth patientId status phone')
+              .sort({ 'name.first': 1 })
+              .lean();
+
+          // Get all appointments for reference
+          const allAppointments = await Appointment.find({})
+              .populate('doctor', 'name email')
+              .sort({ date: -1 })
+              .lean();
+
+          // Create a map of patient ID to their latest appointment
+          const patientAppointmentMap = new Map();
+          allAppointments.forEach(appointment => {
+              const patientId = appointment.patient?.toString();
+              if (patientId && !patientAppointmentMap.has(patientId)) {
+                  patientAppointmentMap.set(patientId, appointment);
+              }
+          });
+
+          // Process all patients
+          const processedPatients = patients.map(patient => {
+              let age = null;
+              if (patient?.dateOfBirth) {
+                  const today = new Date();
+                  const birthDate = new Date(patient.dateOfBirth);
+                  age = today.getFullYear() - birthDate.getFullYear();
+                  const monthDiff = today.getMonth() - birthDate.getMonth();
+                  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                      age--;
+                  }
+              }
+
+              const latestAppointment = patientAppointmentMap.get(patient._id.toString());
+
+              return {
+                  id: latestAppointment?._id || Math.random().toString(36).substr(2, 9),
+                  date: latestAppointment?.date || new Date(),
+                  startTime: latestAppointment?.startTime || "00:00",
+                  endTime: latestAppointment?.endTime || "00:00",
+                  meetLink: latestAppointment?.joining_link || "",
+                  status: latestAppointment?.status || "no_appointment",
+                  mode: latestAppointment?.mode || "none",
+                  checkIn: latestAppointment?.checkedIn || false,
+                  checkInDate: latestAppointment?.checkInDate || null,
+                  isAppointment: !!latestAppointment,
+                  patient: {
+                      patient_status: patient.status,
+                      id: patient._id,
+                      patientId: patient.patientId,
+                      name: `${patient.name.first} ${patient.name.last}`,
+                      sex: patient.sex,
+                      age: age,
+                      phoneNumber: patient.phone,
+                      profilePicture: patient.profilePicture || null,
+                      email: patient.email
+                  },
+                  doctor: latestAppointment?.doctor ? {
+                      id: latestAppointment.doctor._id,
+                      name: `${latestAppointment.doctor.name.first} ${latestAppointment.doctor.name.last}`,
+                      email: latestAppointment.doctor.email
+                  } : null,
+                  metadata: latestAppointment?.metadata || {}
+              };
+          });
+
+          // Sort by date (newest to oldest)
+          processedPatients.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+          // Calculate skip for pagination
+          const skip = (parseInt(page) - 1) * parseInt(limit);
           
           // Apply pagination
-          responseData = uniqueAppointments.slice(skip, skip + parseInt(limit));
-      }
+          responseData = processedPatients.slice(skip, skip + parseInt(limit));
 
-      res.status(200).json({
-          success: true,
-          data: responseData,
-          pagination: {
-              total: isClinicIp === 'true' ? total : uniqueAppointments.length,
-              page: parseInt(page),
-              pages: isClinicIp === 'true' 
-                  ? Math.ceil(total / parseInt(limit)) 
-                  : Math.ceil(uniqueAppointments.length / parseInt(limit)),
-              limit: parseInt(limit)
-          }
-      });
+          return res.status(200).json({
+              success: true,
+              data: responseData,
+              pagination: {
+                  total: processedPatients.length,
+                  page: parseInt(page),
+                  pages: Math.ceil(processedPatients.length / parseInt(limit)),
+                  limit: parseInt(limit)
+              }
+          });
+      }
 
   } catch (error) {
       console.error('Error fetching appointments:', error);

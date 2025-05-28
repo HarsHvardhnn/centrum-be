@@ -10,7 +10,7 @@ exports.createContact = async (req, res) => {
     if (!name || !email || !subject || !message) {
       return res.status(400).json({
         success: false,
-        message: "Please provide all required fields"
+        message: "Proszę podać wszystkie wymagane pola"
       });
     }
 
@@ -23,14 +23,14 @@ exports.createContact = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Contact message sent successfully",
+      message: "Wiadomość kontaktowa wysłana pomyślnie",
       data: contact
     });
   } catch (error) {
-    console.error("Error creating contact message:", error);
+    console.error("Błąd podczas tworzenia wiadomości kontaktowej:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to send contact message",
+      message: "Nie udało się wysłać wiadomości kontaktowej",
       error: error.message
     });
   }
@@ -97,7 +97,7 @@ exports.getAllContacts = async (req, res) => {
     console.error("Error fetching contact messages:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch contact messages",
+      message: "Nie udało się pobrać wiadomości kontaktowych",
       error: error.message
     });
   }
@@ -111,7 +111,7 @@ exports.getContactById = async (req, res) => {
     if (!contact) {
       return res.status(404).json({
         success: false,
-        message: "Contact message not found"
+        message: "Wiadomość kontaktowa nie znaleziona"
       });
     }
 
@@ -123,7 +123,7 @@ exports.getContactById = async (req, res) => {
     console.error("Error fetching contact message:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch contact message",
+      message: "Nie udało się pobrać wiadomości kontaktowej",
       error: error.message
     });
   }
@@ -137,7 +137,7 @@ exports.updateContactStatus = async (req, res) => {
     if (!status || !["new", "read", "replied"].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Please provide a valid status"
+        message: "Proszę podać poprawny status"
       });
     }
 
@@ -150,20 +150,20 @@ exports.updateContactStatus = async (req, res) => {
     if (!contact) {
       return res.status(404).json({
         success: false,
-        message: "Contact message not found"
+        message: "Wiadomość kontaktowa nie znaleziona"
       });
     }
 
     res.status(200).json({
       success: true,
-      message: "Contact message status updated successfully",
+      message: "Status wiadomości kontaktowej zaktualizowany pomyślnie",
       data: contact
     });
   } catch (error) {
     console.error("Error updating contact message:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update contact message",
+      message: "Nie udało się zaktualizować wiadomości kontaktowej",
       error: error.message
     });
   }
@@ -177,19 +177,19 @@ exports.deleteContact = async (req, res) => {
     if (!contact) {
       return res.status(404).json({
         success: false,
-        message: "Contact message not found"
+        message: "Wiadomość kontaktowa nie znaleziona"
       });
     }
 
     res.status(200).json({
       success: true,
-      message: "Contact message deleted successfully"
+      message: "Wiadomość kontaktowa usunięta pomyślnie"
     });
   } catch (error) {
     console.error("Error deleting contact message:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to delete contact message",
+      message: "Nie udało się usunąć wiadomości kontaktowej",
       error: error.message
     });
   }

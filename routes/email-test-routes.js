@@ -11,7 +11,7 @@ router.post("/test", async (req, res) => {
     if (!to || !subject) {
       return res.status(400).json({
         success: false,
-        message: "Please provide 'to' and 'subject' fields"
+        message: "Proszę podać pola 'do' i 'temat'"
       });
     }
 
@@ -19,20 +19,20 @@ router.post("/test", async (req, res) => {
     const info = await sendEmail({
       to,
       subject,
-      text: text || "This is a test email",
-      html: html || "<p>This is a test email</p>"
+      text: text || "To jest testowy email",
+      html: html || "<p>To jest testowy email</p>"
     });
 
     res.status(200).json({
       success: true,
-      message: "Email sent successfully",
+      message: "Email wysłany pomyślnie",
       messageId: info.messageId
     });
   } catch (error) {
     console.error("Email test error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to send email",
+      message: "Nie udało się wysłać emaila",
       error: error.message
     });
   }

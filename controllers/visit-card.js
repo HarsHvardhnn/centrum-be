@@ -41,7 +41,7 @@ exports.generateVisitCard = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid appointment ID format",
+        message: "Nieprawidłowy format ID wizyty",
       });
     }
 
@@ -54,7 +54,7 @@ exports.generateVisitCard = async (req, res) => {
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found",
+        message: "Wizyta nie znaleziona",
       });
     }
 
@@ -63,7 +63,7 @@ exports.generateVisitCard = async (req, res) => {
     if (!patient) {
       return res.status(404).json({
         success: false,
-        message: "Patient not found in appointment",
+        message: "Pacjent nie znaleziony w wizycie",
       });
     }
 
@@ -92,7 +92,7 @@ exports.generateVisitCard = async (req, res) => {
         Title: normalizePolishText(`karta_wizyty_[${patient.name?.first || ""} ${
           patient.name?.last || ""
         }][${visitDate}]_CM7`),
-        Author: "Hospital Management System",
+        Author: "Centrum Medyczne 7",
       },
     });
 
@@ -130,15 +130,15 @@ exports.generateVisitCard = async (req, res) => {
     // Get patient's date of birth
     const dob = patient.dateOfBirth
       ? new Date(patient.dateOfBirth).toLocaleDateString("en-GB")
-      : "Not provided";
+      : "Nie dostarczone";
 
     // Get patient's address
     const address = patient.address
       ? `${patient.address}, ${patient.city || ""} ${patient.pinCode || ""}`
-      : "Not provided";
+      : "Nie dostarczone";
 
     // Get patient's phone
-    const phone = patient.phone || patient.phoneFormatted || "Not provided";
+    const phone = patient.phone || patient.phoneFormatted || "Nie dostarczone";
 
     // Add logo
     if (fs.existsSync(logoPath)) {
@@ -192,7 +192,7 @@ exports.generateVisitCard = async (req, res) => {
     doc.x = rightColumnX;
     doc.y = headerStartY;
     
-    addText(`Imie i nazwisko: ${patientName}`, { 
+    addText(`Imię i nazwisko: ${patientName}`, { 
       width: columnWidth,
       continued: false 
     });
@@ -256,28 +256,28 @@ exports.generateVisitCard = async (req, res) => {
 
     // Add each section
     addSection(
-      "Interview with the patient/ Wywiad z pacjentem",
-      consultationData.interview || "No interview data available"
+      "Wywiad z pacjentem",
+      consultationData.interview || "Brak danych wywiadu"
     );
     
     addSection(
-      "Physical examination/ Badanie przedmiotowe",
-      consultationData.physicalExamination || "No examination data available"
+      "Badanie przedmiotowe",
+      consultationData.physicalExamination || "Brak danych badania"
     );
     
     addSection(
-      "The treatment used/ Zastosowane leczenie",
-      consultationData.treatment || "No treatment data available"
+      "Zastosowane leczenie",
+      consultationData.treatment || "Brak danych leczenia"
     );
     
     addSection(
-      "Recommendations/ Zalecenia",
-      consultationData.recommendations || "No recommendations available"
+      "Zalecenia",
+      consultationData.recommendations || "Brak zaleceń"
     );
     
     addSection(
-      "Notes/ Notatki",
-      consultationData.description || "No notes available"
+      "Notatki",
+      consultationData.description || "Brak notatek"
     );
 
     // Finalize the PDF
@@ -300,7 +300,9 @@ exports.generateVisitCard = async (req, res) => {
           use_filename: true,
           unique_filename: true,
           access_mode:"public",
-          public_id: filename.replace(".pdf", ""),
+          public_id: `karta_wizyty_[${patient.name?.first || ""} ${
+          patient.name?.last || ""
+        }][${visitDate}]_CM7`,
           format: "pdf",
         },
         (error, result) => {
@@ -315,11 +317,11 @@ exports.generateVisitCard = async (req, res) => {
 
     // Create a report for the appointment
     const newReport = {
-      name: `Visit Card - ${visitDate}`,
-      type: "Visit Card",
+      name: `Karta wizyty - ${visitDate}`,
+      type: "visit-card",
       fileUrl: result.secure_url,
       fileType: "pdf",
-      description: `Visit card generated for appointment on ${visitDate}`,
+      description: `Karta wizyty wygenerowana dla wizyty z dnia ${visitDate}`,
       uploadedAt: new Date(),
       metadata: {
         originalName: filename,
@@ -357,7 +359,7 @@ exports.generateVisitCard = async (req, res) => {
     // Return the download URL
     return res.status(200).json({
       success: true,
-      message: "Visit card generated successfully",
+      message: "Karta wizyty wygenerowana pomyślnie",
       data: {
         url: result.secure_url,
         reportId: appointment.reports[appointment.reports.length - 1]._id,
@@ -368,11 +370,414 @@ exports.generateVisitCard = async (req, res) => {
     console.error("Error generating visit card:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to generate visit card",
+      message: "Nie udało się wygenerować karty wizyty",
       error: error.message,
     });
   }
 };
+
+
+// exports.generateVisitCard = async (req, res) => {
+//   try {
+
+//     // Get appointment ID from parameters
+//     const appointmentId = req.params.appointmentId;
+
+//     if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid appointment ID format",
+//       });
+//     }
+
+//     // Find the appointment with populated patient and doctor data
+//     const appointment = await Appointment.findById(appointmentId)
+//       .populate("patient", "name dateOfBirth address city pinCode phone phoneFormatted documents")
+//       .populate("doctor", "name.first name.last")
+//       .exec();
+
+//     if (!appointment) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Appointment not found",
+//       });
+//     }
+
+//     // Get the patient from appointment
+//     const patient = appointment.patient;
+//     if (!patient) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Patient not found in appointment",
+//       });
+//     }
+
+//     const visitDate = appointment.date
+//       ? new Date(appointment.date).toLocaleDateString("pl-PL")
+//       : new Date().toLocaleDateString("pl-PL");
+
+//     // Get consultation data from appointment
+//     const consultationData = appointment.consultation || {};
+
+//     // Create a unique filename
+//     const filename = `visit_card_${patient._id}_${uuidv4()}.pdf`;
+//     const tempFilePath = path.join(__dirname, "..", "temp", filename);
+
+//     // Make sure temp directory exists
+//     const tempDir = path.join(__dirname, "..", "temp");
+//     if (!fs.existsSync(tempDir)) {
+//       fs.mkdirSync(tempDir, { recursive: true });
+//     }
+
+//     // Format visit time
+//     const visitTime = appointment.startTime || 
+//       new Date().toLocaleTimeString("pl-PL", {
+//         hour: "2-digit",
+//         minute: "2-digit",
+//       });
+
+//     // Get doctor's name
+//     let doctorName = "Dr. ";
+//     if (appointment.doctor) {
+//       doctorName += `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
+//     } else {
+//       doctorName += req.user.name.first + " " + req.user.name.last;
+//     }
+
+//     // Get patient's full name
+//     const patientName = `${patient.name?.first || ""} ${patient.name?.last || ""}`.trim();
+
+//     // Get patient's date of birth
+//     const dob = patient.dateOfBirth
+//       ? new Date(patient.dateOfBirth).toLocaleDateString("pl-PL")
+//       : "Nie podano";
+
+//     // Get patient's address
+//     const address = patient.address
+//       ? `${patient.address}, ${patient.city || ""} ${patient.pinCode || ""}`
+//       : "Nie podano";
+
+//     // Get patient's phone
+//     const phone = patient.phone || patient.phoneFormatted || "Nie podano";
+
+//     // Load logo as base64
+//     const logoPath = path.join(__dirname, "../public/logo_new.png");
+//     let logoBase64 = '';
+//     if (fs.existsSync(logoPath)) {
+//       const logoBuffer = fs.readFileSync(logoPath);
+//       logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+//     }
+
+//     // Create HTML content
+//     const htmlContent = `
+//     <!DOCTYPE html>
+//     <html lang="pl">
+//     <head>
+//         <meta charset="UTF-8">
+//         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+//         <title>Karta Wizyty - ${patientName} - ${visitDate}</title>
+//         <style>
+//             @page {
+//                 size: A4;
+//                 margin: 50px;
+//             }
+            
+//             * {
+//                 margin: 0;
+//                 padding: 0;
+//                 box-sizing: border-box;
+//             }
+            
+//             body {
+//                 font-family: 'Arial', sans-serif;
+//                 font-size: 10px;
+//                 line-height: 1.4;
+//                 color: #000;
+//                 background: white;
+//             }
+            
+//             .container {
+//                 width: 100%;
+//                 max-width: 100%;
+//             }
+            
+//             .logo-section {
+//                 text-align: center;
+//                 margin-bottom: 30px;
+//                 padding-top: 20px;
+//             }
+            
+//             .logo {
+//                 max-width: 160px;
+//                 height: auto;
+//             }
+            
+//             .header-section {
+//                 display: flex;
+//                 justify-content: space-between;
+//                 margin-bottom: 40px;
+//                 gap: 20px;
+//             }
+            
+//             .header-column {
+//                 flex: 1;
+//             }
+            
+//             .header-item {
+//                 margin-bottom: 8px;
+//             }
+            
+//             .title {
+//                 font-size: 16px;
+//                 font-weight: bold;
+//                 text-align: center;
+//                 margin: 40px 0;
+//             }
+            
+//             .section {
+//                 margin-bottom: 25px;
+//                 page-break-inside: avoid;
+//             }
+            
+//             .section-title {
+//                 font-weight: bold;
+//                 font-size: 11px;
+//                 margin-bottom: 5px;
+//                 color: #000;
+//             }
+            
+//             .section-content {
+//                 font-size: 11px;
+//                 line-height: 1.5;
+//                 text-align: justify;
+//                 min-height: 20px;
+//             }
+            
+//             .page-break {
+//                 page-break-before: always;
+//             }
+//         </style>
+//     </head>
+//     <body>
+//         <div class="container">
+//             <!-- Logo Section -->
+//             <div class="logo-section">
+//                 ${logoBase64 ? `<img src="${logoBase64}" class="logo" alt="Logo">` : '<div style="font-size: 20px; font-weight: bold;">Centrum Medyczne</div>'}
+//             </div>
+            
+//             <!-- Header Section -->
+//             <div class="header-section">
+//                 <div class="header-column">
+//                     <div class="header-item">Data wizyty: ${visitDate}</div>
+//                     <div class="header-item">Godzina wizyty: ${visitTime}</div>
+//                     <div class="header-item">Lekarz: ${doctorName}</div>
+//                 </div>
+//                 <div class="header-column">
+//                     <div class="header-item">Imię i nazwisko: ${patientName}</div>
+//                     <div class="header-item">Data urodzenia: ${dob}</div>
+//                     <div class="header-item">Adres: ${address}</div>
+//                     <div class="header-item">Numer telefonu: ${phone}</div>
+//                 </div>
+//             </div>
+            
+//             <!-- Title -->
+//             <div class="title">Karta Wizyty</div>
+            
+//             <!-- Sections -->
+//             <div class="section">
+//                 <div class="section-title">Wywiad z pacjentem</div>
+//                 <div class="section-content">${consultationData.interview || "Brak danych wywiadu"}</div>
+//             </div>
+            
+//             <div class="section">
+//                 <div class="section-title">Badanie przedmiotowe</div>
+//                 <div class="section-content">${consultationData.physicalExamination || "Brak danych badania"}</div>
+//             </div>
+            
+//             <div class="section">
+//                 <div class="section-title">Zastosowane leczenie</div>
+//                 <div class="section-content">${consultationData.treatment || "Brak danych leczenia"}</div>
+//             </div>
+            
+//             <div class="section">
+//                 <div class="section-title">Zalecenia</div>
+//                 <div class="section-content">${consultationData.recommendations || "Brak zaleceń"}</div>
+//             </div>
+            
+//             <div class="section">
+//                 <div class="section-title">Notatki</div>
+//                 <div class="section-content">${consultationData.description || "Brak notatek"}</div>
+//             </div>
+//         </div>
+//     </body>
+//     </html>
+//     `;
+
+//     // Function to find Chrome executable
+//     const findChrome = () => {
+//       const possiblePaths = [
+//         // Windows paths
+//         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+//         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+//         process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
+//         // macOS paths
+//         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+//         '/Applications/Chromium.app/Contents/MacOS/Chromium',
+//         // Linux paths
+//         '/usr/bin/google-chrome',
+//         '/usr/bin/google-chrome-stable',
+//         '/usr/bin/chromium',
+//         '/usr/bin/chromium-browser',
+//         '/snap/bin/chromium',
+//         // Heroku buildpack path
+//         process.env.GOOGLE_CHROME_BIN,
+//         // Railway/Docker paths
+//         '/usr/bin/google-chrome-stable',
+//         '/usr/bin/chromium-browser'
+//       ];
+
+//       for (const path of possiblePaths) {
+//         if (path && fs.existsSync(path)) {
+//           return path;
+//         }
+//       }
+      
+//       // If no path found, try to use system PATH
+//       return null;
+//     };
+
+//     const chromePath = findChrome();
+//     if (!chromePath) {
+//       throw new Error('Chrome/Chromium executable not found. Please install Google Chrome or set GOOGLE_CHROME_BIN environment variable.');
+//     }
+
+//     // Launch Puppeteer
+//     const browser = await puppeteer.launch({
+//       executablePath: chromePath,
+//       headless: true,
+//       args: [
+//         '--no-sandbox',
+//         '--disable-setuid-sandbox',
+//         '--disable-dev-shm-usage',
+//         '--disable-accelerated-2d-canvas',
+//         '--no-first-run',
+//         '--no-zygote',
+//         '--disable-gpu',
+//         '--disable-extensions',
+//         '--disable-background-timer-throttling',
+//         '--disable-backgrounding-occluded-windows',
+//         '--disable-renderer-backgrounding'
+//       ]
+//     });
+
+//     const page = await browser.newPage();
+    
+//     // Set content and generate PDF
+//     await page.setContent(htmlContent, { 
+//       waitUntil: 'networkidle0',
+//       timeout: 30000 
+//     });
+
+//     const pdfBuffer = await page.pdf({
+//       format: 'A4',
+//       printBackground: true,
+//       margin: {
+//         top: '50px',
+//         right: '50px',
+//         bottom: '50px',
+//         left: '50px'
+//       }
+//     });
+
+//     await browser.close();
+
+//     // Write PDF to temp file
+//     fs.writeFileSync(tempFilePath, pdfBuffer);
+
+//     // Upload to Cloudinary
+//     const result = await new Promise((resolve, reject) => {
+//       cloudinary.uploader.upload(
+//         tempFilePath,
+//         {
+//           folder: "hospital_app/images",
+//           resource_type: "raw",
+//           type: "upload",
+//           use_filename: true,
+//           unique_filename: true,
+//           access_mode: "public",
+//           public_id: filename.replace(".pdf", ""),
+//           format: "pdf",
+//         },
+//         (error, result) => {
+//           if (error) reject(error);
+//           else resolve(result);
+//         }
+//       );
+//     });
+
+//     // Delete the temporary file
+//     fs.unlinkSync(tempFilePath);
+
+//     // Create a report for the appointment
+//     const newReport = {
+//       name: `Karta Wizyty - ${visitDate}`,
+//       type: "Karta Wizyty",
+//       fileUrl: result.secure_url,
+//       fileType: "pdf",
+//       description: `Karta wizyty wygenerowana dla wizyty z dnia ${visitDate}`,
+//       uploadedAt: new Date(),
+//       metadata: {
+//         originalName: filename,
+//         cloudinaryId: result.public_id,
+//         appointmentId: appointmentId,
+//         patientId: patient._id.toString()
+//       }
+//     };
+
+//     // Add report to appointment
+//     if (!appointment.reports) {
+//       appointment.reports = [];
+//     }
+//     appointment.reports.push(newReport);
+//     await appointment.save();
+
+//     // Save the document reference to the patient as well for backward compatibility
+//     const patientDoc = await Patient.findById(patient._id);
+//     if (patientDoc) {
+//       if (!patientDoc.documents) {
+//         patientDoc.documents = [];
+//       }
+
+//       patientDoc.documents.push({
+//         type: "visit-card",
+//         url: result.secure_url,
+//         publicId: result.public_id,
+//         createdAt: new Date(),
+//         appointmentId: appointmentId
+//       });
+
+//       await patientDoc.save();
+//     }
+
+//     // Return the download URL
+//     return res.status(200).json({
+//       success: true,
+//       message: "Karta wizyty została wygenerowana pomyślnie",
+//       data: {
+//         url: result.secure_url,
+//         reportId: appointment.reports[appointment.reports.length - 1]._id,
+//         appointmentId: appointmentId
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error generating visit card:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Nie udało się wygenerować karty wizyty",
+//       error: error.message,
+//     });
+//   }
+// };
 /**
  * Get visit cards by appointment ID
  * @param {Object} req - Express request object with appointmentId parameter
@@ -406,7 +811,7 @@ exports.getVisitCardByAppointment = async (req, res) => {
     if (appointment.patient.role === "patient" && req.user.id.toString() !== appointment.patient.id.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized access to this appointment's data",
+        message: "Nieautoryzowany dostęp do danych tej wizyty",
       });
     }
 
@@ -418,7 +823,7 @@ exports.getVisitCardByAppointment = async (req, res) => {
     if (visitCards.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No visit cards found for this appointment",
+        message: "Brak kart wizyty dla tej wizyty",
       });
     }
 
@@ -441,7 +846,7 @@ exports.getVisitCardByAppointment = async (req, res) => {
     console.error("Error fetching visit card:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch visit card",
+      message: "Nie udało się pobrać karty wizyty",
       error: error.message,
     });
   }
@@ -456,7 +861,7 @@ exports.getVisitCard = async (req, res) => {
     if (req.user.role === "patient" && req.user._id.toString() !== patientId) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized access to this patient's data",
+        message: "Nieautoryzowany dostęp do danych tego pacjenta",
       });
     }
 
@@ -465,7 +870,7 @@ exports.getVisitCard = async (req, res) => {
     if (!patient) {
       return res.status(404).json({
         success: false,
-        message: "Patient not found",
+        message: "Pacjent nie znaleziony",
       });
     }
 
@@ -476,7 +881,7 @@ exports.getVisitCard = async (req, res) => {
     if (visitCards.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No visit cards found for this patient",
+        message: "Brak kart wizyty dla tego pacjenta",
       });
     }
 
@@ -497,7 +902,7 @@ exports.getVisitCard = async (req, res) => {
     console.error("Error fetching visit card:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch visit card",
+      message: "Nie udało się pobrać karty wizyty",
       error: error.message,
     });
   }

@@ -18,7 +18,7 @@ router.post("/send-sms", async (req, res) => {
     if (!phoneNumber || !message) {
       return res
         .status(400)
-        .json({ error: "Phone number and message are required" });
+        .json({ error: "Telefon i wiadomość są wymagane" });
     }
 
     // Send SMS
@@ -33,7 +33,7 @@ router.post("/send-sms", async (req, res) => {
     }
   } catch (error) {
     console.error("Error in send-sms route:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Błąd serwera wewnętrznego" });
   }
 });
 
@@ -82,7 +82,7 @@ async function updateReceiptStatus(receipt, status, result = {}) {
     
     await MessageReceipt.findByIdAndUpdate(receipt._id, update);
   } catch (error) {
-    console.error('Error updating message receipt:', error);
+    console.error('Błąd aktualizacji reklamacji wiadomości:', error);
     // We'll continue even if receipt update fails
   }
 }
@@ -97,7 +97,7 @@ router.post("/send-bulk-sms", async (req, res) => {
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "At least one recipient is required",
+        message: "Co najmniej jeden odbiorca jest wymagany",
         sent: [],
         failed: [],
       });
@@ -106,7 +106,7 @@ router.post("/send-bulk-sms", async (req, res) => {
     if (!content || content.trim() === "") {
       return res.status(400).json({
         success: false,
-        message: "Message content is required",
+        message: "Treść wiadomości jest wymagana",
         sent: [],
         failed: [],
       });
@@ -130,13 +130,13 @@ router.post("/send-bulk-sms", async (req, res) => {
         // Validate phone number
         if (!recipient.phone || recipient.phone.trim() === "") {
           await updateReceiptStatus(receipt, 'FAILED', {
-            error: 'Invalid phone number: empty or missing'
+            error: 'Nieprawidłowy numer telefonu: pusty lub brakujący'
           });
           
           failed.push({
             userId: recipient.userId,
             phone: recipient.phone || "Unknown",
-            reason: "Invalid phone number: empty or missing",
+            reason: "Nieprawidłowy numer telefonu: pusty lub brakujący",
           });
           continue;
         }
@@ -198,7 +198,7 @@ router.post("/send-bulk-sms", async (req, res) => {
     // Return comprehensive results
     return res.status(200).json({
       success: true,
-      message: `Successfully sent ${sent.length} messages, failed to send ${failed.length} messages`,
+      message: `Pomyślnie wysłano ${sent.length} wiadomości, nie udało się wysłać ${failed.length} wiadomości`,
       batchId, // Return the batch ID for reference
       stats: {
         total: recipients.length,
@@ -212,7 +212,7 @@ router.post("/send-bulk-sms", async (req, res) => {
     console.error("Error in send-bulk-sms route:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error while processing SMS batch",
+      message: "Błąd serwera wewnętrznego podczas przetwarzania partii SMS",
       error: error.message,
       sent: [],
       failed: [],
@@ -276,7 +276,7 @@ router.get("/message-receipts", async (req, res) => {
     console.error("Error fetching message receipts:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error while fetching message receipts",
+      message: "Błąd serwera wewnętrznego podczas pobierania reklamacji wiadomości",
       error: error.message
     });
   }
@@ -290,7 +290,7 @@ router.get("/message-receipts/:id", async (req, res) => {
     if (!receipt) {
       return res.status(404).json({
         success: false,
-        message: "Message receipt not found"
+        message: "Reklamacja wiadomości nie znaleziona"
       });
     }
     
@@ -302,7 +302,7 @@ router.get("/message-receipts/:id", async (req, res) => {
     console.error("Error fetching message receipt:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error while fetching message receipt",
+      message: "Błąd serwera wewnętrznego podczas pobierania reklamacji wiadomości",
       error: error.message
     });
   }

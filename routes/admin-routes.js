@@ -52,7 +52,7 @@ router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), u
     const file = req.file;
 
     if (!file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      return res.status(400).json({ message: "Nie udało się przesłać pliku" });
     }
 
     const fileInfo = {
@@ -71,7 +71,7 @@ router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), u
       .status(500)
       .json({
         success: false,
-        message: "File upload failed",
+        message: "Nie udało się przesłać pliku",
         error: error.message,
       });
   }
@@ -95,7 +95,7 @@ router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (r
       return res.status(400).json({
         success: false,
         message:
-          "Invalid pagination parameters. Page must be >= 1 and limit must be between 1 and 100.",
+          "Nieprawidłowe parametry stronicowania. Strona musi być >= 1 i limit musi być między 1 a 100.",
       });
     }
 
@@ -122,7 +122,8 @@ router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (r
             }
           }
         },
-        { email: { $regex: searchLower, $options: "i" } }
+        { email: { $regex: searchLower, $options: "i" } },
+        { phone: { $regex: searchLower, $options: "i" } }
       ];
     }
 
@@ -169,7 +170,7 @@ router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (r
     console.error("Error fetching users:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching users",
+      message: "Błąd serwera podczas pobierania użytkowników",
     });
   }
 });

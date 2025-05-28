@@ -38,7 +38,7 @@ const addDoctor = async (req, res) => {
     if (!phoneNumber) {
       return res.status(400).json({
         success: false,
-        message: "Phone number is required",
+        message: "Telefon jest wymagany",
       });
     }
 
@@ -47,7 +47,7 @@ const addDoctor = async (req, res) => {
     if (existingDoctorByPhone) {
       return res.status(409).json({
         success: false,
-        message: "A doctor with this phone number already exists.",
+        message: "Lekarz z tym numerem telefonu już istnieje.",
       });
     }
 
@@ -77,7 +77,7 @@ const addDoctor = async (req, res) => {
     if (existingDoctor) {
       return res.status(409).json({
         success: false,
-        message: "A doctor with this email already exists",
+        message: "Lekarz z tym emailem już istnieje",
       });
     }
 
@@ -142,14 +142,14 @@ const addDoctor = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Doctor created successfully",
+      message: "Lekarz utworzony pomyślnie",
       doctor: responseDoctor,
     });
   } catch (error) {
     console.error("Error adding doctor:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to add doctor",
+      message: "Nie udało się dodać lekarza",
       error: error.message,
     });
   }
@@ -246,10 +246,10 @@ const getAllDoctors = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching doctors:", error);
+    console.error("Błąd podczas pobierania lekarzy:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch doctors",
+      message: "Nie udało się pobrać lekarzy",
       error: error.message,
     });
   }
@@ -270,7 +270,7 @@ const getDoctorById = async (req, res) => {
     if (!doctor) {
       return res.status(404).json({
         success: false,
-        message: "Doctor not found",
+        message: "Lekarz nie znaleziony",
       });
     }
 
@@ -282,7 +282,7 @@ const getDoctorById = async (req, res) => {
     console.error("Error fetching doctor:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch doctor",
+      message: "Nie udało się pobrać lekarza",
       error: error.message,
     });
   }
@@ -296,7 +296,7 @@ const getWeeklyShifts = async (req, res) => {
     if (!doctor) {
       return res
         .status(404)
-        .json({ success: false, message: "Doctor not found" });
+        .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
     return res.status(200).json({
@@ -307,7 +307,7 @@ const getWeeklyShifts = async (req, res) => {
     console.error("Error fetching weekly shifts:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching weekly shifts",
+      message: "Błąd podczas pobierania tygodniowych zmian",
     });
   }
 };
@@ -323,7 +323,7 @@ const updateWeeklyShifts = async (req, res) => {
     if (!Array.isArray(shifts)) {
       return res.status(400).json({
         success: false,
-        message: "Shifts must be provided as an array",
+        message: "Zmiany muszą być podane jako tablica",
       });
     }
 
@@ -331,7 +331,7 @@ const updateWeeklyShifts = async (req, res) => {
     const enrichedShifts = shifts.map((shift) => {
       if (!shift.dayOfWeek || !shift.startTime || !shift.endTime) {
         throw new Error(
-          "Each shift must include dayOfWeek, startTime, and endTime"
+          "Każda zmiana musi zawierać dayOfWeek, startTime i endTime"
         );
       }
       return {
@@ -349,19 +349,19 @@ const updateWeeklyShifts = async (req, res) => {
     if (!doctor) {
       return res
         .status(404)
-        .json({ success: false, message: "Doctor not found" });
+        .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Weekly shifts updated successfully",
+      message: "Tygodniowe zmiany zaktualizowane pomyślnie",
       data: doctor.weeklyShifts,
     });
   } catch (error) {
     console.error("Error updating weekly shifts:", error);
     return res.status(500).json({
       success: false,
-      message: error.message || "Server error while updating weekly shifts",
+      message: error.message || "Błąd podczas aktualizacji tygodniowych zmian",
     });
   }
 };
@@ -375,7 +375,7 @@ const getOffSchedule = async (req, res) => {
     if (!doctor) {
       return res
         .status(404)
-        .json({ success: false, message: "Doctor not found" });
+        .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
     return res.status(200).json({
@@ -386,7 +386,7 @@ const getOffSchedule = async (req, res) => {
     console.error("Error fetching off schedule:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching off schedule",
+      message: "Błąd podczas pobierania harmonogramu",
     });
   }
 };
@@ -405,7 +405,7 @@ const addOffTime = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Date and at least one time range must be provided",
+        message: "Data i co najmniej jeden zakres czasu muszą być podane",
       });
     }
 
@@ -414,7 +414,7 @@ const addOffTime = async (req, res) => {
       if (!range.startTime || !range.endTime) {
         return res.status(400).json({
           success: false,
-          message: "Each time range must include startTime and endTime",
+          message: "Każdy zakres czasu musi zawierać startTime i endTime",
         });
       }
     }
@@ -425,7 +425,7 @@ const addOffTime = async (req, res) => {
     if (!doctor) {
       return res
         .status(404)
-        .json({ success: false, message: "Doctor not found" });
+        .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
     // Check if there's already an off schedule for this date
@@ -450,14 +450,14 @@ const addOffTime = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Off time added successfully",
+      message: "Czas wolny dodany pomyślnie",
       data: doctor.offSchedule,
     });
   } catch (error) {
     console.error("Error adding off time:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while adding off time",
+      message: "Błąd podczas dodawania czasu wolnego",
       error: error.message,
     });
   }
@@ -472,7 +472,7 @@ const removeOffTime = async (req, res) => {
     if (!date) {
       return res.status(400).json({
         success: false,
-        message: "Date must be provided",
+        message: "Data musi być podana",
       });
     }
 
@@ -482,7 +482,7 @@ const removeOffTime = async (req, res) => {
     if (!doctor) {
       return res
         .status(404)
-        .json({ success: false, message: "Doctor not found" });
+        .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
     // Remove the off schedule for this date
@@ -496,14 +496,14 @@ const removeOffTime = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Off time removed successfully",
+      message: "Czas wolny usunięty pomyślnie",
       data: doctor.offSchedule,
     });
   } catch (error) {
     console.error("Error removing off time:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while removing off time",
+      message: "Błąd podczas usuwania czasu wolnego",
       error: error.message,
     });
   }
@@ -519,7 +519,7 @@ const getAvailableSlots = async (req, res) => {
     if (!date) {
       return res.status(400).json({
         success: false,
-        message: "Date parameter is required",
+        message: "Parametr data jest wymagany",
       });
     }
 
@@ -527,7 +527,7 @@ const getAvailableSlots = async (req, res) => {
     if (!doctor) {
       return res
         .status(404)
-        .json({ success: false, message: "Doctor not found" });
+        .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
     const requestedDate = new Date(date);
@@ -556,7 +556,7 @@ const getAvailableSlots = async (req, res) => {
     if (!shift) {
       return res.status(200).json({
         success: true,
-        message: `Doctor does not work on ${englishDayOfWeek} (${polishDayOfWeek})`,
+        message: `Lekarz nie pracuje w ${englishDayOfWeek} (${polishDayOfWeek})`,
         data: [],
       });
     }
@@ -704,7 +704,7 @@ const getAvailableSlots = async (req, res) => {
     console.error("Error generating available slots:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while generating available slots",
+      message: "Błąd podczas generowania dostępnych slotów",
       error: error.message,
     });
   }
@@ -726,7 +726,7 @@ const getDoctorProfile = async (req, res) => {
     if (!id) {
       return res.status(400).json({
         success: false,
-        message: "Doctor ID is required",
+        message: "ID lekarza jest wymagane",
       });
     }
 
@@ -746,7 +746,7 @@ const getDoctorProfile = async (req, res) => {
     if (!doctor) {
       return res.status(404).json({
         success: false,
-        message: "Doctor not found",
+        message: "Lekarz nie znaleziony",
       });
     }
 
@@ -772,7 +772,7 @@ const getDoctorProfile = async (req, res) => {
     console.error("Error fetching doctor profile:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch doctor profile",
+      message: "Nie udało się pobrać profilu lekarza",
       error: error.message,
     });
   }
@@ -787,7 +787,7 @@ const getNextAvailableDate = async (req, res) => {
     if (!doctor) {
       return res.status(404).json({ 
         success: false, 
-        message: "Doctor not found" 
+        message: "Lekarz nie znaleziony" 
       });
     }
 
@@ -907,7 +907,7 @@ const getNextAvailableDate = async (req, res) => {
     // If no available date found within the search period
     return res.status(200).json({
       success: true,
-      message: "No available dates found in the next 30 days",
+      message: "Nie znaleziono dostępnych dat w ciągu 30 dni",
       data: null
     });
 
@@ -915,7 +915,7 @@ const getNextAvailableDate = async (req, res) => {
     console.error("Error finding next available date:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while finding next available date",
+      message: "Błąd podczas znajdowania następnej dostępnej daty",
       error: error.message
     });
   }
@@ -938,7 +938,7 @@ const getDoctorDetails = async (req, res) => {
     if (!doctor) {
       return res.status(404).json({
         success: false,
-        message: "Doctor not found",
+        message: "Lekarz nie znaleziony",
       });
     }
 
@@ -973,7 +973,7 @@ const getDoctorDetails = async (req, res) => {
     console.error("Error fetching doctor details:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch doctor details",
+      message: "Nie udało się pobrać szczegółów lekarza",
       error: error.message,
     });
   }
@@ -994,7 +994,7 @@ const updateDoctor = async (req, res) => {
     if (!doctor) {
       return res.status(404).json({
         success: false,
-        message: "Doctor not found",
+        message: "Lekarz nie znaleziony",
       });
     }
 
@@ -1012,7 +1012,7 @@ const updateDoctor = async (req, res) => {
         if (existingDoctorByPhone) {
           return res.status(409).json({
             success: false,
-            message: "Another doctor with this phone number already exists.",
+            message: "Innym lekarzem z tym numerem telefonu już istnieje.",
           });
         }
         updateData.phone = phoneNumber;
@@ -1044,7 +1044,7 @@ const updateDoctor = async (req, res) => {
         if (existingDoctorByEmail) {
           return res.status(409).json({
             success: false,
-            message: "Another doctor with this email already exists.",
+            message: "Innym lekarzem z tym adresem email już istnieje.",
           });
         }
         updateData.email = emailToSave;
@@ -1112,7 +1112,7 @@ const updateDoctor = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Doctor updated successfully",
+      message: "Lekarz zaktualizowany pomyślnie",
       data: responseDoctor,
     });
   } catch (error) {

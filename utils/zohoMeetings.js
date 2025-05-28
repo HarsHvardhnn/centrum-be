@@ -42,7 +42,7 @@ async function initializeZohoMeetings(userId, code) {
  */
 async function getMeetingsClient(userId) {
   console.log("Fetching Zoho Meetings tokens for user:", userId);
-  const tokenDoc = await ZohoToken.findOne({ userId: '68306e50aef3773ad8447fb6' });
+  const tokenDoc = await ZohoToken.findOne({ userId});
 
   if (!tokenDoc) {
     console.log("No Zoho Meetings tokens found. Initiating authorization flow.");

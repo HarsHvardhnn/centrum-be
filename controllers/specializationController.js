@@ -14,7 +14,7 @@ const getSpecializations = (req, res) => {
       res
         .status(500)
         .json({
-          message: "Failed to fetch specializations",
+          message: "Nie udało się pobrać specjalizacji",
           error: err.message,
         });
     });
@@ -27,7 +27,7 @@ const getSpecialization = (req, res) => {
   Specialization.findById(req.params.id)
     .then((specialization) => {
       if (!specialization) {
-        return res.status(404).json({ message: "Specialization not found" });
+        return res.status(404).json({ message: "Specjalizacja nie znaleziona" });
       }
       res.status(200).json(specialization);
     })
@@ -35,7 +35,7 @@ const getSpecialization = (req, res) => {
       res
         .status(500)
         .json({
-          message: "Failed to fetch specialization",
+          message: "Nie udało się pobrać specjalizacji",
           error: err.message,
         });
     });
@@ -50,13 +50,13 @@ const createSpecialization = (req, res) => {
   if (!name || !description) {
     return res
       .status(400)
-      .json({ message: "Please provide name and description" });
+      .json({ message: "Proszę podać nazwę i opis" });
   }
 
   Specialization.findOne({ name })
     .then((specializationExists) => {
       if (specializationExists) {
-        res.status(400).json({ message: "Specialization already exists" });
+        res.status(400).json({ message: "Specjalizacja już istnieje" });
         return null; // stop the chain here
       }
 
@@ -70,7 +70,7 @@ const createSpecialization = (req, res) => {
     })
     .catch((err) => {
       res.status(500).json({
-        message: "Failed to create specialization",
+        message: "Nie udało się utworzyć specjalizacji",
         error: err.message,
       });
     });
@@ -86,7 +86,7 @@ const updateSpecialization = (req, res) => {
   Specialization.findById(req.params.id)
     .then((specialization) => {
       if (!specialization) {
-        return res.status(404).json({ message: "Specialization not found" });
+        return res.status(404).json({ message: "Specjalizacja nie znaleziona" });
       }
 
       specialization.name = name || specialization.name;
@@ -101,7 +101,7 @@ const updateSpecialization = (req, res) => {
       res
         .status(500)
         .json({
-          message: "Failed to update specialization",
+          message: "Nie udało się zaktualizować specjalizacji",
           error: err.message,
         });
     });
@@ -114,19 +114,19 @@ const deleteSpecialization = (req, res) => {
   Specialization.findById(req.params.id)
     .then((specialization) => {
       if (!specialization) {
-        return res.status(404).json({ message: "Specialization not found" });
+        return res.status(404).json({ message: "Specjalizacja nie znaleziona" });
       }
 
       return specialization.deleteOne();
     })
     .then(() => {
-      res.status(200).json({ message: "Specialization removed" });
+      res.status(200).json({ message: "Specjalizacja usunięta" });
     })
     .catch((err) => {
       res
         .status(500)
         .json({
-          message: "Failed to delete specialization",
+          message: "Nie udało się usunąć specjalizacji",
           error: err.message,
         });
     });

@@ -11,7 +11,7 @@ exports.addServicesToPatient = async (req, res) => {
     
     if (!patientId || !services || !Array.isArray(services) || services.length === 0) {
       return res.status(400).json({ 
-        message: "Patient ID and at least one service are required" 
+        message: "ID pacjenta i co najmniej jedna usługa są wymagane" 
       });
     }
 
@@ -19,7 +19,7 @@ exports.addServicesToPatient = async (req, res) => {
     const patient = await User.findOne({  _id:patientId, role: "patient" });
     console.log(patient,"patient");
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Pacjent nie znaleziony" });
     }
 
     // Verify appointment if provided
@@ -27,12 +27,12 @@ exports.addServicesToPatient = async (req, res) => {
     if (appointmentId) {
       appointment = await Appointment.findById(appointmentId);
       if (!appointment) {
-        return res.status(404).json({ message: "Appointment not found" });
+        return res.status(404).json({ message: "Wizyta nie znaleziona" });
       }
       
       // Validate that appointment belongs to the patient
       if (appointment.patient.toString() !== patientId) {
-        return res.status(400).json({ message: "Appointment does not belong to this patient" });
+        return res.status(400).json({ message: "Wizyta nie należy do tego pacjenta" });
       }
     }
 
@@ -45,7 +45,7 @@ exports.addServicesToPatient = async (req, res) => {
 
     if (existingServices.length !== serviceIds.length) {
       return res.status(400).json({ 
-        message: "One or more services do not exist" 
+        message: "Jedna lub więcej usług nie istnieje" 
       });
     }
 
@@ -111,13 +111,13 @@ exports.addServicesToPatient = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message: "Services added successfully",
+      message: "Usługi dodane pomyślnie",
       data: patientService
     });
   } catch (error) {
     console.error("Error adding services to patient:", error);
     return res.status(500).json({ 
-      message: "Failed to add services to patient",
+      message: "Nie udało się dodać usług do pacjenta",
       error: error.message
     });
   }
@@ -133,7 +133,7 @@ exports.getPatientServices = async (req, res) => {
     console.log(patientId);
     const patient = await User.findOne({ _id:patientId, role: "patient" });
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Pacjent nie znaleziony" });
     }
 
     // Prepare filter
@@ -156,7 +156,7 @@ exports.getPatientServices = async (req, res) => {
 
     if (!patientServices) {
       return res.status(200).json({
-        message: "No services found for this patient",
+        message: "Brak usług dla tego pacjenta",
         data: { 
           patient: patientId, 
           appointment: appointmentId || null,
@@ -166,13 +166,13 @@ exports.getPatientServices = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: "Patient services retrieved successfully",
+      message: "Usługi pacjenta pobrane pomyślnie",
       data: patientServices
     });
   } catch (error) {
     console.error("Error retrieving patient services:", error);
     return res.status(500).json({ 
-      message: "Failed to retrieve patient services",
+      message: "Nie udało się pobrać usług pacjenta",
       error: error.message
     });
   }
@@ -188,7 +188,7 @@ exports.updatePatientService = async (req, res) => {
     // Verify patient exists
     const patient = await User.findOne({ _id:patientId, role: "patient" });
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Pacjent nie znaleziony" });
     }
 
     // Prepare filter
@@ -206,7 +206,7 @@ exports.updatePatientService = async (req, res) => {
     const patientService = await PatientService.findOne(filter);
 
     if (!patientService) {
-      return res.status(404).json({ message: "Patient services not found" });
+      return res.status(404).json({ message: "Usługi pacjenta nie znalezione" });
     }
 
     // Find the specific service in the services array
@@ -215,7 +215,7 @@ exports.updatePatientService = async (req, res) => {
     );
 
     if (serviceIndex === -1) {
-      return res.status(404).json({ message: "Service not found for this patient" });
+      return res.status(404).json({ message: "Usługa nie znaleziona dla tego pacjenta" });
     }
 
     // Update the service
@@ -237,13 +237,13 @@ exports.updatePatientService = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message: "Patient service updated successfully",
+        message: "Usługa pacjenta zaktualizowana pomyślnie",
       data: patientService
     });
   } catch (error) {
     console.error("Error updating patient service:", error);
     return res.status(500).json({ 
-      message: "Failed to update patient service",
+          message: "Nie udało się zaktualizować usługi pacjenta",
       error: error.message
     });
   }
@@ -281,12 +281,12 @@ exports.deletePatientServices = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: "Patient services deleted successfully"
+      message: "Usługi pacjenta usunięte pomyślnie"
     });
   } catch (error) {
     console.error("Error deleting patient services:", error);
     return res.status(500).json({ 
-      message: "Failed to delete patient services",
+      message: "Nie udało się usunąć usług pacjenta",
       error: error.message
     });
   }
@@ -337,12 +337,12 @@ exports.removeServiceFromPatient = async (req, res) => {
     await patientService.save();
 
     return res.status(200).json({
-      message: "Service removed successfully"
+      message: "Usługa usunięta pomyślnie"
     });
   } catch (error) {
     console.error("Error removing service from patient:", error);
     return res.status(500).json({ 
-      message: "Failed to remove service",
+      message: "Nie udało się usunąć usługi",
       error: error.message
     });
   }

@@ -19,7 +19,7 @@ exports.createService = async (req, res) => {
     await service.save();
     res.status(201).json(service);
   } catch (error) {
-    res.status(500).json({ message: "Failed to create service", error });
+    res.status(500).json({ message: "Nie udało się utworzyć usługi", error });
   }
 };
 
@@ -28,7 +28,7 @@ exports.getAllServices = async (req, res) => {
     const services = await Service.find({ isDeleted: false });
     res.json(services);
   } catch (error) {
-    res.status(500).json({ message: "Failed to get services", error });
+    res.status(500).json({ message: "Nie udało się pobrać usług", error });
   }
 };
 
@@ -38,10 +38,10 @@ exports.getServiceById = async (req, res) => {
       _id: req.params.id,
       isDeleted: false,
     });
-    if (!service) return res.status(404).json({ message: "Service not found" });
+    if (!service) return res.status(404).json({ message: "Usługa nie znaleziona" });
     res.json(service);
   } catch (error) {
-    res.status(500).json({ message: "Failed to get service", error });
+    res.status(500).json({ message: "Nie udało się pobrać usługi", error });
   }
 };
 
@@ -68,7 +68,7 @@ exports.updateService = async (req, res) => {
     });
     res.json(service);
   } catch (error) {
-    res.status(500).json({ message: "Failed to update service", error });
+    res.status(500).json({ message: "Nie udało się zaktualizować usługi", error });
   }
 };
 
@@ -81,6 +81,6 @@ exports.deleteService = async (req, res) => {
     });
     res.json({ message: "Service deleted" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete service", error });
+    res.status(500).json({ message: "Nie udało się usunąć usługi", error });
   }
 };

@@ -132,7 +132,7 @@ exports.bookAppointment = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "Missing required fields" });
+        .json({ success: false, message: "Brakujące wymagane pola" });
     }
 
     // Email validation regex
@@ -146,7 +146,7 @@ exports.bookAppointment = async (req, res) => {
         .json({
           success: false,
           message:
-            "Invalid consultation type. Must be either 'online' or 'offline'",
+            "Nieprawidłowy typ konsultacji. Musi być albo 'online' albo 'offline'",
         });
     }
 
@@ -160,7 +160,7 @@ exports.bookAppointment = async (req, res) => {
     if (!doctorDetails || doctorDetails.role !== "doctor") {
       return res
         .status(404)
-        .json({ success: false, message: "Doctor not found" });
+        .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
     // Calculate appointment dates and times
@@ -189,7 +189,7 @@ exports.bookAppointment = async (req, res) => {
       return res.status(409).json({
         success: false,
         message:
-          "There is already an appointment booked with this doctor at this time.",
+          "Jest już zaplanowana wizyta u tego lekarza w tej godzinie.",
         conflict: true,
       });
     }
@@ -345,7 +345,7 @@ exports.bookAppointment = async (req, res) => {
         const meetingDetails = {
           session: {
             topic: `Wizyta Medyczna: ${department || "Konsultacja"}`,
-            agenda: message || "Regular medical consultation",
+            agenda: message || "Regularna konsultacja medyczna",
             presenter: 20105821462,
             startTime: formattedDate,
             timezone: "Europe/Warsaw",
@@ -361,7 +361,7 @@ exports.bookAppointment = async (req, res) => {
         const meetingResponse = await meetingsClient.createMeeting(meetingDetails);
 
         if (!meetingResponse?.session?.joinLink) {
-          throw new Error("Failed to get Zoho Meeting link from response");
+          throw new Error("Nie udało się pobrać linku do spotkania Zoho");
         }
 
         // Update appointment with the meeting link
@@ -369,9 +369,9 @@ exports.bookAppointment = async (req, res) => {
         appointment.joining_link = meetingLink;
         await appointment.save();
 
-        console.log("Successfully created Zoho Meeting link:", meetingLink);
+        console.log("Pomyślnie utworzono link do spotkania Zoho:", meetingLink);
       } catch (zohoError) {
-        console.error("Zoho Meetings error:", zohoError);
+        console.error("Błąd Zoho Meetings:", zohoError);
         calendarSetupNeeded = true;
       }
     }
@@ -399,7 +399,7 @@ exports.bookAppointment = async (req, res) => {
 
         smsResult = await sendSMS(phone, message);
       } catch (smsError) {
-        console.error("Error sending appointment confirmation SMS:", smsError);
+        console.error("Błąd wysyłania powiadomienia SMS:", smsError);
       }
     }
 
@@ -528,7 +528,7 @@ exports.bookAppointment = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("Error booking appointment:", error);
+    console.error("Błąd rezerwacji wizyty:", error);
     res.status(500).json({
       success: false,
       message: "Nie udało się zarezerwować wizyty",

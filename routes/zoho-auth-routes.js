@@ -3,6 +3,7 @@ const router = express.Router();
 const zohoAuthController = require("../controllers/zohoAuthController");
 const { refreshAccessToken } = require("../config/zoho");
 const { getMeetingsClient } = require("../utils/zohoMeetings");
+const User = require("../models/user-entity/user");
 // const authMiddleware = require("../middleware/authMiddleware");
 
 // Route to get Zoho OAuth URL
@@ -66,7 +67,9 @@ router.post("/test-create-meeting", async (req, res) => {
       });
     }
 
-    const meetingsClient = await getMeetingsClient('68306e50aef3773ad8447fb6');
+    const admin = await   User.findOne({role: "admin"});
+
+    const meetingsClient = await getMeetingsClient(admin._id);
     
     const meetingDetails = {
       session: {

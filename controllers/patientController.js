@@ -59,24 +59,25 @@ exports.createPatient = async (req, res) => {
       preferredLanguage,
     } = req.body;
 
+    console.log("req.body is ",dateOfBirth)
     // Remove leading zeros from phone number
     const phoneNumber = req.body.mobileNumber?.replace(/^0+/, '') || '';
     
     if (!phoneNumber) {
       return res.status(400).json({
-        message: "Phone number is required",
+        message: "Numer telefonu jest wymagany",
       });
     }
 
     // Check for existing patient with same phone number
+
     const existingPatientByPhone = await patient.findOne({ phone: phoneNumber });
     if (existingPatientByPhone) {
       return res.status(409).json({
-        message: "A patient with this phone number already exists.",
+        message: "Pacjent z tym numerem telefonu już istnieje",
         patient: existingPatientByPhone,
       });
     }
-
     // Email validation regex
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -86,7 +87,7 @@ exports.createPatient = async (req, res) => {
     // If email is provided, validate its format
     if (emailToSave && !emailRegex.test(emailToSave)) {
       return res.status(400).json({
-        message: "Invalid email format",
+        message: "Nieprawidłowy format adresu email",
       });
     }
     
@@ -95,7 +96,7 @@ exports.createPatient = async (req, res) => {
       const existingPatientByEmail = await patient.findOne({ email: emailToSave });
       if (existingPatientByEmail) {
         return res.status(409).json({
-          message: "A patient with this email already exists.",
+          message: "Pacjent z tym adresem email już istnieje",
           patient: existingPatientByEmail,
         });
       }
@@ -139,6 +140,10 @@ exports.createPatient = async (req, res) => {
         parsedConsents = []; // Reset to empty array if parsing fails
       }
     }
+    console.log("consents are ",parsedConsents)
+    //move back uip
+ 
+
 
     const documents = (req.files || []).map((file) => ({
       fileName: `${new Date().toISOString().split('T')[0]}`,
@@ -152,8 +157,9 @@ exports.createPatient = async (req, res) => {
       _id: consultingSpecialization,
     });
 
-    const age = calculateAge(dateOfBirth);
-    console.log("age is ",age)
+    // Calculate age from dateOfBirth
+    const calculatedAge = calculateAge(dateOfBirth);
+    console.log("Calculated age:", calculatedAge);
 
     const newPatient = new patient({
       name: {
@@ -167,13 +173,13 @@ exports.createPatient = async (req, res) => {
       role: "patient",
       signupMethod: "email",
       profilePicture: null,
-      age,
+      age: calculatedAge, // Use the calculated age
+      dateOfBirth, // Store the original date of birth
       smsConsentAgreed,
       fatherName,
       motherName,
       spouseName,
       sex,
-      dateOfBirth,
       birthWeight,
       maritalStatus,
       motherTongue,
@@ -214,15 +220,21 @@ exports.createPatient = async (req, res) => {
       preferredLanguage,
     });
 
+    console.log("Before saving - consents:", newPatient.consents);
     await newPatient.save();
+    
+    // Fetch the saved patient to verify the consents
+    const savedPatient = await patient.findById(newPatient._id);
+    console.log("After saving - consents:", savedPatient.consents);
+
     await sendWelcomeEmail(newPatient,'polish');
 
     res
       .status(201)
-      .json({ message: "Patient created successfully", patient: newPatient });
+      .json({ message: "Pacjent został pomyślnie utworzony", patient: newPatient });
   } catch (error) {
     console.error("Create patient error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: "Błąd wewnętrzny serwera" });
   }
 };
 // Get all patients
@@ -265,7 +277,7 @@ exports.getPatientById = async (req, res) => {
 
     
     if (!info) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
     delete info.password;
 
@@ -335,12 +347,20 @@ exports.getPatientsList = async (req, res) => {
 
    
     if (search) {
+      const searchLower = search.toLowerCase().trim();
       query.$or = [
-        { "name.first": { $regex: search, $options: "i" } },
-        { "name.last": { $regex: search, $options: "i" } },
-        { username: { $regex: search, $options: "i" } },
-        { patientId: { $regex: search, $options: "i" } },
-        { mainComplaint: { $regex: search, $options: "i" } }
+        { 
+          $expr: {
+            $regexMatch: {
+              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              regex: searchLower,
+              options: "i"
+            }
+          }
+        },
+        { username: { $regex: searchLower, $options: "i" } },
+        { patientId: { $regex: searchLower, $options: "i" } },
+        { mainComplaint: { $regex: searchLower, $options: "i" } }
       ];
     }
     
@@ -430,15 +450,15 @@ exports.getPatientsList = async (req, res) => {
           "Unknown",
         username: patient.username ? `@${patient.username}` : "",
         date: patientDate,
-        email: patient.email || "Not specified",
-        phone: patient.phone || "Not specified",
-        sex: patient.sex || "Not specified",
+        email: patient.email || "Nieokreślony",
+        phone: patient.phone || "Nieokreślony",
+        sex: patient.sex || "Nieokreślony",
         isCheckedIn:patient.checkedIn || false,
-        dateOfBirth: patient.dateOfBirth || "Not specified",
+        dateOfBirth: patient.dateOfBirth || "Nieokreślony",
         age,
         avatar: patient?.profilePicture || "",
-        disease: patient.mainComplaint || "Not specified",
-        status: patient.status || "in-treatment",
+        disease: patient.mainComplaint || "Nieokreślony",
+        status: patient.status || "w trakcie leczenia",
         doctor: doctorName,
         _id: patient._id 
       };
@@ -486,9 +506,9 @@ exports.getPatientsByDoctorId = async (req, res) => {
           `${p.name?.first || ""} ${p.name?.last || ""}`.trim() || "Unknown",
         username: p.username ? `@${p.username}` : "",
         avatar: p.profilePicture || `https://i.pravatar.cc/150?img=${(index % 70) + 1}`,
-        sex: p.sex || "Not specified",
+        sex: p.sex || "Nieokreślony",
         age: age,
-        status: p.status === "completed" ? "Finished" : "in-treatment",
+        status: p.status === "completed" ? "Zakończone" : "w trakcie leczenia",
       };
     });
 
@@ -672,19 +692,19 @@ if (uploadedFiles && uploadedFiles.length > 0) {
     if (!updatedPatient) {
       return res
         .status(404)
-        .json({ success: false, message: "Patient not found" });
+        .json({ success: false, message: "Nie znaleziono pacjenta" });
     }
 
     res.status(200).json({
       success: true,
       data: updatedPatient,
-      message: "Patient updated successfully",
+      message: "Dane pacjenta zostały zaktualizowane pomyślnie",
     });
   } catch (error) {
     console.error("Error updating patient:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update patient details",
+      message: "Nie udało się zaktualizować danych pacjenta",
       error: error.message,
     });
   }
@@ -711,7 +731,7 @@ exports.getPatientDetails = async (req, res) => {
    
 
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
 
     console.log("Patient details:", patient);
@@ -729,12 +749,12 @@ exports.getPatientDetails = async (req, res) => {
       isInternationalPatient: patient.isInternationalPatient || false,
       notes: patient.notes || "",
       roomNumber: patient?.roomNumber || "",
-      riskStatus: patient?.riskStatus || "Risky",
-      treatmentStatus: patient?.treatmentStatus || "Under Treatment",
-      bloodPressure: patient.bloodPressure?.value || "141/90 mmHg",
-      temperature: patient?.temperature || "29°C",
-      weight: patient?.weight || "78kg",
-      height: patient?.height || "5'6\" inc",
+      riskStatus: patient?.riskStatus || "",
+      treatmentStatus: patient?.treatmentStatus || "",
+      bloodPressure: patient.bloodPressure?.value || "",
+      temperature: patient?.temperature || "",
+      weight: patient?.weight || "",
+      height: patient?.height || "",
       // New fields
       isAdult: patient.isAdult,
       contactPerson: patient.contactPerson || null,
@@ -819,13 +839,18 @@ const consultationData = {
 
 // Helper function to calculate age from birth date
 function calculateAge(birthDate) {
-  if (!birthDate) return 0;
+  if (!birthDate) return null;
 
   const today = new Date();
   const dob = new Date(birthDate);
+
+  // Check if birthDate is a valid date
+  if (isNaN(dob.getTime())) return null;
+
   let age = today.getFullYear() - dob.getFullYear();
   const monthDiff = today.getMonth() - dob.getMonth();
 
+  // Adjust age if birthday hasn't occurred this year
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
     age--;
   }
@@ -850,7 +875,7 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       .lean();
     
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
 
     // Find appointment by ID if provided
@@ -862,7 +887,7 @@ exports.getPatientDetailsAndReports = async (req, res) => {
         .lean();
       
       if (!appointment) {
-        return res.status(404).json({ message: "Appointment not found" });
+        return res.status(404).json({ message: "Nie znaleziono wizyty" });
       }
     }
 
@@ -977,7 +1002,7 @@ exports.getPatientMedicalDetails = async (req, res) => {
   const { appointmentId } = req.params;
 
   if (!appointmentId) {
-    return res.status(400).json({ message: "Appointment ID is required" });
+    return res.status(400).json({ message: "Identyfikator wizyty jest wymagany" });
   }
 
   console.log("Received appointment ID:", appointmentId);
@@ -989,7 +1014,7 @@ exports.getPatientMedicalDetails = async (req, res) => {
     console.log("Appointment medical details:", appointment);
 
     if (!appointment) {
-      return res.status(404).json({ message: "Appointment not found" });
+      return res.status(404).json({ message: "Nie znaleziono wizyty" });
     }
 
     return res.status(200).json({
@@ -1000,7 +1025,7 @@ exports.getPatientMedicalDetails = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching appointment medical details:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Błąd serwera", error: error.message });
   }
 };
 
@@ -1063,7 +1088,7 @@ exports.updatePatient = async (req, res) => {
     // Find the existing patient first
     const existingPatient = await patient.findOne({_id: patientId});
     if (!existingPatient) {
-      return res.status(404).json({ error: "Patient not found" });
+      return res.status(404).json({ error: "Nie znaleziono pacjenta" });
     }
 
     // Check for phone number uniqueness if being updated
@@ -1074,7 +1099,7 @@ exports.updatePatient = async (req, res) => {
       });
       if (existingPatientByPhone) {
         return res.status(409).json({
-          message: "Another patient with this phone number already exists.",
+          message: "Inny pacjent z tym numerem telefonu już istnieje",
         });
       }
     }
@@ -1088,7 +1113,7 @@ exports.updatePatient = async (req, res) => {
     // If email is being updated, validate its format
     if (emailToSave !== existingPatient.email && !emailRegex.test(emailToSave)) {
       return res.status(400).json({
-        message: "Invalid email format",
+        message: "Nieprawidłowy format adresu email",
       });
     }
     
@@ -1100,7 +1125,7 @@ exports.updatePatient = async (req, res) => {
       });
       if (existingPatientByEmail) {
         return res.status(409).json({
-          message: "Another patient with this email already exists.",
+          message: "Inny pacjent z tym adresem email już istnieje",
         });
       }
     }
@@ -1236,18 +1261,18 @@ exports.updatePatient = async (req, res) => {
     );
 
     if (!updatedPatient) {
-      return res.status(404).json({ error: "Patient not found" });
+      return res.status(404).json({ error: "Nie znaleziono pacjenta" });
     }
 
     res.status(200).json({
-      message: "Patient updated successfully",
+      message: "Dane pacjenta zostały zaktualizowane pomyślnie",
       patient: updatedPatient,
     });
   } catch (error) {
     console.error("Update patient error:", error);
     res
       .status(500)
-      .json({ error: "Internal Server Error", details: error.message });
+      .json({ error: "Błąd wewnętrzny serwera", details: error.message });
   }
 };
 
@@ -1301,7 +1326,7 @@ exports.getAppointmentsList = async (req, res) => {
     // Execute the query with pagination and sorting
     const appointments = await Appointment
       .find(query)
-      .populate("patient", "name patientId dateOfBirth sex profilePicture username")
+      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone")
       .populate("doctor", "name")
       .sort(sort)
       .skip(skipAmount)
@@ -1342,15 +1367,15 @@ exports.getAppointmentsList = async (req, res) => {
           : "Unknown",
         username: appointment.patient?.username ? `@${appointment.patient.username}` : "",
         date: appointmentDate,
-        email: appointment.patient?.email || "Not specified",
-        phone: appointment.patient?.phone || "Not specified",
-        sex: appointment.patient?.sex || "Not specified",
+        email: appointment.patient?.email || "Nieokreślony",
+        phone: appointment.patient?.phone || "Nieokreślony",
+        sex: appointment.patient?.sex || "Nieokreślony",
         isCheckedIn: appointment.checkedIn || false,
-        dateOfBirth: appointment.patient?.dateOfBirth || "Not specified",
+        dateOfBirth: appointment.patient?.dateOfBirth || "Nieokreślony",
         age,
         avatar: appointment.patient?.profilePicture || "",
-        disease: appointment.consultation?.description || "Not specified",
-        status: appointment.status || "booked",
+        disease: appointment.consultation?.description || "Nieokreślony",
+        status: appointment.status || "zarezerwowane",
         doctor: doctorName,
         _id: appointment._id,
         patient_id: appointment.patient?._id,
@@ -1373,7 +1398,7 @@ exports.getAppointmentsList = async (req, res) => {
     console.error("Error fetching appointments list:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch appointments list",
+      message: "Nie udało się pobrać listy wizyt",
       error: error.message,
     });
   }
