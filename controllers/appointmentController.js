@@ -1480,7 +1480,7 @@ exports.getAppointments = async (req, res) => {
 
       // Doctor filter
       if (doctorId) {
-          query.doctor = doctorId;
+          query.doctor =new mongoose.Types.ObjectId(doctorId);
       }
 
       // Search by patient name or disease
@@ -1671,14 +1671,25 @@ exports.getAppointments = async (req, res) => {
               }
           });
       } else {
-          // For non-clinic mode, get all patients
-          const patients = await user.find({ role: 'patient' })
-              .select('name email profilePicture sex dateOfBirth patientId status phone')
-              .sort({ 'name.first': 1 })
-              .lean();
+          // For non-clinic mode, get patients based on doctorId
+          const patientQuery = doctorId ? { 
+              $or: [
+                  { consultingDoctor: new mongoose.Types.ObjectId(doctorId) },
+                  { attendingPhysician: new mongoose.Types.ObjectId(doctorId) }
+              ]
+          } : {};
 
-          // Get all appointments for reference
-          const allAppointments = await Appointment.find({})
+          const patients = await user.find({ 
+              role: 'patient',
+              ...patientQuery
+          })
+          .select('name email profilePicture sex dateOfBirth patientId status phone consultingDoctor')
+          .sort({ 'name.first': 1 })
+          .lean();
+
+          // Get all appointments with doctor filter
+          const appointmentQuery = doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {};
+          const allAppointments = await Appointment.find(appointmentQuery)
               .populate('doctor', 'name email')
               .sort({ date: -1 })
               .lean();
