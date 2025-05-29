@@ -13,7 +13,7 @@ const mongoose = require("mongoose");
 const PatientService = require("../models/patientServices");
 const Service = require("../models/services");
 const bcrypt = require("bcrypt");
-const  sendEmail = require("../utils/mailer");
+const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
 const patient = require("../models/user-entity/patient");
 const path = require("path");
@@ -24,7 +24,7 @@ const hasPatientConsentedToSMS = (patientDetails) => {
   if (!patientDetails.consents || patientDetails.consents.length === 0) {
     return false;
   }
-  
+
   try {
     const parsedConsents = JSON.parse(patientDetails.consents);
     return parsedConsents.some(
@@ -39,11 +39,19 @@ const hasPatientConsentedToSMS = (patientDetails) => {
 };
 
 // Helper function to send appointment status SMS
-const sendAppointmentStatusSMS = async (appointment, patientDetails, doctorDetails, status) => {
+const sendAppointmentStatusSMS = async (
+  appointment,
+  patientDetails,
+  doctorDetails,
+  status
+) => {
   try {
     if (!hasPatientConsentedToSMS(patientDetails)) {
       console.log("Patient has not consented to SMS notifications");
-      return { success: false, error: "Patient has not consented to SMS notifications" };
+      return {
+        success: false,
+        error: "Patient has not consented to SMS notifications",
+      };
     }
 
     const phoneNumber = patientDetails.phone;
@@ -90,10 +98,17 @@ const sendAppointmentStatusSMS = async (appointment, patientDetails, doctorDetai
 };
 
 // Helper function to send report upload notification SMS
-const sendReportUploadSMS = async (appointment, patientDetails, doctorDetails) => {
+const sendReportUploadSMS = async (
+  appointment,
+  patientDetails,
+  doctorDetails
+) => {
   try {
     if (!hasPatientConsentedToSMS(patientDetails)) {
-      return { success: false, error: "Patient has not consented to SMS notifications" };
+      return {
+        success: false,
+        error: "Patient has not consented to SMS notifications",
+      };
     }
 
     const phoneNumber = patientDetails.phone;
@@ -127,7 +142,7 @@ const sendReportUploadSMS = async (appointment, patientDetails, doctorDetails) =
 
 // Helper function to generate temporary password
 const generateTemporaryPassword = () => {
-  return crypto.randomBytes(8).toString('hex');
+  return crypto.randomBytes(8).toString("hex");
 };
 
 const sendAppointmentConfirmationSMS = async (
@@ -137,21 +152,20 @@ const sendAppointmentConfirmationSMS = async (
 ) => {
   try {
     // Get patient's phone number
-    const phoneNumber =
-      patientDetails.phone;
-  
- let smsConsentAgreed = false;
+    const phoneNumber = patientDetails.phone;
 
- if (patientDetails.consents && patientDetails.consents.length > 0) {
-   const parsedConsents = JSON.parse(patientDetails.consents);
-   smsConsentAgreed = parsedConsents.some(
-     (consent) =>
-       consent.text.toLowerCase().includes("sms notifications") &&
-       consent.agreed === true
-   );
- }
+    let smsConsentAgreed = false;
 
-    if (!smsConsentAgreed) { 
+    if (patientDetails.consents && patientDetails.consents.length > 0) {
+      const parsedConsents = JSON.parse(patientDetails.consents);
+      smsConsentAgreed = parsedConsents.some(
+        (consent) =>
+          consent.text.toLowerCase().includes("sms notifications") &&
+          consent.agreed === true
+      );
+    }
+
+    if (!smsConsentAgreed) {
       return;
     }
 
@@ -237,14 +251,15 @@ Thank you for choosing our services - Regards,Centrum Medyczne.
 exports.createAppointment = async (req, res) => {
   try {
     const {
-      date,dob,
+      date,
+      dob,
       doctorId,
       email,
       firstName,
       lastName,
       phone,
       startTime,
-      consultationType="offline",
+      consultationType = "offline",
       message,
       smsConsentAgreed,
       patient: patientId,
@@ -252,7 +267,7 @@ exports.createAppointment = async (req, res) => {
 
     let name = `${firstName} ${lastName}`;
     let time = startTime;
-    console.log("whats missing",date,doctorId,time,consultationType)
+    console.log("whats missing", date, doctorId, time, consultationType);
     // Validate required fields
     if (!date || !doctorId || !time || !consultationType) {
       return res.status(400).json({
@@ -323,14 +338,14 @@ exports.createAppointment = async (req, res) => {
       }
 
       // Remove leading zeros from phone number
-      const phoneNumber = phone.replace(/^0+/, '');
-      
+      const phoneNumber = phone.replace(/^0+/, "");
+
       // Email validation regex
       const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
       // Handle email - check if it's actually provided and not "undefined"
       const emailToSave = email && email !== "undefined" ? email.trim() : "";
-      
+
       // Validate email format if provided
       if (emailToSave && !emailRegex.test(emailToSave)) {
         return res.status(400).json({
@@ -370,13 +385,15 @@ exports.createAppointment = async (req, res) => {
           password: temporaryPassword,
           role: "patient",
           signupMethod: "email",
-          dateOfBirth:dob,
+          dateOfBirth: dob,
           smsConsentAgreed: smsConsentAgreed || false,
-          consents: [{
-            id: Date.now(),
-            text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
-            agreed: smsConsentAgreed || false,
-          }],
+          consents: [
+            {
+              id: Date.now(),
+              text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
+              agreed: smsConsentAgreed || false,
+            },
+          ],
         });
 
         patient = await newPatient.save();
@@ -387,7 +404,9 @@ exports.createAppointment = async (req, res) => {
       if (!isNewUser) {
         let existingConsents = [];
         try {
-          existingConsents = patient.consents ? JSON.parse(patient.consents) : [];
+          existingConsents = patient.consents
+            ? JSON.parse(patient.consents)
+            : [];
         } catch (e) {
           existingConsents = [];
         }
@@ -474,8 +493,6 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-
-
     if (patient.smsConsentAgreed) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
@@ -497,7 +514,10 @@ exports.createAppointment = async (req, res) => {
 
         smsResult = await sendSMS(phone, message);
       } catch (smsError) {
-        console.error("Wystąpił błąd podczas wysyłania powiadomienia SMS:", smsError);
+        console.error(
+          "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
+          smsError
+        );
       }
     }
 
@@ -537,11 +557,11 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
     temporaryPassword,
   } = appointmentDetails;
 
-  const logoPath = path.join(__dirname, '../public', 'logo_new.png');
-  console.log(logoPath,"logoPath");
-  
+  const logoPath = path.join(__dirname, "../public", "logo_new.png");
+  console.log(logoPath, "logoPath");
+
   // Read and convert logo to base64
-  const logoBase64 = fs.readFileSync(logoPath, { encoding: 'base64' });
+  const logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -562,20 +582,34 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
           <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
           <p style="margin: 5px 0;"><strong>Data:</strong> ${date}</p>
           <p style="margin: 5px 0;"><strong>Godzina:</strong> ${time}</p>
-          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${mode === 'online' ? 'Online' : 'Stacjonarna'}</p>
-          ${notes ? `<p style="margin: 5px 0;"><strong>Uwagi pacjenta:</strong> ${notes}</p>` : ''}
+          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${
+            mode === "online" ? "Online" : "Stacjonarna"
+          }</p>
+          ${
+            notes
+              ? `<p style="margin: 5px 0;"><strong>Uwagi pacjenta:</strong> ${notes}</p>`
+              : ""
+          }
         </div>
       </div>
       
-      ${mode === 'online' ? `
-        ${meetingLink ? `
+      ${
+        mode === "online"
+          ? `
+        ${
+          meetingLink
+            ? `
           <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">To będzie konsultacja online. Link do spotkania w Google Meet zostanie automatycznie wysłany na Twój adres e-mail bezpośrednio z Kalendarza Google. Jeśli nie otrzymasz linku najpóźniej godzinę przed wizytą, skontaktuj się z Recepcją!</p>
+            <p style="margin: 0;">Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
           </div>
-        ` : `
-        `}
-      ` : `
-      `}
+        `
+            : `
+        `
+        }
+      `
+          : `
+      `
+      }
       
 
       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
@@ -707,8 +741,10 @@ exports.updateAppointmentStatus = async (req, res) => {
       });
     }
 
-    const appointment = await Appointment.findById(appointmentId)
-      .populate("doctor patient", "name email phone");
+    const appointment = await Appointment.findById(appointmentId).populate(
+      "doctor patient",
+      "name email phone"
+    );
 
     if (!appointment) {
       return res.status(404).json({
@@ -749,14 +785,16 @@ exports.updateAppointmentStatus = async (req, res) => {
       success: true,
       data: appointment,
       notifications: {
-        sms: smsResult ? {
-          sent: smsResult.success,
-          error: smsResult.error
-        } : {
-          sent: false,
-          error: "SMS notification not sent - patient consent not given"
-        }
-      }
+        sms: smsResult
+          ? {
+              sent: smsResult.success,
+              error: smsResult.error,
+            }
+          : {
+              sent: false,
+              error: "SMS notification not sent - patient consent not given",
+            },
+      },
     });
   } catch (error) {
     console.error("Error updating appointment status:", error);
@@ -798,11 +836,13 @@ exports.getAppointmentsDashboard = async (req, res) => {
     const formattedAppointments = await Promise.all(
       appointments.map(async (appt) => {
         const doctorUser = appt.doctor;
-        console.log(doctorUser,"doctorUser");
-        const doctorProfile = await doctor.findOne({
-          _id: doctorUser._id,
-        }).populate("specialization");
-        console.log(doctorProfile,"doctorProfile");
+        console.log(doctorUser, "doctorUser");
+        const doctorProfile = await doctor
+          .findOne({
+            _id: doctorUser._id,
+          })
+          .populate("specialization");
+        console.log(doctorProfile, "doctorProfile");
 
         return {
           id: appt._id,
@@ -840,15 +880,19 @@ exports.cancelAppointment = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const appointment = await Appointment.findById(id)
-      .populate("doctor patient", "name email phone");
+    const appointment = await Appointment.findById(id).populate(
+      "doctor patient",
+      "name email phone"
+    );
 
     if (!appointment) {
       return res.status(404).json({ message: "Appointment not found" });
     }
 
     if (appointment.status === "cancelled") {
-      return res.status(400).json({ message: "Appointment is already cancelled" });
+      return res
+        .status(400)
+        .json({ message: "Appointment is already cancelled" });
     }
 
     // Get doctor and patient details for SMS
@@ -858,7 +902,7 @@ exports.cancelAppointment = async (req, res) => {
     if (!doctorDetails || !patientDetails) {
       return res.status(404).json({
         success: false,
-        message: "Doctor or patient details not found"
+        message: "Doctor or patient details not found",
       });
     }
 
@@ -883,14 +927,16 @@ exports.cancelAppointment = async (req, res) => {
       success: true,
       message: "Appointment cancelled successfully",
       notifications: {
-        sms: smsResult ? {
-          sent: smsResult.success,
-          error: smsResult.error
-        } : {
-          sent: false,
-          error: "SMS notification not sent - patient consent not given"
-        }
-      }
+        sms: smsResult
+          ? {
+              sent: smsResult.success,
+              error: smsResult.error,
+            }
+          : {
+              sent: false,
+              error: "SMS notification not sent - patient consent not given",
+            },
+      },
     });
   } catch (error) {
     console.error("Error cancelling appointment:", error);
@@ -932,27 +978,36 @@ exports.completeCheckIn = async (req, res) => {
 exports.updateAppointmentDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      consultationData, 
+    const {
+      consultationData,
       patientData,
-      medications, 
-      tests, 
+      medications,
+      tests,
       healthData,
-      reports 
+      reports,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid appointment ID format" 
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
       });
     }
 
     const updateData = {};
 
-    const {bloodPressure, temperature, weight, height, riskStatus, treatmentStatus, roomNumber, id: patientId} = patientData;
+    const {
+      bloodPressure,
+      temperature,
+      weight,
+      height,
+      riskStatus,
+      treatmentStatus,
+      roomNumber,
+      id: patientId,
+    } = patientData;
 
-    console.log("patient id ", roomNumber,riskStatus,treatmentStatus);
+    console.log("patient id ", roomNumber, riskStatus, treatmentStatus);
     // Update patient model with health information
     if (patientId) {
       try {
@@ -966,7 +1021,7 @@ exports.updateAppointmentDetails = async (req, res) => {
             isRisky: riskStatus === "Risky",
             treatmentStatus,
             roomNumber,
-            riskStatus
+            riskStatus,
           },
           { new: true }
         );
@@ -983,7 +1038,9 @@ exports.updateAppointmentDetails = async (req, res) => {
         consultationNotes: consultationData.notes,
         description: consultationData.description,
         treatmentCategory: consultationData?.treatmentCategory || "",
-        consultationDate: !isNaN(consultDate.getTime()) ? consultDate : new Date(),
+        consultationDate: !isNaN(consultDate.getTime())
+          ? consultDate
+          : new Date(),
         consultationStatus: consultationData.status || "Scheduled",
         isOnline: consultationData.isOnline || false,
         interview: consultationData.interview || "",
@@ -992,7 +1049,7 @@ exports.updateAppointmentDetails = async (req, res) => {
         recommendations: consultationData.recommendations || "",
         roomNumber: consultationData.roomNumber || null,
         isRisky: consultationData.isRisky || false,
-        time: consultationData.time || ""
+        time: consultationData.time || "",
       };
     }
 
@@ -1017,7 +1074,7 @@ exports.updateAppointmentDetails = async (req, res) => {
         status: test.status,
       }));
     }
-    
+
     // Handle health data if provided
     if (healthData) {
       updateData.healthData = {
@@ -1035,37 +1092,37 @@ exports.updateAppointmentDetails = async (req, res) => {
           percentage: healthData.bodyWeight?.percentage || 0,
         },
         notes: healthData.notes || "",
-        recordedAt: new Date()
+        recordedAt: new Date(),
       };
     }
-    
+
     // Handle reports if provided
     if (reports && reports.length > 0) {
       // If we want to add to existing reports
-      if (req.query.appendReports === 'true') {
-        updateData.$push = { 
-          reports: { 
-            $each: reports.map(report => ({
+      if (req.query.appendReports === "true") {
+        updateData.$push = {
+          reports: {
+            $each: reports.map((report) => ({
               name: report.name,
-              type: report.type, 
+              type: report.type,
               fileUrl: report.fileUrl,
               fileType: report.fileType,
               description: report.description || "",
               uploadedAt: new Date(),
-              metadata: report.metadata || {}
-            }))
-          }
+              metadata: report.metadata || {},
+            })),
+          },
         };
       } else {
         // Replace all reports
-        updateData.reports = reports.map(report => ({
+        updateData.reports = reports.map((report) => ({
           name: report.name,
           type: report.type,
           fileUrl: report.fileUrl,
           fileType: report.fileType,
           description: report.description || "",
           uploadedAt: new Date(),
-          metadata: report.metadata || {}
+          metadata: report.metadata || {},
         }));
       }
     }
@@ -1110,14 +1167,14 @@ exports.addReportToAppointment = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid appointment ID format"
+        message: "Invalid appointment ID format",
       });
     }
 
     if (!reportData.name || !reportData.fileUrl) {
       return res.status(400).json({
         success: false,
-        message: "Report name and fileUrl are required"
+        message: "Report name and fileUrl are required",
       });
     }
 
@@ -1128,7 +1185,7 @@ exports.addReportToAppointment = async (req, res) => {
       fileType: reportData.fileType || "pdf",
       description: reportData.description || "",
       uploadedAt: new Date(),
-      metadata: reportData.metadata || {}
+      metadata: reportData.metadata || {},
     };
 
     const updatedAppointment = await Appointment.findByIdAndUpdate(
@@ -1140,21 +1197,21 @@ exports.addReportToAppointment = async (req, res) => {
     if (!updatedAppointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found"
+        message: "Appointment not found",
       });
     }
 
     res.status(200).json({
       success: true,
       data: updatedAppointment.reports,
-      message: "Report added successfully"
+      message: "Report added successfully",
     });
   } catch (error) {
     console.error("Error adding report:", error);
     res.status(500).json({
       success: false,
       message: "Failed to add report",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1163,22 +1220,24 @@ exports.addReportToAppointment = async (req, res) => {
 exports.uploadAppointmentReport = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid appointment ID format"
+        message: "Invalid appointment ID format",
       });
     }
 
     // Check if appointment exists and get populated data
-    const appointment = await Appointment.findById(id)
-      .populate("doctor patient", "name email phone");
-      
+    const appointment = await Appointment.findById(id).populate(
+      "doctor patient",
+      "name email phone"
+    );
+
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found"
+        message: "Appointment not found",
       });
     }
 
@@ -1189,7 +1248,7 @@ exports.uploadAppointmentReport = async (req, res) => {
     if (!doctorDetails || !patientDetails) {
       return res.status(404).json({
         success: false,
-        message: "Doctor or patient details not found"
+        message: "Doctor or patient details not found",
       });
     }
 
@@ -1197,7 +1256,7 @@ exports.uploadAppointmentReport = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "No file uploaded"
+        message: "No file uploaded",
       });
     }
 
@@ -1206,14 +1265,14 @@ exports.uploadAppointmentReport = async (req, res) => {
       name: req.body.name || req.file.originalname,
       type: req.body.type || "Other",
       fileUrl: req.file.path,
-      fileType: req.file.mimetype.split('/')[1] || "pdf",
+      fileType: req.file.mimetype.split("/")[1] || "pdf",
       description: req.body.description || "",
       uploadedAt: new Date(),
       metadata: {
         originalName: req.file.originalname,
         size: req.file.size,
-        cloudinaryId: req.file.filename || req.file.public_id
-      }
+        cloudinaryId: req.file.filename || req.file.public_id,
+      },
     };
 
     // Add report to appointment
@@ -1240,24 +1299,26 @@ exports.uploadAppointmentReport = async (req, res) => {
       message: "Report uploaded successfully",
       data: {
         report,
-        appointment
+        appointment,
       },
       notifications: {
-        sms: smsResult ? {
-          sent: smsResult.success,
-          error: smsResult.error
-        } : {
-          sent: false,
-          error: "SMS notification not sent - patient consent not given"
-        }
-      }
+        sms: smsResult
+          ? {
+              sent: smsResult.success,
+              error: smsResult.error,
+            }
+          : {
+              sent: false,
+              error: "SMS notification not sent - patient consent not given",
+            },
+      },
     });
   } catch (error) {
     console.error("Error uploading report:", error);
     res.status(500).json({
       success: false,
       message: "Failed to upload report",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1270,7 +1331,7 @@ exports.deleteReport = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid appointment ID format"
+        message: "Invalid appointment ID format",
       });
     }
 
@@ -1279,23 +1340,25 @@ exports.deleteReport = async (req, res) => {
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found"
+        message: "Appointment not found",
       });
     }
 
     // Find the report in the appointment
-    const reportIndex = appointment.reports ? 
-      appointment.reports.findIndex(r => r._id.toString() === reportId) : -1;
+    const reportIndex = appointment.reports
+      ? appointment.reports.findIndex((r) => r._id.toString() === reportId)
+      : -1;
 
     if (reportIndex === -1) {
       return res.status(404).json({
         success: false,
-        message: "Report not found in this appointment"
+        message: "Report not found in this appointment",
       });
     }
 
     // Get cloudinary ID to delete the file from cloud storage if available
-    const cloudinaryId = appointment.reports[reportIndex].metadata?.cloudinaryId;
+    const cloudinaryId =
+      appointment.reports[reportIndex].metadata?.cloudinaryId;
 
     // Remove the report from the reports array
     appointment.reports.splice(reportIndex, 1);
@@ -1314,15 +1377,15 @@ exports.deleteReport = async (req, res) => {
       success: true,
       message: "Report deleted successfully",
       data: {
-        remainingReports: appointment.reports
-      }
+        remainingReports: appointment.reports,
+      },
     });
   } catch (error) {
     console.error("Error deleting report:", error);
     res.status(500).json({
       success: false,
       message: "Failed to delete report",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1341,7 +1404,10 @@ exports.getAppointmentDetails = async (req, res) => {
 
     const appointment = await Appointment.findById(id)
       .populate("doctor", "name.first name.last")
-      .populate("patient", "name.first name.last patientId age dateOfBirth height weight bloodPressure temperature riskStatus treatmentStatus roomNumber")
+      .populate(
+        "patient",
+        "name.first name.last patientId age dateOfBirth height weight bloodPressure temperature riskStatus treatmentStatus roomNumber"
+      )
       .lean();
 
     if (!appointment) {
@@ -1353,18 +1419,21 @@ exports.getAppointmentDetails = async (req, res) => {
 
     // Add doctor name to consultation
     if (appointment.consultation) {
-      appointment.consultation.consultationDoctor = 
-        `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
-      
+      appointment.consultation.consultationDoctor = `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
+
       // Ensure consultation fields exist
-      appointment.consultation.interview = appointment.consultation.interview || "";
-      appointment.consultation.physicalExamination = appointment.consultation.physicalExamination || "";
-      appointment.consultation.treatment = appointment.consultation.treatment || "";
-      appointment.consultation.recommendations = appointment.consultation.recommendations || "";
-      
+      appointment.consultation.interview =
+        appointment.consultation.interview || "";
+      appointment.consultation.physicalExamination =
+        appointment.consultation.physicalExamination || "";
+      appointment.consultation.treatment =
+        appointment.consultation.treatment || "";
+      appointment.consultation.recommendations =
+        appointment.consultation.recommendations || "";
+
       // Add appointment start time to consultation data
       appointment.consultation.time = appointment.startTime || "";
-      
+
       // Use appointment.date as fallback for consultationDate if it doesn't exist or is null
       if (!appointment.consultation.consultationDate) {
         appointment.consultation.consultationDate = appointment.date;
@@ -1377,18 +1446,18 @@ exports.getAppointmentDetails = async (req, res) => {
         treatment: "",
         recommendations: "",
         time: appointment.startTime || "",
-        consultationDate: appointment.date
+        consultationDate: appointment.date,
       };
     }
 
     // Format reports if they exist
     if (appointment.reports && appointment.reports.length > 0) {
-      appointment.reports = appointment.reports.map(report => ({
+      appointment.reports = appointment.reports.map((report) => ({
         ...report,
         uploadedAt: report.uploadedAt || new Date(),
         displayName: report.name || "Unnamed Report",
         url: report.fileUrl,
-        type: report.fileType || "pdf"
+        type: report.fileType || "pdf",
       }));
     } else {
       appointment.reports = [];
@@ -1449,345 +1518,401 @@ exports.getPatientAppointments = async (req, res) => {
 // Get appointments with pagination, sorting and filtering
 exports.getAppointments = async (req, res) => {
   try {
-      const {
-          page = 1,
-          limit = 10,
-          sortBy = 'date',
-          sortOrder = 'desc',
-          status,
-          startDate,
-          endDate,
-          doctorId,
-          searchTerm,
-          isClinicIp
-      } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "date",
+      sortOrder = "desc",
+      status,
+      startDate,
+      endDate,
+      doctorId,
+      searchTerm,
+      isClinicIp,
+    } = req.query;
 
-      // Build query
-      const query = {};
+    // Build query
+    const query = {};
 
-      // Status filter
-      if (status && status !== 'all') {
-          query.status = status.toLowerCase();
+    // Status filter
+    if (status && status !== "all") {
+      query.status = status.toLowerCase();
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      query.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    // Doctor filter
+    if (doctorId) {
+      query.doctor = new mongoose.Types.ObjectId(doctorId);
+    }
+
+    // Search by patient name or disease
+    if (searchTerm) {
+      query.$or = [{ mainComplaint: { $regex: searchTerm, $options: "i" } }];
+
+      // Add lookup pipeline for patient fields
+      const patientLookup = {
+        $lookup: {
+          from: "users",
+          localField: "patient",
+          foreignField: "_id",
+          as: "patientData",
+        },
+      };
+
+      // Add match conditions for patient fields
+      query.$or = [
+        { mainComplaint: { $regex: searchTerm, $options: "i" } },
+        { "patientData.name.first": { $regex: searchTerm, $options: "i" } },
+        { "patientData.name.last": { $regex: searchTerm, $options: "i" } },
+        { "patientData.email": { $regex: searchTerm, $options: "i" } },
+        { "patientData.phone": { $regex: searchTerm, $options: "i" } },
+      ];
+    }
+
+    // Build sort object
+    const sortObject = {};
+    sortObject[sortBy] = sortOrder === "desc" ? -1 : 1;
+
+    let responseData;
+    let uniqueAppointments = []; // Define it here so it's always available
+
+    // Handle isClinicIp=true case - Group by date but keep response format the same
+    if (isClinicIp === "true") {
+      // Get appointments using aggregation pipeline for better search
+      let appointmentsPipeline = [
+        // First lookup to get patient details
+        {
+          $lookup: {
+            from: "users",
+            localField: "patient",
+            foreignField: "_id",
+            as: "patientData",
+          },
+        },
+        // Unwind the patient data array
+        {
+          $unwind: "$patientData",
+        },
+        // Lookup to get doctor details
+        {
+          $lookup: {
+            from: "users",
+            localField: "doctor",
+            foreignField: "_id",
+            as: "doctorData",
+          },
+        },
+        {
+          $unwind: "$doctorData",
+        },
+      ];
+
+      // Add base query conditions if they exist
+      if (Object.keys(query).length > 0) {
+        appointmentsPipeline.push({
+          $match: query,
+        });
       }
 
-      // Date range filter
-      if (startDate && endDate) {
-          query.date = {
-              $gte: new Date(startDate),
-              $lte: new Date(endDate)
-          };
-      }
-
-      // Doctor filter
-      if (doctorId) {
-          query.doctor =new mongoose.Types.ObjectId(doctorId);
-      }
-
-      // Search by patient name or disease
+      // Add search conditions if searchTerm exists
       if (searchTerm) {
-          query.$or = [
-              { 'mainComplaint': { $regex: searchTerm, $options: 'i' } }
-          ];
-
-          // Add lookup pipeline for patient fields
-          const patientLookup = {
-              $lookup: {
-                  from: 'users',
-                  localField: 'patient',
-                  foreignField: '_id',
-                  as: 'patientData'
-              }
-          };
-
-          // Add match conditions for patient fields
-          query.$or = [
-              { 'mainComplaint': { $regex: searchTerm, $options: 'i' } },
-              { 'patientData.name.first': { $regex: searchTerm, $options: 'i' } },
-              { 'patientData.name.last': { $regex: searchTerm, $options: 'i' } },
-              { 'patientData.email': { $regex: searchTerm, $options: 'i' } },
-              { 'patientData.phone': { $regex: searchTerm, $options: 'i' } }
-          ];
+        appointmentsPipeline.push({
+          $match: {
+            $or: [
+              // Patient name search (first and last)
+              {
+                "patientData.name.first": { $regex: searchTerm, $options: "i" },
+              },
+              {
+                "patientData.name.last": { $regex: searchTerm, $options: "i" },
+              },
+              // Full name search (combined first and last)
+              {
+                $expr: {
+                  $regexMatch: {
+                    input: {
+                      $concat: [
+                        "$patientData.name.first",
+                        " ",
+                        "$patientData.name.last",
+                      ],
+                    },
+                    regex: searchTerm,
+                    options: "i",
+                  },
+                },
+              },
+              // Patient contact details
+              { "patientData.email": { $regex: searchTerm, $options: "i" } },
+              { "patientData.phone": { $regex: searchTerm, $options: "i" } },
+              // Patient ID
+              {
+                "patientData.patientId": { $regex: searchTerm, $options: "i" },
+              },
+              // Appointment details
+              { notes: { $regex: searchTerm, $options: "i" } },
+              {
+                "consultation.consultationNotes": {
+                  $regex: searchTerm,
+                  $options: "i",
+                },
+              },
+              {
+                "consultation.description": {
+                  $regex: searchTerm,
+                  $options: "i",
+                },
+              },
+              {
+                "consultation.interview": { $regex: searchTerm, $options: "i" },
+              },
+              {
+                "consultation.physicalExamination": {
+                  $regex: searchTerm,
+                  $options: "i",
+                },
+              },
+              {
+                "consultation.treatment": { $regex: searchTerm, $options: "i" },
+              },
+              {
+                "consultation.recommendations": {
+                  $regex: searchTerm,
+                  $options: "i",
+                },
+              },
+            ],
+          },
+        });
       }
 
-      // Build sort object
-      const sortObject = {};
-      sortObject[sortBy] = sortOrder === 'desc' ? -1 : 1;
+      // Add sorting
+      appointmentsPipeline.push({ $sort: sortObject });
 
-      let responseData;
-      let uniqueAppointments = [];  // Define it here so it's always available
-      
-      // Handle isClinicIp=true case - Group by date but keep response format the same
-      if (isClinicIp === 'true') {
-          // Get appointments using aggregation pipeline for better search
-          let appointmentsPipeline = [
-              // First lookup to get patient details
-              {
-                  $lookup: {
-                      from: 'users',
-                      localField: 'patient',
-                      foreignField: '_id',
-                      as: 'patientData'
-                  }
-              },
-              // Unwind the patient data array
-              {
-                  $unwind: '$patientData'
-              },
-              // Lookup to get doctor details
-              {
-                  $lookup: {
-                      from: 'users',
-                      localField: 'doctor',
-                      foreignField: '_id',
-                      as: 'doctorData'
-                  }
-              },
-              {
-                  $unwind: '$doctorData'
-              }
-          ];
+      let appointments = await Appointment.aggregate(appointmentsPipeline);
 
-          // Add base query conditions if they exist
-          if (Object.keys(query).length > 0) {
-              appointmentsPipeline.push({
-                  $match: query
-              });
+      // Process appointments data
+      let appointmentsWithAge = appointments.map((appointment) => {
+        const patientData = appointment.patientData;
+        let age = null;
+        if (patientData?.dateOfBirth) {
+          const today = new Date();
+          const birthDate = new Date(patientData.dateOfBirth);
+          age = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          if (
+            monthDiff < 0 ||
+            (monthDiff === 0 && today.getDate() < birthDate.getDate())
+          ) {
+            age--;
           }
+        }
 
-          // Add search conditions if searchTerm exists
-          if (searchTerm) {
-              appointmentsPipeline.push({
-                  $match: {
-                      $or: [
-                          // Patient name search (first and last)
-                          { 'patientData.name.first': { $regex: searchTerm, $options: 'i' } },
-                          { 'patientData.name.last': { $regex: searchTerm, $options: 'i' } },
-                          // Full name search (combined first and last)
-                          {
-                              $expr: {
-                                  $regexMatch: {
-                                      input: { $concat: ['$patientData.name.first', ' ', '$patientData.name.last'] },
-                                      regex: searchTerm,
-                                      options: 'i'
-                                  }
-                              }
-                          },
-                          // Patient contact details
-                          { 'patientData.email': { $regex: searchTerm, $options: 'i' } },
-                          { 'patientData.phone': { $regex: searchTerm, $options: 'i' } },
-                          // Patient ID
-                          { 'patientData.patientId': { $regex: searchTerm, $options: 'i' } },
-                          // Appointment details
-                          { 'notes': { $regex: searchTerm, $options: 'i' } },
-                          { 'consultation.consultationNotes': { $regex: searchTerm, $options: 'i' } },
-                          { 'consultation.description': { $regex: searchTerm, $options: 'i' } },
-                          { 'consultation.interview': { $regex: searchTerm, $options: 'i' } },
-                          { 'consultation.physicalExamination': { $regex: searchTerm, $options: 'i' } },
-                          { 'consultation.treatment': { $regex: searchTerm, $options: 'i' } },
-                          { 'consultation.recommendations': { $regex: searchTerm, $options: 'i' } }
-                      ]
-                  }
-              });
-          }
-
-          // Add sorting
-          appointmentsPipeline.push({ $sort: sortObject });
-
-          let appointments = await Appointment.aggregate(appointmentsPipeline);
-
-          // Process appointments data
-          let appointmentsWithAge = appointments.map(appointment => {
-              const patientData = appointment.patientData;
-              let age = null;
-              if (patientData?.dateOfBirth) {
-                  const today = new Date();
-                  const birthDate = new Date(patientData.dateOfBirth);
-                  age = today.getFullYear() - birthDate.getFullYear();
-                  const monthDiff = today.getMonth() - birthDate.getMonth();
-                  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-                      age--;
-                  }
+        return {
+          id: appointment._id,
+          date: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+          meetLink: appointment?.joining_link || "",
+          status: appointment.status,
+          mode: appointment.mode,
+          checkIn: appointment.checkedIn,
+          checkInDate: appointment.checkInDate,
+          patient: {
+            patient_status: patientData?.status,
+            id: patientData?._id,
+            patientId: patientData?.patientId,
+            name: patientData
+              ? `${patientData.name.first} ${patientData.name.last}`
+              : null,
+            sex: patientData?.sex,
+            age: age,
+            phoneNumber: patientData?.phone,
+            profilePicture: patientData?.profilePicture || null,
+            email: patientData?.email,
+          },
+          doctor: appointment.doctorData
+            ? {
+                id: appointment.doctorData._id,
+                name: `${appointment.doctorData.name.first} ${appointment.doctorData.name.last}`,
+                email: appointment.doctorData.email,
               }
-
-              return {
-                  id: appointment._id,
-                  date: appointment.date,
-                  startTime: appointment.startTime,
-                  endTime: appointment.endTime,
-                  meetLink: appointment?.joining_link || "",
-                  status: appointment.status,
-                  mode: appointment.mode,
-                  checkIn: appointment.checkedIn,
-                  checkInDate: appointment.checkInDate,
-                  patient: {
-                      patient_status: patientData?.status,
-                      id: patientData?._id,
-                      patientId: patientData?.patientId,
-                      name: patientData ? `${patientData.name.first} ${patientData.name.last}` : null,
-                      sex: patientData?.sex,
-                      age: age,
-                      phoneNumber: patientData?.phone,
-                      profilePicture: patientData?.profilePicture || null,
-                      email: patientData?.email
-                  },
-                  doctor: appointment.doctorData ? {
-                      id: appointment.doctorData._id,
-                      name: `${appointment.doctorData.name.first} ${appointment.doctorData.name.last}`,
-                      email: appointment.doctorData.email
-                  } : null,
-                  metadata: appointment.metadata || {}
-              };
-          });
-
-          // Group by date and apply pagination
-          const groupedByDate = {};
-          appointmentsWithAge.forEach(appointment => {
-              const appointmentDate = new Date(appointment.date);
-              const dateKey = appointmentDate.toISOString().split('T')[0];
-              if (!groupedByDate[dateKey]) {
-                  groupedByDate[dateKey] = [];
-              }
-              appointment.dateGroup = dateKey;
-              groupedByDate[dateKey].push(appointment);
-          });
-
-          const sortedAppointments = Object.keys(groupedByDate)
-              .sort((a, b) => sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b))
-              .flatMap(date => groupedByDate[date]);
-
-          const skip = (parseInt(page) - 1) * parseInt(limit);
-          responseData = sortedAppointments.slice(skip, skip + parseInt(limit));
-
-          const total = sortedAppointments.length;
-
-          return res.status(200).json({
-              success: true,
-              data: responseData,
-              pagination: {
-                  total: total,
-                  page: parseInt(page),
-                  pages: Math.ceil(total / parseInt(limit)),
-                  limit: parseInt(limit)
-              }
-          });
-      } else {
-          // For non-clinic mode, get patients based on doctorId
-          const patientQuery = doctorId ? { 
-              $or: [
-                  { consultingDoctor: new mongoose.Types.ObjectId(doctorId) },
-                  { attendingPhysician: new mongoose.Types.ObjectId(doctorId) }
-              ]
-          } : {};
-
-          const patients = await user.find({ 
-              role: 'patient',
-              ...patientQuery
-          })
-          .select('name email profilePicture sex dateOfBirth patientId status phone consultingDoctor')
-          .sort({ 'name.first': 1 })
-          .lean();
-
-          // Get all appointments with doctor filter
-          const appointmentQuery = doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {};
-          const allAppointments = await Appointment.find(appointmentQuery)
-              .populate('doctor', 'name email')
-              .sort({ date: -1 })
-              .lean();
-
-          // Create a map of patient ID to their latest appointment
-          const patientAppointmentMap = new Map();
-          allAppointments.forEach(appointment => {
-              const patientId = appointment.patient?.toString();
-              if (patientId && !patientAppointmentMap.has(patientId)) {
-                  patientAppointmentMap.set(patientId, appointment);
-              }
-          });
-
-          // Process all patients
-          const processedPatients = patients.map(patient => {
-              let age = null;
-              if (patient?.dateOfBirth) {
-                  const today = new Date();
-                  const birthDate = new Date(patient.dateOfBirth);
-                  age = today.getFullYear() - birthDate.getFullYear();
-                  const monthDiff = today.getMonth() - birthDate.getMonth();
-                  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-                      age--;
-                  }
-              }
-
-              const latestAppointment = patientAppointmentMap.get(patient._id.toString());
-
-              return {
-                  id: latestAppointment?._id || Math.random().toString(36).substr(2, 9),
-                  date: latestAppointment?.date || new Date(),
-                  startTime: latestAppointment?.startTime || "00:00",
-                  endTime: latestAppointment?.endTime || "00:00",
-                  meetLink: latestAppointment?.joining_link || "",
-                  status: latestAppointment?.status || "no_appointment",
-                  mode: latestAppointment?.mode || "none",
-                  checkIn: latestAppointment?.checkedIn || false,
-                  checkInDate: latestAppointment?.checkInDate || null,
-                  isAppointment: !!latestAppointment,
-                  patient: {
-                      patient_status: patient.status,
-                      id: patient._id,
-                      patientId: patient.patientId,
-                      name: `${patient.name.first} ${patient.name.last}`,
-                      sex: patient.sex,
-                      age: age,
-                      phoneNumber: patient.phone,
-                      profilePicture: patient.profilePicture || null,
-                      email: patient.email
-                  },
-                  doctor: latestAppointment?.doctor ? {
-                      id: latestAppointment.doctor._id,
-                      name: `${latestAppointment.doctor.name.first} ${latestAppointment.doctor.name.last}`,
-                      email: latestAppointment.doctor.email
-                  } : null,
-                  metadata: latestAppointment?.metadata || {}
-              };
-          });
-
-          // Sort by date (newest to oldest)
-          processedPatients.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-          // Calculate skip for pagination
-          const skip = (parseInt(page) - 1) * parseInt(limit);
-          
-          // Apply pagination
-          responseData = processedPatients.slice(skip, skip + parseInt(limit));
-
-          return res.status(200).json({
-              success: true,
-              data: responseData,
-              pagination: {
-                  total: processedPatients.length,
-                  page: parseInt(page),
-                  pages: Math.ceil(processedPatients.length / parseInt(limit)),
-                  limit: parseInt(limit)
-              }
-          });
-      }
-
-  } catch (error) {
-      console.error('Error fetching appointments:', error);
-      res.status(500).json({
-          success: false,
-          message: 'Failed to fetch appointments',
-          error: error.message
+            : null,
+          metadata: appointment.metadata || {},
+        };
       });
+
+      // Group by date and apply pagination
+      const groupedByDate = {};
+      appointmentsWithAge.forEach((appointment) => {
+        const appointmentDate = new Date(appointment.date);
+        const dateKey = appointmentDate.toISOString().split("T")[0];
+        if (!groupedByDate[dateKey]) {
+          groupedByDate[dateKey] = [];
+        }
+        appointment.dateGroup = dateKey;
+        groupedByDate[dateKey].push(appointment);
+      });
+
+      const sortedAppointments = Object.keys(groupedByDate)
+        .sort((a, b) =>
+          sortOrder === "desc" ? b.localeCompare(a) : a.localeCompare(b)
+        )
+        .flatMap((date) => groupedByDate[date]);
+
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      responseData = sortedAppointments.slice(skip, skip + parseInt(limit));
+
+      const total = sortedAppointments.length;
+
+      return res.status(200).json({
+        success: true,
+        data: responseData,
+        pagination: {
+          total: total,
+          page: parseInt(page),
+          pages: Math.ceil(total / parseInt(limit)),
+          limit: parseInt(limit),
+        },
+      });
+    } else {
+      // For non-clinic mode, get patients based on doctorId
+      const patientQuery = doctorId
+        ? {
+            $or: [
+              { consultingDoctor: new mongoose.Types.ObjectId(doctorId) },
+              { attendingPhysician: new mongoose.Types.ObjectId(doctorId) },
+            ],
+          }
+        : {};
+
+      const patients = await user
+        .find({
+          role: "patient",
+          ...patientQuery,
+        })
+        .select(
+          "name email profilePicture sex dateOfBirth patientId status phone consultingDoctor"
+        )
+        .sort({ "name.first": 1 })
+        .lean();
+
+      // Get all appointments with doctor filter
+      const appointmentQuery = doctorId
+        ? { doctor: new mongoose.Types.ObjectId(doctorId) }
+        : {};
+      const allAppointments = await Appointment.find(appointmentQuery)
+        .populate("doctor", "name email")
+        .sort({ date: -1 })
+        .lean();
+
+      // Create a map of patient ID to their latest appointment
+      const patientAppointmentMap = new Map();
+      allAppointments.forEach((appointment) => {
+        const patientId = appointment.patient?.toString();
+        if (patientId && !patientAppointmentMap.has(patientId)) {
+          patientAppointmentMap.set(patientId, appointment);
+        }
+      });
+
+      // Process all patients
+      const processedPatients = patients.map((patient) => {
+        let age = null;
+        if (patient?.dateOfBirth) {
+          const today = new Date();
+          const birthDate = new Date(patient.dateOfBirth);
+          age = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          if (
+            monthDiff < 0 ||
+            (monthDiff === 0 && today.getDate() < birthDate.getDate())
+          ) {
+            age--;
+          }
+        }
+
+        const latestAppointment = patientAppointmentMap.get(
+          patient._id.toString()
+        );
+
+        return {
+          id: latestAppointment?._id || Math.random().toString(36).substr(2, 9),
+          date: latestAppointment?.date || new Date(),
+          startTime: latestAppointment?.startTime || "00:00",
+          endTime: latestAppointment?.endTime || "00:00",
+          meetLink: latestAppointment?.joining_link || "",
+          status: latestAppointment?.status || "no_appointment",
+          mode: latestAppointment?.mode || "none",
+          checkIn: latestAppointment?.checkedIn || false,
+          checkInDate: latestAppointment?.checkInDate || null,
+          isAppointment: !!latestAppointment,
+          patient: {
+            patient_status: patient.status,
+            id: patient._id,
+            patientId: patient.patientId,
+            name: `${patient.name.first} ${patient.name.last}`,
+            sex: patient.sex,
+            age: age,
+            phoneNumber: patient.phone,
+            profilePicture: patient.profilePicture || null,
+            email: patient.email,
+          },
+          doctor: latestAppointment?.doctor
+            ? {
+                id: latestAppointment.doctor._id,
+                name: `${latestAppointment.doctor.name.first} ${latestAppointment.doctor.name.last}`,
+                email: latestAppointment.doctor.email,
+              }
+            : null,
+          metadata: latestAppointment?.metadata || {},
+        };
+      });
+
+      // Sort by date (newest to oldest)
+      processedPatients.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      // Calculate skip for pagination
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      // Apply pagination
+      responseData = processedPatients.slice(skip, skip + parseInt(limit));
+
+      return res.status(200).json({
+        success: true,
+        data: responseData,
+        pagination: {
+          total: processedPatients.length,
+          page: parseInt(page),
+          pages: Math.ceil(processedPatients.length / parseInt(limit)),
+          limit: parseInt(limit),
+        },
+      });
+    }
+  } catch (error) {
+    console.error("Error fetching appointments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch appointments",
+      error: error.message,
+    });
   }
 };
 // Upload report files to appointment
 exports.uploadAppointmentReports = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid appointment ID format"
+        message: "Invalid appointment ID format",
       });
     }
 
@@ -1796,7 +1921,7 @@ exports.uploadAppointmentReports = async (req, res) => {
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found"
+        message: "Appointment not found",
       });
     }
 
@@ -1804,23 +1929,23 @@ exports.uploadAppointmentReports = async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "No files uploaded"
+        message: "No files uploaded",
       });
     }
 
     // Create report objects from uploaded files
-    const reports = req.files.map(file => ({
+    const reports = req.files.map((file) => ({
       name: req.body.name || file.originalname,
       type: req.body.type || "Other",
       fileUrl: file.path, // Cloudinary URL from your middleware
-      fileType: file.mimetype.split('/')[1] || "pdf",
+      fileType: file.mimetype.split("/")[1] || "pdf",
       description: req.body.description || "",
       uploadedAt: new Date(),
       metadata: {
         originalName: file.originalname,
         size: file.size,
-        cloudinaryId: file.filename || file.public_id
-      }
+        cloudinaryId: file.filename || file.public_id,
+      },
     }));
 
     // Update appointment with new reports
@@ -1844,15 +1969,14 @@ exports.uploadAppointmentReports = async (req, res) => {
     res.status(200).json({
       success: true,
       data: updatedAppointment.reports,
-      message: `${reports.length} report(s) uploaded successfully`
+      message: `${reports.length} report(s) uploaded successfully`,
     });
-
   } catch (error) {
     console.error("Error uploading reports:", error);
     res.status(500).json({
       success: false,
       message: "Failed to upload reports",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1864,9 +1988,9 @@ exports.updateConsultation = async (req, res) => {
     const consultationData = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid appointment ID format" 
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
       });
     }
 
@@ -1875,40 +1999,75 @@ exports.updateConsultation = async (req, res) => {
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found"
+        message: "Appointment not found",
       });
     }
 
     // Prepare consultation update data
     const consultationUpdate = {
-      consultationType: consultationData.consultationType || appointment.consultation?.consultationType,
-      consultationNotes: consultationData.notes || consultationData.consultationNotes || appointment.consultation?.consultationNotes,
-      description: consultationData.description || appointment.consultation?.description,
-      treatmentCategory: consultationData.treatmentCategory || appointment.consultation?.treatmentCategory,
-      consultationStatus: consultationData.status || consultationData.consultationStatus || appointment.consultation?.consultationStatus || "Scheduled",
-      isOnline: consultationData.isOnline !== undefined ? consultationData.isOnline : appointment.consultation?.isOnline,
-      roomNumber: consultationData.roomNumber !== undefined ? consultationData.roomNumber : appointment.consultation?.roomNumber,
-      isRisky: consultationData.isRisky !== undefined ? consultationData.isRisky : appointment.consultation?.isRisky,
-      
+      consultationType:
+        consultationData.consultationType ||
+        appointment.consultation?.consultationType,
+      consultationNotes:
+        consultationData.notes ||
+        consultationData.consultationNotes ||
+        appointment.consultation?.consultationNotes,
+      description:
+        consultationData.description || appointment.consultation?.description,
+      treatmentCategory:
+        consultationData.treatmentCategory ||
+        appointment.consultation?.treatmentCategory,
+      consultationStatus:
+        consultationData.status ||
+        consultationData.consultationStatus ||
+        appointment.consultation?.consultationStatus ||
+        "Scheduled",
+      isOnline:
+        consultationData.isOnline !== undefined
+          ? consultationData.isOnline
+          : appointment.consultation?.isOnline,
+      roomNumber:
+        consultationData.roomNumber !== undefined
+          ? consultationData.roomNumber
+          : appointment.consultation?.roomNumber,
+      isRisky:
+        consultationData.isRisky !== undefined
+          ? consultationData.isRisky
+          : appointment.consultation?.isRisky,
+
       // Ensure the four required fields are included
-      interview: consultationData.interview || appointment.consultation?.interview || "",
-      physicalExamination: consultationData.physicalExamination || appointment.consultation?.physicalExamination || "",
-      treatment: consultationData.treatment || appointment.consultation?.treatment || "",
-      recommendations: consultationData.recommendations || appointment.consultation?.recommendations || "",
-      
+      interview:
+        consultationData.interview || appointment.consultation?.interview || "",
+      physicalExamination:
+        consultationData.physicalExamination ||
+        appointment.consultation?.physicalExamination ||
+        "",
+      treatment:
+        consultationData.treatment || appointment.consultation?.treatment || "",
+      recommendations:
+        consultationData.recommendations ||
+        appointment.consultation?.recommendations ||
+        "",
+
       // Add time from appointment's startTime if not provided
-      time: consultationData.time || appointment.startTime || appointment.consultation?.time || ""
+      time:
+        consultationData.time ||
+        appointment.startTime ||
+        appointment.consultation?.time ||
+        "",
     };
 
     // Add consultation date if provided
     if (consultationData.date || consultationData.consultationDate) {
-      const dateValue = consultationData.date || consultationData.consultationDate;
+      const dateValue =
+        consultationData.date || consultationData.consultationDate;
       const consultDate = new Date(dateValue);
       if (!isNaN(consultDate.getTime())) {
         consultationUpdate.consultationDate = consultDate;
       }
     } else if (appointment.consultation?.consultationDate) {
-      consultationUpdate.consultationDate = appointment.consultation.consultationDate;
+      consultationUpdate.consultationDate =
+        appointment.consultation.consultationDate;
     } else {
       consultationUpdate.consultationDate = new Date();
     }
@@ -1929,15 +2088,15 @@ exports.updateConsultation = async (req, res) => {
       success: true,
       message: "Consultation updated successfully",
       data: {
-        consultation: updatedAppointment.consultation
-      }
+        consultation: updatedAppointment.consultation,
+      },
     });
   } catch (error) {
     console.error("Error updating consultation:", error);
     res.status(500).json({
       success: false,
       message: "Failed to update consultation",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1946,11 +2105,7 @@ exports.updateConsultation = async (req, res) => {
 exports.getDoctorAppointmentsByDate = async (req, res) => {
   try {
     const { doctorId } = req.params;
-    const {
-      startDate,
-      endDate,
-      status = "all",
-    } = req.query;
+    const { startDate, endDate, status = "all" } = req.query;
 
     const query = {
       doctor: doctorId,
@@ -1975,8 +2130,8 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
 
     // Group appointments by date
     const groupedAppointments = appointments.reduce((acc, appointment) => {
-      const date = appointment.date.toISOString().split('T')[0];
-      
+      const date = appointment.date.toISOString().split("T")[0];
+
       if (!acc[date]) {
         acc[date] = [];
       }
@@ -1988,20 +2143,26 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
         const birthDate = new Date(appointment.patient.dateOfBirth);
         age = today.getFullYear() - birthDate.getFullYear();
         const monthDiff = today.getMonth() - birthDate.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        if (
+          monthDiff < 0 ||
+          (monthDiff === 0 && today.getDate() < birthDate.getDate())
+        ) {
           age--;
         }
       }
 
       acc[date].push({
         appointmentId: appointment._id,
-        patientName: appointment.patient ? `${appointment.patient.name.first} ${appointment.patient.name.last}` : 'Unknown',
+        patientName: appointment.patient
+          ? `${appointment.patient.name.first} ${appointment.patient.name.last}`
+          : "Unknown",
         age: age,
-        gender: appointment.patient?.sex || 'Unknown',
+        gender: appointment.patient?.sex || "Unknown",
         appointmentTime: appointment.startTime,
         status: appointment.status,
         mode: appointment.mode,
-        meetLink:appointment?.mode=="online" ? appointment?.joining_link : null
+        meetLink:
+          appointment?.mode == "online" ? appointment?.joining_link : null,
       });
 
       return acc;
@@ -2011,13 +2172,15 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
     const formattedResponse = Object.entries(groupedAppointments)
       .map(([date, appointments]) => ({
         date,
-        appointments: appointments.sort((a, b) => a.appointmentTime.localeCompare(b.appointmentTime))
+        appointments: appointments.sort((a, b) =>
+          a.appointmentTime.localeCompare(b.appointmentTime)
+        ),
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     res.status(200).json({
       success: true,
-      data: formattedResponse
+      data: formattedResponse,
     });
   } catch (error) {
     console.error("Error fetching doctor appointments by date:", error);
@@ -2028,5 +2191,3 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
     });
   }
 };
-
-
