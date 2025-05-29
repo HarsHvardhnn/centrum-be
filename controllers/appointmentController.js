@@ -1536,7 +1536,11 @@ exports.getAppointments = async (req, res) => {
 
     // Status filter
     if (status && status !== "all") {
-      query.status = status.toLowerCase();
+      if (status === "checkedIn") {
+        query.status = status;
+      } else {
+        query.status = status.toLowerCase();
+      }
     }
 
     // Date range filter
@@ -1804,26 +1808,100 @@ exports.getAppointments = async (req, res) => {
         .sort({ "name.first": 1 })
         .lean();
 
-      // Get all appointments with doctor filter
-      const appointmentQuery = doctorId
-        ? { doctor: new mongoose.Types.ObjectId(doctorId) }
-        : {};
+      // Build appointment query with all filters
+      const appointmentQuery = {
+        ...(doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {}),
+        ...(status && status !== "all" ? 
+          status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
+        : {}),
+        ...(startDate && endDate
+          ? {
+              date: {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate),
+              },
+            }
+          : {}),
+      };
+
+      console.log("appointment query",appointmentQuery)
+
+      // Add search term filter if provided
+      if (searchTerm) {
+        appointmentQuery.$or = [
+          // Search through patient name fields
+          { "patient.name.first": { $regex: searchTerm, $options: "i" } },
+          { "patient.name.last": { $regex: searchTerm, $options: "i" } },
+          // Search through consultation fields
+          { "consultation.consultationNotes": { $regex: searchTerm, $options: "i" } },
+          { "consultation.description": { $regex: searchTerm, $options: "i" } },
+          { "consultation.interview": { $regex: searchTerm, $options: "i" } },
+          { "consultation.physicalExamination": { $regex: searchTerm, $options: "i" } },
+          { "consultation.treatment": { $regex: searchTerm, $options: "i" } },
+          { "consultation.recommendations": { $regex: searchTerm, $options: "i" } },
+          { notes: { $regex: searchTerm, $options: "i" } },
+        ];
+
+        // Since we need to search through populated patient fields, we need to use $lookup and $match
+        const appointmentsWithPatientName = await Appointment.aggregate([
+          {
+            $lookup: {
+              from: "users", // The collection name for patients
+              localField: "patient",
+              foreignField: "_id",
+              as: "patientData"
+            }
+          },
+          {
+            $unwind: "$patientData"
+          },
+          {
+            $match: {
+              $or: [
+                ...appointmentQuery.$or,
+                { "patientData.name.first": { $regex: searchTerm, $options: "i" } },
+                { "patientData.name.last": { $regex: searchTerm, $options: "i" } },
+                { "patientData.email": { $regex: searchTerm, $options: "i" } },
+                { "patientData.phone": { $regex: searchTerm, $options: "i" } },
+                { "patientData.patientId": { $regex: searchTerm, $options: "i" } }
+              ]
+            }
+          }
+        ]);
+
+        // Get the IDs of matching appointments
+        const matchingAppointmentIds = appointmentsWithPatientName.map(app => app._id);
+        
+        // Add these IDs to the main query
+        appointmentQuery._id = { $in: matchingAppointmentIds };
+        
+        // Remove the original $or condition since we're now using the IDs
+        delete appointmentQuery.$or;
+      }
+
+      // Get all appointments with filters
       const allAppointments = await Appointment.find(appointmentQuery)
         .populate("doctor", "name email")
+        .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture")
         .sort({ date: -1 })
         .lean();
+
+      console.log("allAppointments",allAppointments)
 
       // Create a map of patient ID to their latest appointment
       const patientAppointmentMap = new Map();
       allAppointments.forEach((appointment) => {
-        const patientId = appointment.patient?.toString();
+        const patientId = appointment.patient?._id.toString();
         if (patientId && !patientAppointmentMap.has(patientId)) {
           patientAppointmentMap.set(patientId, appointment);
         }
       });
 
-      // Process all patients
-      const processedPatients = patients.map((patient) => {
+      console.log("patientAppointmentMap",patientAppointmentMap)
+
+      // Process all patients that have appointments matching the filters
+      const processedPatients = allAppointments.map((appointment) => {
+        const patient = appointment.patient;
         let age = null;
         if (patient?.dateOfBirth) {
           const today = new Date();
@@ -1837,41 +1915,38 @@ exports.getAppointments = async (req, res) => {
             age--;
           }
         }
-
-        const latestAppointment = patientAppointmentMap.get(
-          patient._id.toString()
-        );
+        // console.log("processedPatients",processedPatients)
 
         return {
-          id: latestAppointment?._id || Math.random().toString(36).substr(2, 9),
-          date: latestAppointment?.date || new Date(),
-          startTime: latestAppointment?.startTime || "00:00",
-          endTime: latestAppointment?.endTime || "00:00",
-          meetLink: latestAppointment?.joining_link || "",
-          status: latestAppointment?.status || "no_appointment",
-          mode: latestAppointment?.mode || "none",
-          checkIn: latestAppointment?.checkedIn || false,
-          checkInDate: latestAppointment?.checkInDate || null,
-          isAppointment: !!latestAppointment,
+          id: appointment._id,
+          date: appointment.date || new Date(),
+          startTime: appointment.startTime || "00:00",
+          endTime: appointment.endTime || "00:00",
+          meetLink: appointment.joining_link || "",
+          status: appointment.status || "no_appointment",
+          mode: appointment.mode || "none",
+          checkIn: appointment.checkedIn || false,
+          checkInDate: appointment.checkInDate || null,
+          isAppointment: true,
           patient: {
-            patient_status: patient.status,
-            id: patient._id,
-            patientId: patient.patientId,
-            name: `${patient.name.first} ${patient.name.last}`,
-            sex: patient.sex,
+            patient_status: patient?.status,
+            id: patient?._id,
+            patientId: patient?.patientId,
+            name: patient ? `${patient.name.first} ${patient.name.last}` : null,
+            sex: patient?.sex,
             age: age,
-            phoneNumber: patient.phone,
-            profilePicture: patient.profilePicture || null,
-            email: patient.email,
+            phoneNumber: patient?.phone,
+            profilePicture: patient?.profilePicture || null,
+            email: patient?.email,
           },
-          doctor: latestAppointment?.doctor
+          doctor: appointment.doctor
             ? {
-                id: latestAppointment.doctor._id,
-                name: `${latestAppointment.doctor.name.first} ${latestAppointment.doctor.name.last}`,
-                email: latestAppointment.doctor.email,
+                id: appointment.doctor._id,
+                name: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
+                email: appointment.doctor.email,
               }
             : null,
-          metadata: latestAppointment?.metadata || {},
+          metadata: appointment.metadata || {},
         };
       });
 
@@ -1904,6 +1979,7 @@ exports.getAppointments = async (req, res) => {
     });
   }
 };
+
 // Upload report files to appointment
 exports.uploadAppointmentReports = async (req, res) => {
   try {
