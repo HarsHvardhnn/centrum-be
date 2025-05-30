@@ -93,11 +93,14 @@ exports.getAllNonAdminUsers = async (req, res) => {
     let query = {};
 
     if (req.user.role === 'admin') {
-   
       query = { role: { $ne: 'admin' } };
     } else if (req.user.role === 'receptionist') {
-  
       query = { role: 'patient' };
+    } else if (req.user.role === 'doctor') {
+      query = { 
+        role: 'patient',
+        consultingDoctor: req.user.id 
+      };
     }
     
 
