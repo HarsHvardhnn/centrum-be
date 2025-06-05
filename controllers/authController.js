@@ -77,19 +77,19 @@ const signup = async (req, res) => {
 
     // Validate inputs
     if (!email || !password || !firstName || !lastName || !role) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: "Wszystkie pola są wymagane" });
     }
 
     // Check if role is valid
     const validRoles = ["patient", "doctor", "receptionist", "admin"];
     if (!validRoles.includes(role)) {
-      return res.status(400).json({ message: "Invalid role" });
+      return res.status(400).json({ message: "Nieprawidłowa rola" });
     }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(409).json({ message: "Email already registered" });
+      return res.status(409).json({ message: "Email już zarejestrowany" });
     }
 
     const otp = generateOTP();
@@ -122,12 +122,12 @@ const signup = async (req, res) => {
       text: `Your OTP code is: ${otp}`,
     });
     res.status(200).json({
-      message: "OTP sent to your email",
+      message: "OTP wysłany na email",
       email,
     });
   } catch (error) {
     console.error("Signup error:", error);
-    res.status(500).json({ message: "Error during signup" });
+    res.status(500).json({ message: "Błąd podczas rejestracji" });
   }
 };
 
@@ -146,7 +146,7 @@ const verifyOTP = async (req, res) => {
     if (!email || !otp || !purpose) {
       return res
         .status(400)
-        .json({ message: "Email, OTP and purpose are required" });
+        .json({ message: "Email, OTP i cel są wymagane" });
     }
 
     // Find the OTP record
@@ -156,13 +156,13 @@ const verifyOTP = async (req, res) => {
     });
 
     if (!otpRecord) {
-      return res.status(404).json({ message: "No OTP request found" });
+      return res.status(404).json({ message: "Nie znaleziono żądania OTP" });
     }
 
     // Check if OTP has expired
     if (otpRecord.hasExpired()) {
       await OTP.deleteOne({ _id: otpRecord._id });
-      return res.status(410).json({ message: "OTP has expired" });
+      return res.status(410).json({ message: "OTP wygasł" });
     }
 
     // Check if max attempts exceeded
@@ -170,7 +170,7 @@ const verifyOTP = async (req, res) => {
       await OTP.deleteOne({ _id: otpRecord._id });
       return res
         .status(429)
-        .json({ message: "Too many attempts. Please request a new OTP" });
+        .json({ message: "Zbyt wiele prób. Proszę poprosić o nowy OTP" });
     }
 
     // Check if OTP matches
@@ -178,7 +178,7 @@ const verifyOTP = async (req, res) => {
       otpRecord.attempts += 1;
       await otpRecord.save();
       return res.status(401).json({
-        message: "Invalid OTP",
+        message: "Nieprawidłowy OTP",
         attemptsLeft: otpRecord.maxAttempts - otpRecord.attempts,
       });
     }
@@ -233,7 +233,7 @@ const verifyOTP = async (req, res) => {
 
       // Return success with user data and access token
       return res.status(201).json({
-        message: "User registered successfully",
+        message: "Użytkownik zarejestrowany pomyślnie",
         token: accessToken,
         user: {
           id: newUser._id,
@@ -248,7 +248,7 @@ const verifyOTP = async (req, res) => {
       await otpRecord.save();
 
       return res.status(200).json({
-        message: "OTP verified successfully",
+        message: "OTP zweryfikowany pomyślnie",
         email,
         resetToken: jwt.sign({ email }, process.env.JWT_SECRET, {
           expiresIn: "15m",
@@ -257,10 +257,10 @@ const verifyOTP = async (req, res) => {
     }
 
     // If we get here, it's an unhandled purpose
-    return res.status(400).json({ message: "Invalid OTP purpose" });
+    return res.status(400).json({ message: "Nieprawidłowy cel OTP" });
   } catch (error) {
     console.error("OTP verification error:", error);
-    res.status(500).json({ message: "Error during OTP verification" });
+    res.status(500).json({ message: "Błąd podczas weryfikacji OTP" });
   }
 };
 
@@ -276,7 +276,7 @@ const login = async (req, res) => {
     if (!email || !password) {
       return res
         .status(400)
-        .json({ message: "Email and password are required" });
+        .json({ message: "Email i hasło są wymagane" });
     }
 
     // Find the user
@@ -284,7 +284,7 @@ const login = async (req, res) => {
 
     // Check if user exists
     if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: "Nieprawidłowe dane logowania" });
     }
 
     // Check if password matches
@@ -301,7 +301,7 @@ const login = async (req, res) => {
       }
     }
     if (!passwordMatches) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: "Nieprawidłowe dane logowania" });
     }
 
     // Generate tokens
@@ -340,7 +340,7 @@ const login = async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({ message: "Error during login" });
+    res.status(500).json({ message: "Błąd podczas logowania" });
   }
 };
 
@@ -421,7 +421,7 @@ const googleLogin = async (req, res) => {
     });
   } catch (err) {
     console.error("Google login error:", err);
-    res.status(401).json({ message: "Invalid Google token" });
+    res.status(401).json({ message: "Nieprawidłowy token Google" });
   }
 };
 
@@ -432,7 +432,7 @@ const requestPasswordReset = async (req, res) => {
     console.log("email", email);
 
     if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+      return res.status(400).json({ message: "Email jest wymagany" });
     }
 
     // Check if user exists
@@ -442,7 +442,7 @@ const requestPasswordReset = async (req, res) => {
       // For security reasons, we'll still respond with success
       // even if the user doesn't exist
       return res.status(200).json({
-        message: "If your email is registered, you'll receive a reset link",
+        message: "Jeśli twoj email jest zarejestrowany, otrzymaasz link do zresetowania hasła",
       });
     }
 
@@ -468,12 +468,12 @@ const requestPasswordReset = async (req, res) => {
     console.log("response", response);
 
     res.status(200).json({
-      message: "Password reset OTP sent to your email",
+      message: "OTP do zresetowania hasła wysłany na email",
       email,
     });
   } catch (error) {
     console.error("Password reset request error:", error);
-    res.status(500).json({ message: "Error during password reset request" });
+    res.status(500).json({ message: "Błąd podczas żądania zresetowania hasła" });
   }
 };
 
@@ -485,13 +485,13 @@ const resetPassword = async (req, res) => {
     if (!resetToken || !newPassword) {
       return res
         .status(400)
-        .json({ message: "Reset token and new password are required" });
+        .json({ message: "Token do zresetowania hasła i nowe hasło są wymagane" });
     }
 
     let decoded;
     decoded = await OTP.findOne({ email, otp: resetToken });
     if (!decoded) {
-      return res.status(401).json({ message: "otp invalid" });
+      return res.status(401).json({ message: "otp nieprawidłowy" });
     }
 
     // try {
@@ -505,7 +505,7 @@ const resetPassword = async (req, res) => {
     // Find user
     const user = await User.findOne({ email: decoded.email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
     }
 
     // Hash new password
@@ -520,10 +520,10 @@ const resetPassword = async (req, res) => {
 
     await user.save();
 
-    res.status(200).json({ message: "Password reset successful" });
+    res.status(200).json({ message: "Hasło zresetowane pomyślnie" });
   } catch (error) {
     console.error("Password reset error:", error);
-    res.status(500).json({ message: "Error during password reset" });
+    res.status(500).json({ message: "Błąd podczas zresetowania hasła" });
   }
 };
 
@@ -535,7 +535,7 @@ const refreshToken = async (req, res) => {
   const device = req.headers["user-agent"] || "unknown";
 
   if (!refreshToken) {
-    return res.status(401).json({ message: "Refresh token required" });
+    return res.status(401).json({ message: "Wymagany token odświeżania" });
   }
 
   try {
@@ -548,7 +548,7 @@ const refreshToken = async (req, res) => {
     if (!user) {
       return res
         .status(401)
-        .json({ message: "Invalid or expired refresh token" });
+        .json({ message: "Nieprawidłowy lub wygasły token odświeżania" });
     }
 
     // Remove the used refresh token
@@ -582,7 +582,7 @@ const refreshToken = async (req, res) => {
     });
   } catch (err) {
     console.error("Refresh token error:", err);
-    res.status(500).json({ message: "Server error during token refresh" });
+    res.status(500).json({ message: "Błąd serwera podczas odświeżania tokenu" });
   }
 };
 
@@ -604,7 +604,7 @@ const logout = async (req, res) => {
 
   // Clear the refresh token cookie
   res.clearCookie("refreshToken");
-  res.status(200).json({ message: "Logged out successfully" });
+  res.status(200).json({ message: "Wylogowano pomyślnie" });
 };
 
 // 9. Logout from all devices
@@ -615,7 +615,7 @@ const logoutAll = async (req, res) => {
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
     }
 
     // Remove all refresh tokens
@@ -623,10 +623,10 @@ const logoutAll = async (req, res) => {
 
     // Clear the refresh token cookie
     res.clearCookie("refreshToken");
-    res.status(200).json({ message: "Logged out from all devices" });
+    res.status(200).json({ message: "Wylogowano z wszystkich urządzeń" });
   } catch (err) {
     console.error("Logout all error:", err);
-    res.status(500).json({ message: "Server error during logout" });
+    res.status(500).json({ message: "Błąd serwera podczas wylogowania" });
   }
 };
 
@@ -637,7 +637,7 @@ const toggleSingleSessionMode = async (req, res) => {
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
     }
 
     // Toggle the setting
@@ -677,7 +677,7 @@ const resendOtp = async (req, res) => {
     if (!email || !purpose) {
       return res
         .status(400)
-        .json({ message: "Email and purpose are required" });
+        .json({ message: "Email i cel są wymagane" });
     }
 
     // Delete any existing OTPs for this email and purpose
@@ -698,18 +698,18 @@ const resendOtp = async (req, res) => {
     // Send OTP via email
   const response = await sendEmail({
     to: email,
-    subject: "Your OTP for Password Reset",
-    html: `<p>Your OTP code is: <strong>${otp}</strong></p>`,
-    text: `Your OTP code is: ${otp}`,
+    subject: "Twoj OTP do zresetowania hasła",
+    html: `<p>Twoj OTP code to: <strong>${otp}</strong></p>`,
+    text: `Twoj OTP code to: ${otp}`,
   });
 
     res.status(200).json({
-      message: "New OTP sent to your email",
+      message: "Nowy OTP wysłany na email",
       email,
     });
   } catch (error) {
     console.error("Resend OTP error:", error);
-    res.status(500).json({ message: "Error resending OTP" });
+    res.status(500).json({ message: "Błąd podczas wysyłania nowego OTP" });
   }
 };
 
@@ -730,7 +730,7 @@ const getUserPublicInfo = async (req, res) => {
     );
 
     if (!user) {
-      return res.status(404).json({ message: "User not found or deleted" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony lub usunięty" });
     }
 
     res.json({
@@ -743,7 +743,7 @@ const getUserPublicInfo = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({ message: "Błąd serwera", error: error.message });
   }
 };
 
@@ -762,15 +762,15 @@ const getProfile = async (req, res) => {
 
     console.log("userData", userData);
     if (!userData) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
     }
 
     res.status(200).json({ success: true, data: userData });
   } catch (error) {
-    console.error("Error fetching user profile:", error);
+    console.error("Błąd podczas pobierania profilu użytkownika:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching profile",
+      message: "Błąd podczas pobierania profilu",
       error: error.message,
     });
   }
@@ -808,7 +808,7 @@ const updateProfile = async (req, res) => {
     if (!updatedUser) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: "Użytkownik nie znaleziony" });
     }
 
     res.status(200).json({ success: true, data: updatedUser });
@@ -819,13 +819,13 @@ const updateProfile = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: "Email already in use",
+        message: "Email już używany",
       });
     }
 
     res.status(500).json({
       success: false,
-      message: "Error updating profile",
+      message: "Błąd podczas aktualizacji profilu",
       error: error.message,
     });
   }

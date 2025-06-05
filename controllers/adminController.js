@@ -31,7 +31,7 @@ exports.addReceptionist = async (req, res) => {
     res
       .status(201)
       .json({
-        message: "Receptionist added successfully",
+        message: "Recepcjonista dodany pomyślnie",
         user: newReceptionist,
       });
   } catch (error) {
@@ -52,11 +52,11 @@ exports.markUserDeleted = async (req, res) => {
     );
 
     if (!userDetails)
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
 
-    res.status(200).json({ message: "User marked as deleted", userDetails });
+    res.status(200).json({ message: "Użytkownik oznaczony jako usunięty", userDetails });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: "Błąd serwera", error });
   }
 };
 
@@ -72,11 +72,11 @@ exports.unMarkDeleted = async (req, res) => {
     );
 
     if (!userDetails)
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
 
-    res.status(200).json({ message: "User marked as not deleted", userDetails });
+    res.status(200).json({ message: "Użytkownik oznaczony jako nie usunięty", userDetails });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: "Błąd serwera", error });
   }
 };
 
@@ -93,20 +93,31 @@ exports.getAllNonAdminUsers = async (req, res) => {
     let query = {};
 
     if (req.user.role === 'admin') {
-   
       query = { role: { $ne: 'admin' } };
     } else if (req.user.role === 'receptionist') {
-  
       query = { role: 'patient' };
+    } else if (req.user.role === 'doctor') {
+      query = { 
+        role: 'patient',
+        consultingDoctor: req.user.id 
+      };
     }
     
 
     if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase().trim();
       query.$or = [
-        { "name.first": { $regex: searchTerm, $options: "i" } },
-        { "name.last": { $regex: searchTerm, $options: "i" } },
-        { email: { $regex: searchTerm, $options: "i" } },
-        { phone: { $regex: searchTerm, $options: "i" } },
+        { 
+          $expr: {
+            $regexMatch: {
+              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              regex: searchLower,
+              options: "i"
+            }
+          }
+        },
+        { email: { $regex: searchLower, $options: "i" } },
+        { phone: { $regex: searchLower, $options: "i" } }
       ];
     }
 
@@ -148,11 +159,11 @@ exports.getUserById = async (req, res) => {
 
     const userDetails = await user.findById(id);
     if (!userDetails)
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
 
     res.status(200).json({ userDetails });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error:error.message });
+    res.status(500).json({ message: "Błąd serwera", error:error.message });
   }
 };
 
@@ -163,13 +174,13 @@ exports.chatHistory=async (req, res) => {
 
   try {
     const admin = await user.findOne({ role: "admin" });
-    if (!admin) return res.status(404).json({ error: "Admin not found" });
+    if (!admin) return res.status(404).json({ error: "Admin nie znaleziony" });
 
     const chat = await chatRoom.findOne({ user: userId, admin: admin._id })
       .populate("messages.sender", "name _id") // optional: get sender name
       .lean();
 
-    if (!chat) return res.status(404).json({ error: "Chat not found" });
+    if (!chat) return res.status(404).json({ error: "Chat nie znaleziony" });
 
     res.json(chat.messages); // or res.json(chat) if you want metadata too
   } catch (err) {

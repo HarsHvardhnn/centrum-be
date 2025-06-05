@@ -41,7 +41,7 @@ exports.generateVisitCard = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid appointment ID format",
+        message: "Nieprawidłowy format ID wizyty",
       });
     }
 
@@ -54,7 +54,21 @@ exports.generateVisitCard = async (req, res) => {
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found",
+        message: "Wizyta nie znaleziona",
+      });
+    }
+
+    // Check if a visit card already exists for this appointment
+    const existingVisitCard = appointment.reports?.find(report => report.type === "visit-card");
+    if (existingVisitCard) {
+      return res.status(200).json({
+        success: true,
+        message: "Karta wizyty już istnieje",
+        data: {
+          url: existingVisitCard.fileUrl,
+          reportId: existingVisitCard._id,
+          appointmentId: appointmentId
+        },
       });
     }
 
@@ -63,7 +77,7 @@ exports.generateVisitCard = async (req, res) => {
     if (!patient) {
       return res.status(404).json({
         success: false,
-        message: "Patient not found in appointment",
+        message: "Pacjent nie znaleziony w wizycie",
       });
     }
 
@@ -89,17 +103,17 @@ exports.generateVisitCard = async (req, res) => {
       size: "A4",
       margin: 50,
       info: {
-        Title: normalizePolishText(`karta_wizyty_[${patient.name?.first || ""} ${
+        Title: normalizePolishText(`karta_wizyty_[${patient.name?.first || ""}_{
           patient.name?.last || ""
         }][${visitDate}]_CM7`),
-        Author: "Hospital Management System",
+        Author: "Centrum Medyczne 7",
       },
     });
 
     // Function to safely add text with normalized Polish characters
-    const addText = (text, x, y, options = {}) => {
+    const addText = (text, options = {}) => {
       const normalizedText = normalizePolishText(text);
-      return doc.text(normalizedText, x, y, options);
+      return doc.text(normalizedText, options);
     };
 
     // Pipe the PDF into a file
@@ -125,120 +139,159 @@ exports.generateVisitCard = async (req, res) => {
     }
 
     // Get patient's full name
-    const patientName = `${patient.name?.first || ""} ${
-      patient.name?.last || ""
-    }`;
+    const patientName = `${patient.name?.first || ""} ${patient.name?.last || ""}`.trim();
 
     // Get patient's date of birth
     const dob = patient.dateOfBirth
       ? new Date(patient.dateOfBirth).toLocaleDateString("en-GB")
-      : "Not provided";
+      : "Nie dostarczone";
 
     // Get patient's address
     const address = patient.address
       ? `${patient.address}, ${patient.city || ""} ${patient.pinCode || ""}`
-      : "Not provided";
+      : "Nie dostarczone";
 
     // Get patient's phone
-    const phone = patient.phone || patient.phoneFormatted || "Not provided";
+    const phone = patient.phone || patient.phoneFormatted || "Nie dostarczone";
 
     // Add logo
     if (fs.existsSync(logoPath)) {
       const logoWidth = 160;
       const topPosition = 20;
-    
-      // Center the logo horizontally
       const startX = (doc.page.width - logoWidth) / 2;
-    
       doc.image(logoPath, startX, topPosition, { width: logoWidth });
     } else {
-      // If no logo, just display text in center position with black color
-      doc
-        .fillColor("black")
-        .fontSize(20);
-      addText("Centrum Medyczne", doc.page.width / 2 - 80, 40);
+      doc.fillColor("black").fontSize(20);
+      addText("Centrum Medyczne", { 
+        x: doc.page.width / 2 - 80, 
+        y: 40 
+      });
     }
 
-    // Add visit information
-    doc.moveDown(2);
+    // Move to header section
+    doc.y = 100;
     doc.fontSize(10);
-    addText(`Data wizyty: ${visitDate}`, 50, 100);
-    addText(`Godzina wizyty: ${visitTime}`, 50, 115);
-    addText(`Lekarz: ${doctorName}`, 50, 130);
+
+    // Calculate column widths
+    const pageWidth = doc.page.width - (doc.options.margin * 2);
+    const columnWidth = pageWidth / 2 - 10; // 10px gap between columns
+    const leftColumnX = doc.options.margin;
+    const rightColumnX = doc.options.margin + columnWidth + 20;
+
+    // Save current position
+    const headerStartY = doc.y;
+
+    // LEFT COLUMN - Visit Information
+    doc.x = leftColumnX;
+    doc.y = headerStartY;
     
-    // Informacje o pacjencie
-    addText(`Imie i nazwisko: ${patientName}`, doc.page.width - 240, 100);
-    addText(`Data urodzenia: ${dob}`, doc.page.width - 240, 115);
-    addText(`Adres: ${address}`, doc.page.width - 240, 130);
-    addText(`Numer telefonu: ${phone}`, doc.page.width - 240, 145);
+    addText(`Data wizyty: ${visitDate}`, { 
+      width: columnWidth,
+      continued: false 
+    });
+    doc.moveDown(0.5);
+    
+    addText(`Godzina wizyty: ${visitTime}`, { 
+      width: columnWidth,
+      continued: false 
+    });
+    doc.moveDown(0.5);
+    
+    addText(`Lekarz: ${doctorName}`, { 
+      width: columnWidth,
+      continued: false 
+    });
 
-    // Add visit card title
+    // RIGHT COLUMN - Patient Information
+    doc.x = rightColumnX;
+    doc.y = headerStartY;
+    
+    addText(`Imię i nazwisko: ${patientName}`, { 
+      width: columnWidth,
+      continued: false 
+    });
+    doc.moveDown(0.5);
+    
+    addText(`Data urodzenia: ${dob}`, { 
+      width: columnWidth,
+      continued: false 
+    });
+    doc.moveDown(0.5);
+    
+    addText(`Adres: ${address}`, { 
+      width: columnWidth,
+      continued: false 
+    });
+    doc.moveDown(0.5);
+    
+    addText(`Numer telefonu: ${phone}`, { 
+      width: columnWidth,
+      continued: false 
+    });
+
+    // Reset to full width and add title
+    doc.x = doc.options.margin;
+    doc.y = Math.max(doc.y, headerStartY + 80); // Ensure we're below both columns
+    doc.moveDown(1);
+
     doc.fontSize(16);
-    addText("Visit Card/ Karta Wizyty", doc.page.width / 2 - 80, 170);
+    addText("Karta Wizyty", { 
+      align: 'center',
+      width: pageWidth 
+    });
 
-    // Add consultation sections
+    doc.moveDown(2);
     doc.fontSize(11);
-    let yPosition = 210;
-    const lineHeight = 15;
-    const sectionSpacing = 10;
 
-    // Interview section
-    doc.font("Helvetica-Bold");
-    addText("Interview with the patient/ Wywiad z pacjentem", 50, yPosition);
-    yPosition += lineHeight;
-    doc.font("Helvetica");
-    addText(
-      consultationData.interview || "No interview data available",
-      50,
-      yPosition
+    // Helper to add a section with automatic page break
+    const addSection = (title, content) => {
+      // Check if we need a new page
+      if (doc.y > doc.page.height - 150) {
+        doc.addPage();
+        doc.y = 80;
+      }
+
+      doc.font("Helvetica-Bold");
+      addText(title, { 
+        width: pageWidth,
+        align: "left" 
+      });
+      
+      doc.moveDown(0.3);
+      doc.font("Helvetica");
+      
+      addText(content, { 
+        width: pageWidth,
+        align: "left" 
+      });
+      
+      doc.moveDown(1);
+    };
+
+    // Add each section
+    addSection(
+      "Wywiad z pacjentem",
+      consultationData.interview || "Brak danych wywiadu"
     );
-    yPosition += lineHeight * 2 + sectionSpacing;
-
-    // Physical examination section
-    doc.font("Helvetica-Bold");
-    addText("Physical examination/ Badanie przedmiotowe", 50, yPosition);
-    yPosition += lineHeight;
-    doc.font("Helvetica");
-    addText(
-      consultationData.physicalExamination || "No examination data available",
-      50,
-      yPosition
+    
+    addSection(
+      "Badanie przedmiotowe",
+      consultationData.physicalExamination || "Brak danych badania"
     );
-    yPosition += lineHeight * 2 + sectionSpacing;
-
-    // Treatment section
-    doc.font("Helvetica-Bold");
-    addText("The treatment used/ Zastosowane leczenie", 50, yPosition);
-    yPosition += lineHeight;
-    doc.font("Helvetica");
-    addText(
-      consultationData.treatment || "No treatment data available",
-      50,
-      yPosition
+    
+    addSection(
+      "Zastosowane leczenie",
+      consultationData.treatment || "Brak danych leczenia"
     );
-    yPosition += lineHeight * 2 + sectionSpacing;
-
-    // Recommendations section
-    doc.font("Helvetica-Bold");
-    addText("Recommendations/ Zalecenia", 50, yPosition);
-    yPosition += lineHeight;
-    doc.font("Helvetica");
-    addText(
-      consultationData.recommendations || "No recommendations available",
-      50,
-      yPosition
+    
+    addSection(
+      "Zalecenia",
+      consultationData.recommendations || "Brak zaleceń"
     );
-    yPosition += lineHeight * 2 + sectionSpacing;
-
-    // Notes section
-    doc.font("Helvetica-Bold");
-    addText("Notes/ Notatki", 50, yPosition);
-    yPosition += lineHeight;
-    doc.font("Helvetica");
-    addText(
-      consultationData.description || "No notes available",
-      50,
-      yPosition
+    
+    addSection(
+      "Notatki",
+      consultationData.description || "Brak notatek"
     );
 
     // Finalize the PDF
@@ -256,13 +309,15 @@ exports.generateVisitCard = async (req, res) => {
         tempFilePath,
         {
           folder: "hospital_app/images",
-          resource_type: "raw", // required for non-image files like PDFs
-          type: "upload",       // ensures it's treated as an uploaded file
+          resource_type: "raw",
+          type: "upload",
           use_filename: true,
           unique_filename: true,
           access_mode:"public",
-          public_id: filename.replace(".pdf", ""), // remove .pdf for public_id
-          format: "pdf",        // not needed if it's already a .pdf file
+          public_id: `karta_wizyty_[${patient.name?.first || ""} ${
+          patient.name?.last || ""
+        }][${visitDate}]_CM7`,
+          format: "pdf",
         },
         (error, result) => {
           if (error) reject(error);
@@ -276,11 +331,11 @@ exports.generateVisitCard = async (req, res) => {
 
     // Create a report for the appointment
     const newReport = {
-      name: `Visit Card - ${visitDate}`,
-      type: "Visit Card",
+      name: `Karta wizyty - ${visitDate}`,
+      type: "visit-card",
       fileUrl: result.secure_url,
       fileType: "pdf",
-      description: `Visit card generated for appointment on ${visitDate}`,
+      description: `Karta wizyty wygenerowana dla wizyty z dnia ${visitDate}`,
       uploadedAt: new Date(),
       metadata: {
         originalName: filename,
@@ -318,7 +373,7 @@ exports.generateVisitCard = async (req, res) => {
     // Return the download URL
     return res.status(200).json({
       success: true,
-      message: "Visit card generated successfully",
+      message: "Karta wizyty wygenerowana pomyślnie",
       data: {
         url: result.secure_url,
         reportId: appointment.reports[appointment.reports.length - 1]._id,
@@ -329,7 +384,7 @@ exports.generateVisitCard = async (req, res) => {
     console.error("Error generating visit card:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to generate visit card",
+      message: "Nie udało się wygenerować karty wizyty",
       error: error.message,
     });
   }
@@ -365,12 +420,12 @@ exports.getVisitCardByAppointment = async (req, res) => {
     console.log("appointment",req.user)
 
     // Check if user is authorized to access this appointment's data
-    if (appointment.patient.role === "patient" && req.user.id.toString() !== appointment.patient.id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized access to this appointment's data",
-      });
-    }
+    // if (appointment.patient.role === "patient" && req.user.id.toString() !== appointment.patient.id.toString()) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Nieautoryzowany dostęp do danych tej wizyty",
+    //   });
+    // }
 
     // Find the visit cards in appointment reports
     const visitCards = appointment.reports?.filter(report => 
@@ -380,7 +435,7 @@ exports.getVisitCardByAppointment = async (req, res) => {
     if (visitCards.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No visit cards found for this appointment",
+        message: "Brak kart wizyty dla tej wizyty",
       });
     }
 
@@ -403,7 +458,7 @@ exports.getVisitCardByAppointment = async (req, res) => {
     console.error("Error fetching visit card:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch visit card",
+      message: "Nie udało się pobrać karty wizyty",
       error: error.message,
     });
   }
@@ -418,7 +473,7 @@ exports.getVisitCard = async (req, res) => {
     if (req.user.role === "patient" && req.user._id.toString() !== patientId) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized access to this patient's data",
+        message: "Nieautoryzowany dostęp do danych tego pacjenta",
       });
     }
 
@@ -427,7 +482,7 @@ exports.getVisitCard = async (req, res) => {
     if (!patient) {
       return res.status(404).json({
         success: false,
-        message: "Patient not found",
+        message: "Pacjent nie znaleziony",
       });
     }
 
@@ -438,7 +493,7 @@ exports.getVisitCard = async (req, res) => {
     if (visitCards.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No visit cards found for this patient",
+        message: "Brak kart wizyty dla tego pacjenta",
       });
     }
 
@@ -459,7 +514,7 @@ exports.getVisitCard = async (req, res) => {
     console.error("Error fetching visit card:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch visit card",
+      message: "Nie udało się pobrać karty wizyty",
       error: error.message,
     });
   }

@@ -49,7 +49,7 @@ async function generateNextInvoiceId() {
     
   } catch (error) {
     console.error('Error generating invoice ID:', error);
-    throw new Error('Failed to generate invoice ID');
+    throw new Error('Nie udało się wygenerować identyfikatora faktury');
   }
 }
 
@@ -94,7 +94,7 @@ async function generateInvoiceIdForDate(month, year) {
     
   } catch (error) {
     console.error('Error generating invoice ID for specific date:', error);
-    throw new Error('Failed to generate invoice ID');
+    throw new Error('Nie udało się wygenerować identyfikatora faktury');
   }
 }
 
@@ -109,7 +109,7 @@ async function handleGenerateNextInvoiceId(req, res) {
     console.error('API Error - Generate Next Invoice ID:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to generate invoice ID',
+      message: 'Nie udało się wygenerować identyfikatora faktury',
       error: error.message 
     });
   }
@@ -126,7 +126,7 @@ async function handleGenerateInvoiceIdForDate(req, res) {
     if (!month || !year) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Month and year are required' 
+        message: 'Miesiąc i rok są wymagane' 
       });
     }
 
@@ -134,7 +134,7 @@ async function handleGenerateInvoiceIdForDate(req, res) {
     if (month < 1 || month > 12) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Month must be between 1 and 12' 
+        message: 'Miesiąc musi być między 1 a 12' 
       });
     }
 
@@ -143,17 +143,17 @@ async function handleGenerateInvoiceIdForDate(req, res) {
     if (year < 2020 || year > currentYear + 5) {
       return res.status(400).json({ 
         success: false, 
-        message: `Year must be between 2020 and ${currentYear + 5}` 
+        message: `Rok musi być między 2020 a ${currentYear + 5}` 
       });
     }
 
     const invoiceId = await generateInvoiceIdForDate(month, year);
     res.json({ success: true, invoiceId });
   } catch (error) {
-    console.error('API Error - Generate Invoice ID for Date:', error);
+    console.error('Błąd API - Generowanie identyfikatora faktury:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to generate invoice ID',
+      message: 'Nie udało się wygenerować identyfikatora faktury',
       error: error.message 
     });
   }

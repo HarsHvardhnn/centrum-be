@@ -31,7 +31,7 @@ router.patch(
 );
 router.patch("/users/:userId/revive", authorizeRoles(["admin"]), unMarkDeleted);
 
-router.get("/users/non-admins",   authorizeRoles(["admin", "receptionist"]), getAllNonAdminUsers);
+router.get("/users/non-admins",   authorizeRoles(["admin", "receptionist","doctor"]), getAllNonAdminUsers);
 router.get("/users/:id", authorizeRoles(["admin"]), getUserById);
 router.get(
   "/history/chats",
@@ -52,7 +52,7 @@ router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), u
     const file = req.file;
 
     if (!file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      return res.status(400).json({ message: "Nie udało się przesłać pliku" });
     }
 
     const fileInfo = {
@@ -71,7 +71,7 @@ router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), u
       .status(500)
       .json({
         success: false,
-        message: "File upload failed",
+        message: "Nie udało się przesłać pliku",
         error: error.message,
       });
   }
@@ -79,12 +79,13 @@ router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), u
 
 
 
-router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) => {
+router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (req, res) => {
   try {
     // Parse query parameters with defaults
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const sort = req.query.sort || "createdAt";
+    console.log("soqieryt",req.query)
     const order = req.query.order === "asc" ? 1 : -1;
     const search = req.query.search || "";
     const role = req.query.role || "";
@@ -94,7 +95,7 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
       return res.status(400).json({
         success: false,
         message:
-          "Invalid pagination parameters. Page must be >= 1 and limit must be between 1 and 100.",
+          "Nieprawidłowe parametry stronicowania. Strona musi być >= 1 i limit musi być między 1 a 100.",
       });
     }
 
@@ -106,12 +107,23 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
       filter.role = role;
     }
 
+    console.log("search",search)
     // Add search filter if provided
     if (search) {
+      console.log("search",search)
+      const searchLower = search.toLowerCase().trim();
       filter.$or = [
-        { "name.first": { $regex: search, $options: "i" } },
-        { "name.last": { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
+        { 
+          $expr: {
+            $regexMatch: {
+              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              regex: searchLower,
+              options: "i"
+            }
+          }
+        },
+        { email: { $regex: searchLower, $options: "i" } },
+        { phone: { $regex: searchLower, $options: "i" } }
       ];
     }
 
@@ -124,7 +136,7 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
 
     // Execute query with pagination and only select needed fields
     const users = await User.find(filter)
-      .select("name email phone role")
+      .select("name email phone role smsConsentAgreed")
       .sort(sortOptions)
       .skip(skip)
       .limit(limit)
@@ -144,6 +156,7 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
           email: user.email,
           phone: user.phone || "Not provided",
           role: user.role,
+          smsConsentAgreed: user.smsConsentAgreed,
         })),
         pagination: {
           page,
@@ -157,7 +170,7 @@ router.get("/users", authorizeRoles(["admin","receptionist"]), async (req, res) 
     console.error("Error fetching users:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching users",
+      message: "Błąd serwera podczas pobierania użytkowników",
     });
   }
 });

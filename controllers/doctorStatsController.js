@@ -19,7 +19,7 @@ exports.getDoctorAppointmentStats = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(doctorId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid doctor ID format"
+        message: "Nieprawidłowy format ID lekarza"
       });
     }
 
@@ -30,7 +30,7 @@ exports.getDoctorAppointmentStats = async (req, res) => {
       if (isNaN(start.getTime())) {
         return res.status(400).json({
           success: false,
-          message: "Invalid start date format. Please use YYYY-MM-DD"
+          message: "Nieprawidłowy format daty początkowej. Proszę użyć YYYY-MM-DD"
         });
       }
       // Set time to beginning of day
@@ -48,7 +48,7 @@ exports.getDoctorAppointmentStats = async (req, res) => {
       if (isNaN(end.getTime())) {
         return res.status(400).json({
           success: false,
-          message: "Invalid end date format. Please use YYYY-MM-DD"
+          message: "Nieprawidłowy format daty końcowej. Proszę użyć YYYY-MM-DD"
         });
       }
       // Set time to end of day
@@ -63,7 +63,7 @@ exports.getDoctorAppointmentStats = async (req, res) => {
     if (start > end) {
       return res.status(400).json({
         success: false,
-        message: "Start date cannot be after end date"
+        message: "Data początkowa nie może być po dacie końcowej"
       });
     }
 
@@ -182,7 +182,7 @@ exports.getDoctorAppointmentStats = async (req, res) => {
     console.error("Error fetching doctor statistics:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch doctor statistics",
+      message: "Nie udało się pobrać statystyk lekarza",
       error: error.message
     });
   }
@@ -283,7 +283,7 @@ exports.getDoctorDistributionStats = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(doctorId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid doctor ID format"
+        message: "Nieprawidłowy format ID lekarza"
       });
     }
 
@@ -296,7 +296,7 @@ exports.getDoctorDistributionStats = async (req, res) => {
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         return res.status(400).json({
           success: false,
-          message: "Invalid date format. Please use YYYY-MM-DD"
+          message: "Nieprawidłowy format daty. Proszę użyć YYYY-MM-DD"
         });
       }
       
@@ -306,7 +306,7 @@ exports.getDoctorDistributionStats = async (req, res) => {
       if (start > end) {
         return res.status(400).json({
           success: false,
-          message: "Start date cannot be after end date"
+          message: "Data początkowa nie może być po dacie końcowej"
         });
       }
       
@@ -410,7 +410,7 @@ exports.getDoctorDistributionStats = async (req, res) => {
     console.error("Error fetching doctor distribution statistics:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch doctor distribution statistics",
+      message: "Nie udało się pobrać statystyk rozkładu lekarza",
       error: error.message
     });
   }
@@ -425,7 +425,7 @@ exports.getDoctorPerformanceMetrics = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(doctorId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid doctor ID format"
+        message: "Nieprawidłowy format ID lekarza"
       });
     }
 
@@ -439,7 +439,7 @@ exports.getDoctorPerformanceMetrics = async (req, res) => {
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
         return res.status(400).json({
           success: false,
-          message: "Invalid date format. Please use YYYY-MM-DD"
+          message: "Nieprawidłowy format daty. Proszę użyć YYYY-MM-DD"
         });
       }
       
@@ -449,7 +449,7 @@ exports.getDoctorPerformanceMetrics = async (req, res) => {
       if (start > end) {
         return res.status(400).json({
           success: false,
-          message: "Start date cannot be after end date"
+          message: "Data początkowa nie może być po dacie końcowej"
         });
       }
     } else {
@@ -523,7 +523,7 @@ exports.getDoctorPerformanceMetrics = async (req, res) => {
     console.error("Error fetching doctor performance metrics:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch doctor performance metrics",
+      message: "Nie udało się pobrać statystyk wydajności lekarza",
       error: error.message
     });
   }
@@ -645,7 +645,7 @@ exports.getDoctorsList = async (req, res) => {
     console.error("Error fetching doctors list:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch doctors list",
+      message: "Nie udało się pobrać listy lekarzy",
       error: error.message
     });
   }

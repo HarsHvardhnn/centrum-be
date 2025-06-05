@@ -59,25 +59,92 @@ exports.createPatient = async (req, res) => {
       preferredLanguage,
     } = req.body;
 
+    console.log("req.body is ",dateOfBirth)
+    // Remove leading zeros from phone number
+    const phoneNumber = req.body.mobileNumber?.replace(/^0+/, '') || '';
     
+    if (!phoneNumber) {
+      return res.status(400).json({
+        message: "Numer telefonu jest wymagany",
+      });
+    }
+
+    // Check for existing patient with same phone number
+
+    const existingPatientByPhone = await patient.findOne({ phone: phoneNumber });
+    if (existingPatientByPhone) {
+      return res.status(409).json({
+        message: "Pacjent z tym numerem telefonu już istnieje",
+        patient: existingPatientByPhone,
+      });
+    }
+    // Email validation regex
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    // Handle email - check if it's actually provided and not "undefined"
+    const emailToSave = email && email !== "undefined" ? email.trim() : "";
+    
+    // If email is provided, validate its format
+    if (emailToSave && !emailRegex.test(emailToSave)) {
+      return res.status(400).json({
+        message: "Nieprawidłowy format adresu email",
+      });
+    }
+    
+    // If email is provided and valid, check for existing patient with same email
+    if (emailToSave) {
+      const existingPatientByEmail = await patient.findOne({ email: emailToSave });
+      if (existingPatientByEmail) {
+        return res.status(409).json({
+          message: "Pacjent z tym adresem email już istnieje",
+          patient: existingPatientByEmail,
+        });
+      }
+    }
 
     const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
 
+    // Initialize consent variables
     let parsedConsents = [];
-    if (consents && consents.length > 0) {
-      parsedConsents = JSON.parse(consents);
+    let smsConsentAgreed = false;
+
+    // Validate and parse consents
+    if (consents && consents.length > 0 && consents !== "undefined") {
+      try {
+        const parsed = JSON.parse(consents);
+        // Validate that parsed result is an array and not empty
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Additional validation to ensure each consent has required properties
+          const isValidConsent = parsed.every(consent => 
+            consent && 
+            typeof consent === 'object' && 
+            'text' in consent && 
+            'agreed' in consent &&
+            typeof consent.text === 'string' &&
+            typeof consent.agreed === 'boolean'
+          );
+          
+          if (isValidConsent) {
+            parsedConsents = parsed;
+            // Check for SMS consent
+            smsConsentAgreed = parsedConsents.some(
+              (consent) => consent.text === TARGET_TEXT && consent.agreed === true
+            );
+          } else {
+            console.warn("Invalid consent format detected");
+            parsedConsents = []; // Reset to empty array if invalid
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing consents:", error);
+        parsedConsents = []; // Reset to empty array if parsing fails
+      }
     }
-    
-    console.log("parsedConsents", parsedConsents);
-    
-    const hasAgreedToSms = parsedConsents.some(
-      (consent) => consent.text === TARGET_TEXT && consent.agreed === true
-    );
-    
-    if (hasAgreedToSms) {
-      // ✅ Do something here
-      smsConsentAgreed=true;
-    }
+    console.log("consents are ",parsedConsents)
+    //move back uip
+ 
+
+
     const documents = (req.files || []).map((file) => ({
       fileName: `${new Date().toISOString().split('T')[0]}`,
       path: file.path,
@@ -85,40 +152,34 @@ exports.createPatient = async (req, res) => {
       mimetype: file.mimetype,
     }));
 
-    const existingPatient = await patient.findOne({ email });
-    if (existingPatient) {
-      return res.status(409).json({
-        message: "A patient with this email already exists.",
-        patient: existingPatient,
-      });
-    }
     console.log(consultingSpecialization);  
     const consultSpec = await Specialization.findOne({
       _id: consultingSpecialization,
     });
 
-    const age = calculateAge(dateOfBirth);
-    console.log("age is ",age)
+    // Calculate age from dateOfBirth
+    const calculatedAge = calculateAge(dateOfBirth);
+    console.log("Calculated age:", calculatedAge);
 
     const newPatient = new patient({
       name: {
         first: fullName.split(" ")[0],
         last: fullName.split(" ").slice(1).join(" "),
       },
-      email: req.body.email,
+      email: emailToSave, // Use validated email
       patientId: `P-${new Date().getTime()}`,
-      phone: req.body.mobileNumber,
+      phone: phoneNumber, // Store phone number without leading zeros
       password: "defaultPassword123",
       role: "patient",
       signupMethod: "email",
       profilePicture: null,
-      age,
+      age: calculatedAge, // Use the calculated age
+      dateOfBirth, // Store the original date of birth
       smsConsentAgreed,
       fatherName,
       motherName,
       spouseName,
       sex,
-      dateOfBirth,
       birthWeight,
       maritalStatus,
       motherTongue,
@@ -146,7 +207,7 @@ exports.createPatient = async (req, res) => {
       referrerEmail,
       referrerNumber,
       referrerType,
-      consents,
+      consents: parsedConsents, // Store validated consents
       documents,
       // New fields
       isAdult:isAdult=="NIE" ? false : true,
@@ -159,15 +220,21 @@ exports.createPatient = async (req, res) => {
       preferredLanguage,
     });
 
+    console.log("Before saving - consents:", newPatient.consents);
     await newPatient.save();
+    
+    // Fetch the saved patient to verify the consents
+    const savedPatient = await patient.findById(newPatient._id);
+    console.log("After saving - consents:", savedPatient.consents);
+
     await sendWelcomeEmail(newPatient,'polish');
 
     res
       .status(201)
-      .json({ message: "Patient created successfully", patient: newPatient });
+      .json({ message: "Pacjent został pomyślnie utworzony", patient: newPatient });
   } catch (error) {
     console.error("Create patient error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: "Błąd wewnętrzny serwera" });
   }
 };
 // Get all patients
@@ -210,15 +277,18 @@ exports.getPatientById = async (req, res) => {
 
     
     if (!info) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
     delete info.password;
 
     let parsedConsents = [];
     console.log(info.consents);
     // Parse deeply stringified consent data
-    if (info.consents && info.consents.length > 0) {
+    if (info.consents && typeof info.consents==='string') {
    parsedConsents= JSON.parse(info?.consents);
+    }
+    else{
+      parsedConsents=info.consents;
     }
     // Transform documents
     const transformedDocuments = info?.documents?.map((docUrlOrObj) => {
@@ -277,12 +347,20 @@ exports.getPatientsList = async (req, res) => {
 
    
     if (search) {
+      const searchLower = search.toLowerCase().trim();
       query.$or = [
-        { "name.first": { $regex: search, $options: "i" } },
-        { "name.last": { $regex: search, $options: "i" } },
-        { username: { $regex: search, $options: "i" } },
-        { patientId: { $regex: search, $options: "i" } },
-        { mainComplaint: { $regex: search, $options: "i" } }
+        { 
+          $expr: {
+            $regexMatch: {
+              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              regex: searchLower,
+              options: "i"
+            }
+          }
+        },
+        { username: { $regex: searchLower, $options: "i" } },
+        { patientId: { $regex: searchLower, $options: "i" } },
+        { mainComplaint: { $regex: searchLower, $options: "i" } }
       ];
     }
     
@@ -372,15 +450,15 @@ exports.getPatientsList = async (req, res) => {
           "Unknown",
         username: patient.username ? `@${patient.username}` : "",
         date: patientDate,
-        email: patient.email || "Not specified",
-        phone: patient.phone || "Not specified",
-        sex: patient.sex || "Not specified",
+        email: patient.email || "Nieokreślony",
+        phone: patient.phone || "Nieokreślony",
+        sex: patient.sex || "Nieokreślony",
         isCheckedIn:patient.checkedIn || false,
-        dateOfBirth: patient.dateOfBirth || "Not specified",
+        dateOfBirth: patient.dateOfBirth || "Nieokreślony",
         age,
         avatar: patient?.profilePicture || "",
-        disease: patient.mainComplaint || "Not specified",
-        status: patient.status || "in-treatment",
+        disease: patient.mainComplaint || "Nieokreślony",
+        status: patient.status || "w trakcie leczenia",
         doctor: doctorName,
         _id: patient._id 
       };
@@ -428,9 +506,9 @@ exports.getPatientsByDoctorId = async (req, res) => {
           `${p.name?.first || ""} ${p.name?.last || ""}`.trim() || "Unknown",
         username: p.username ? `@${p.username}` : "",
         avatar: p.profilePicture || `https://i.pravatar.cc/150?img=${(index % 70) + 1}`,
-        sex: p.sex || "Not specified",
+        sex: p.sex || "Nieokreślony",
         age: age,
-        status: p.status === "completed" ? "Finished" : "in-treatment",
+        status: p.status === "completed" ? "Zakończone" : "w trakcie leczenia",
       };
     });
 
@@ -614,19 +692,19 @@ if (uploadedFiles && uploadedFiles.length > 0) {
     if (!updatedPatient) {
       return res
         .status(404)
-        .json({ success: false, message: "Patient not found" });
+        .json({ success: false, message: "Nie znaleziono pacjenta" });
     }
 
     res.status(200).json({
       success: true,
       data: updatedPatient,
-      message: "Patient updated successfully",
+      message: "Dane pacjenta zostały zaktualizowane pomyślnie",
     });
   } catch (error) {
     console.error("Error updating patient:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update patient details",
+      message: "Nie udało się zaktualizować danych pacjenta",
       error: error.message,
     });
   }
@@ -653,7 +731,7 @@ exports.getPatientDetails = async (req, res) => {
    
 
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
 
     console.log("Patient details:", patient);
@@ -671,12 +749,12 @@ exports.getPatientDetails = async (req, res) => {
       isInternationalPatient: patient.isInternationalPatient || false,
       notes: patient.notes || "",
       roomNumber: patient?.roomNumber || "",
-      riskStatus: patient?.riskStatus || "Risky",
-      treatmentStatus: patient?.treatmentStatus || "Under Treatment",
-      bloodPressure: patient.bloodPressure?.value || "141/90 mmHg",
-      temperature: patient?.temperature || "29°C",
-      weight: patient?.weight || "78kg",
-      height: patient?.height || "5'6\" inc",
+      riskStatus: patient?.riskStatus || "",
+      treatmentStatus: patient?.treatmentStatus || "",
+      bloodPressure: patient.bloodPressure?.value || "",
+      temperature: patient?.temperature || "",
+      weight: patient?.weight || "",
+      height: patient?.height || "",
       // New fields
       isAdult: patient.isAdult,
       contactPerson: patient.contactPerson || null,
@@ -761,13 +839,18 @@ const consultationData = {
 
 // Helper function to calculate age from birth date
 function calculateAge(birthDate) {
-  if (!birthDate) return 0;
+  if (!birthDate) return null;
 
   const today = new Date();
   const dob = new Date(birthDate);
+
+  // Check if birthDate is a valid date
+  if (isNaN(dob.getTime())) return null;
+
   let age = today.getFullYear() - dob.getFullYear();
   const monthDiff = today.getMonth() - dob.getMonth();
 
+  // Adjust age if birthday hasn't occurred this year
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
     age--;
   }
@@ -792,7 +875,7 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       .lean();
     
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found" });
+      return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
 
     // Find appointment by ID if provided
@@ -804,17 +887,17 @@ exports.getPatientDetailsAndReports = async (req, res) => {
         .lean();
       
       if (!appointment) {
-        return res.status(404).json({ message: "Appointment not found" });
+        return res.status(404).json({ message: "Nie znaleziono wizyty" });
       }
     }
 
     // Format last checked date - use appointment date if available
-    let lastChecked = "Not available";
+    let lastChecked = "Nie nagrane";
     if (appointment && appointment.date) {
       const doctor = appointment.doctor
         ? `Dr. ${appointment.doctor.name.first} ${appointment.doctor.name.last}`
         : "Unknown doctor";
-      const date = new Date(appointment.date).toLocaleDateString("en-US", {
+      const date = new Date(appointment.date).toLocaleDateString("pl-PL", {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -823,10 +906,10 @@ exports.getPatientDetailsAndReports = async (req, res) => {
     } else if (patient.consultations && patient.consultations.consultationDate) {
       const doctor = patient.consultingDoctor
         ? `Dr. ${patient.consultingDoctor.name.first} ${patient.consultingDoctor.name.last}`
-        : "Unknown doctor";
+        : "Nie nagrane";
       const date = new Date(
         patient.consultations.consultationDate
-      ).toLocaleDateString("en-US", {
+      ).toLocaleDateString("pl-PL", {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -838,12 +921,12 @@ exports.getPatientDetailsAndReports = async (req, res) => {
     const healthData = appointment?.healthData || patient.healthData || {};
     
     // Format blood pressure
-    const bp = healthData.bloodPressure?.value || "Not recorded";
+    const bp = healthData.bloodPressure?.value || "Nie nagrane";
 
     // Get weight
     const weight = healthData.bodyWeight?.value 
       ? `${healthData.bodyWeight.value} kg` 
-      : "Not recorded";
+      : "Nie nagrane";
 
     // Format medications - use appointment data if available
     const medications = appointment?.medications 
@@ -855,8 +938,8 @@ exports.getPatientDetailsAndReports = async (req, res) => {
             ? `X ${Math.ceil(
                 (new Date(med.endDate) - new Date(med.startDate)) /
                   (1000 * 60 * 60 * 24)
-              )} Days`
-            : "As prescribed",
+              )} Dni`
+            : "Jak przepisano",
         }))
       : patient.medications
         ? patient.medications.map((med) => ({
@@ -867,8 +950,8 @@ exports.getPatientDetailsAndReports = async (req, res) => {
               ? `X ${Math.ceil(
                   (new Date(med.endDate) - new Date(med.startDate)) /
                     (1000 * 60 * 60 * 24)
-                )} Days`
-              : "As prescribed",
+                )} Dni`
+              : "Jak przepisano",
           }))
         : [];
 
@@ -883,22 +966,22 @@ exports.getPatientDetailsAndReports = async (req, res) => {
 
     // Format final response
     const formattedPatient = {
-      name: patient.name || "Unknown",
+      name: patient.name || "Nie nagrane",
       patientId:
         patient.patientId ||
         patient.hospId ||
         `#${patient._id.toString().slice(-8)}`,
       avatar: patient.profilePicture || null,
       email: patient.email,
-      phone: patient.phone || patient.phoneFormatted || "Not available",
+      phone: patient.phone || patient.phoneFormatted || "Niedostępny",
       lastChecked,
       prescription: appointment?.consultation || consultation
         ? `#${Date.now().toString().slice(-8)}`
-        : "Not available",
+        : "Niedostępny",
       weight,
       bp,
-      pulseRate: "Normal", // This doesn't seem to be in your model, so using a default
-      observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "No observations recorded",
+      pulseRate: "Normalny", // This doesn't seem to be in your model, so using a default
+      observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "Brak obserwacji",
       medications,
       reports,
       appointmentId: appointment?._id || null
@@ -919,7 +1002,7 @@ exports.getPatientMedicalDetails = async (req, res) => {
   const { appointmentId } = req.params;
 
   if (!appointmentId) {
-    return res.status(400).json({ message: "Appointment ID is required" });
+    return res.status(400).json({ message: "Identyfikator wizyty jest wymagany" });
   }
 
   console.log("Received appointment ID:", appointmentId);
@@ -931,7 +1014,7 @@ exports.getPatientMedicalDetails = async (req, res) => {
     console.log("Appointment medical details:", appointment);
 
     if (!appointment) {
-      return res.status(404).json({ message: "Appointment not found" });
+      return res.status(404).json({ message: "Nie znaleziono wizyty" });
     }
 
     return res.status(200).json({
@@ -942,7 +1025,7 @@ exports.getPatientMedicalDetails = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching appointment medical details:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Błąd serwera", error: error.message });
   }
 };
 
@@ -950,9 +1033,6 @@ exports.getPatientMedicalDetails = async (req, res) => {
 exports.updatePatient = async (req, res) => {
   try {
     const patientId = req.params.id;
-
-    
-
 
     const {
       fullName,
@@ -1001,61 +1081,98 @@ exports.updatePatient = async (req, res) => {
       nationality,
       preferredLanguage,
     } = req.body;
-    console.log(
-      "consents",consents
-    )
 
+    // Remove leading zeros from phone number if provided
+    const phoneNumber = mobileNumber?.replace(/^0+/, '') || '';
+
+    // Find the existing patient first
+    const existingPatient = await patient.findOne({_id: patientId});
+    if (!existingPatient) {
+      return res.status(404).json({ error: "Nie znaleziono pacjenta" });
+    }
+
+    // Check for phone number uniqueness if being updated
+    if (phoneNumber && phoneNumber !== existingPatient.phone) {
+      const existingPatientByPhone = await patient.findOne({
+        phone: phoneNumber,
+        _id: { $ne: patientId }
+      });
+      if (existingPatientByPhone) {
+        return res.status(409).json({
+          message: "Inny pacjent z tym numerem telefonu już istnieje",
+        });
+      }
+    }
+
+    // Email validation regex
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    // Handle email - check if it's actually provided and not "undefined"
+    const emailToSave = email && email !== "undefined" ? email.trim() : existingPatient.email;
+    
+    // If email is being updated, validate its format
+    if (emailToSave !== existingPatient.email && !emailRegex.test(emailToSave)) {
+      return res.status(400).json({
+        message: "Nieprawidłowy format adresu email",
+      });
+    }
+    
+    // Check for email uniqueness if being updated
+    if (emailToSave && emailToSave !== existingPatient.email) {
+      const existingPatientByEmail = await patient.findOne({
+        email: emailToSave,
+        _id: { $ne: patientId }
+      });
+      if (existingPatientByEmail) {
+        return res.status(409).json({
+          message: "Inny pacjent z tym adresem email już istnieje",
+        });
+      }
+    }
+
+    // Handle consents validation
     const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
+    let parsedConsents = [];
+    let smsConsentAgreed = existingPatient.smsConsentAgreed; // Keep existing value by default
 
-let parsedConsents = [];
-let smsConsentAgreed = false;
+    if (consents && consents.length > 0 && consents !== "undefined") {
+      try {
+        const parsed = JSON.parse(consents);
+        // Validate that parsed result is an array and not empty
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Additional validation to ensure each consent has required properties
+          const isValidConsent = parsed.every(consent => 
+            consent && 
+            typeof consent === 'object' && 
+            'text' in consent && 
+            'agreed' in consent &&
+            typeof consent.text === 'string' &&
+            typeof consent.agreed === 'boolean'
+          );
+          
+          if (isValidConsent) {
+            parsedConsents = parsed;
+            // Check for SMS consent
+            smsConsentAgreed = parsedConsents.some(
+              (consent) => consent.text === TARGET_TEXT && consent.agreed === true
+            );
+          } else {
+            console.warn("Invalid consent format detected");
+            parsedConsents = existingPatient.consents || []; // Keep existing consents if invalid
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing consents:", error);
+        parsedConsents = existingPatient.consents || []; // Keep existing consents if parsing fails
+      }
+    }
 
-if (consents && consents.length > 0) {
-  parsedConsents = JSON.parse(consents);
-}
-
-console.log("parsedConsents", parsedConsents);
-
-const hasAgreedToSms = parsedConsents.some(
-  (consent) => consent.text === TARGET_TEXT && consent.agreed === true
-);
-
-if (hasAgreedToSms) {
-  smsConsentAgreed = true;
-}
-
-console.log("smsConsentAgreed",smsConsentAgreed)
-
-
-    console.log("date of birth", dateOfBirth);
-
-    console.log(":req.",req.files)
     const newDocuments = (req.files || []).map((file) => ({
       fileName: `${new Date().toISOString().split('T')[0]}`,
       path: file.path,
       originalname: file.originalname,
       mimetype: file.mimetype,
     }));
-
-    // Check if another patient with the same email exists (excluding current patient)
-    if (email) {
-      const existingPatient = await patient.findOne({
-        email,
-        _id: { $ne: patientId },
-      });
-
-      if (existingPatient) {
-        return res.status(409).json({
-          message: "Another patient with this email already exists.",
-        });
-      }
-    }
-
-    // Find the existing patient
-    const existingPatient = await patient.findOne({_id:patientId});
-    if (!existingPatient) {
-      return res.status(404).json({ error: "Patient not found" });
-    }
 
     // Handle consulting specialization
     let consultingSpecName = existingPatient.consultingSpecialization;
@@ -1076,59 +1193,59 @@ console.log("smsConsentAgreed",smsConsentAgreed)
           last: fullName.split(" ").slice(1).join(" "),
         },
       }),
-      ...(email && { email }),
-     smsConsentAgreed,
-      ...(mobileNumber && { phone: mobileNumber }),
-      ...(fatherName !== undefined && { fatherName }),
-      ...(motherName !== undefined && { motherName }),
-      ...(spouseName !== undefined && { spouseName }),
-      ...(sex !== undefined && { sex }),
-      ...(dateOfBirth !== undefined && {dateOfBirth: new Date(dateOfBirth) }),
-      ...(birthWeight !== undefined && { birthWeight }),
-      ...(maritalStatus !== undefined && { maritalStatus }),
-      ...(motherTongue !== undefined && { motherTongue }),
-      ...(religion !== undefined && { religion }),
-      ...(ethnicity !== undefined && { ethnicity }),
-      ...(education !== undefined && { education }),
-      ...(occupation !== undefined && { occupation }),
-      ...(address !== undefined && { address }),
-      ...(city !== undefined && { city }),
-      ...(district !== undefined && { district }),
-      ...(state !== undefined && { state }),
-      ...(country !== undefined && { country }),
-      ...(pinCode !== undefined && { pinCode }),
-      ...(alternateContact !== undefined && { alternateContact }),
-      ...(govtId !== undefined && { govtId }),
-      ...(isInternationalPatient !== undefined && { isInternationalPatient }),
-      ...(ivrLanguage !== undefined && { ivrLanguage }),
-      ...(mainComplaint !== undefined && { mainComplaint }),
-      ...(reviewNotes !== undefined && { reviewNotes }),
+      ...(emailToSave && { email: emailToSave }),
+      smsConsentAgreed,
+      ...(phoneNumber && { phone: phoneNumber }),
+      ...(fatherName !== undefined && fatherName !== "undefined" && { fatherName }),
+      ...(motherName !== undefined && motherName !== "undefined" && { motherName }),
+      ...(spouseName !== undefined && spouseName !== "undefined" && { spouseName }),
+      ...(sex !== undefined && sex !== "undefined" && { sex }),
+      ...(dateOfBirth !== undefined && dateOfBirth !== "undefined" && {dateOfBirth: new Date(dateOfBirth) }),
+      ...(birthWeight !== undefined && birthWeight !== "undefined" && { birthWeight }),
+      ...(maritalStatus !== undefined && maritalStatus !== "undefined" && { maritalStatus }),
+      ...(motherTongue !== undefined && motherTongue !== "undefined" && { motherTongue }),
+      ...(religion !== undefined && religion !== "undefined" && { religion }),
+      ...(ethnicity !== undefined && ethnicity !== "undefined" && { ethnicity }),
+      ...(education !== undefined && education !== "undefined" && { education }),
+      ...(occupation !== undefined && occupation !== "undefined" && { occupation }),
+      ...(address !== undefined && address !== "undefined" && { address }),
+      ...(city !== undefined && city !== "undefined" && { city }),
+      ...(district !== undefined && district !== "undefined" && { district }),
+      ...(state !== undefined && state !== "undefined" && { state }),
+      ...(country !== undefined && country !== "undefined" && { country }),
+      ...(pinCode !== undefined && pinCode !== "undefined" && { pinCode }),
+      ...(alternateContact !== undefined && alternateContact !== "undefined" && { alternateContact }),
+      ...(govtId !== undefined && govtId !== "undefined" && { govtId }),
+      ...(isInternationalPatient !== undefined && isInternationalPatient !== "undefined" && { isInternationalPatient }),
+      ...(ivrLanguage !== undefined && ivrLanguage !== "undefined" && { ivrLanguage }),
+      ...(mainComplaint !== undefined && mainComplaint !== "undefined" && { mainComplaint }),
+      ...(reviewNotes !== undefined && reviewNotes !== "undefined" && { reviewNotes }),
       ...(consultingSpecialization && {
         consultingSpecialization: consultingSpecName,
       }),
       ...(consultingDoctor && {
         consultingDoctor: new mongoose.Types.ObjectId(consultingDoctor),
       }),
-      ...(photo !== undefined && { photo }),
-      ...(otherHospitalIds !== undefined && { otherHospitalIds }),
-      ...(referrerName !== undefined && { referrerName }),
-      ...(referrerEmail !== undefined && { referrerEmail }),
-      ...(referrerNumber !== undefined && { referrerNumber }),
-      ...(referrerType !== undefined && { referrerType }),
+      ...(photo !== undefined && photo !== "undefined" && { photo }),
+      ...(otherHospitalIds !== undefined && otherHospitalIds !== "undefined" && { otherHospitalIds }),
+      ...(referrerName !== undefined && referrerName !== "undefined" && { referrerName }),
+      ...(referrerEmail !== undefined && referrerEmail !== "undefined" && { referrerEmail }),
+      ...(referrerNumber !== undefined && referrerNumber !== "undefined" && { referrerNumber }),
+      ...(referrerType !== undefined && referrerType !== "undefined" && { referrerType }),
       // New fields
-      ...(isAdult !== undefined && { isAdult }),
-      ...(contactPerson && { contactPerson }),
-      ...(fatherPhone && { fatherPhone }),
-      ...(motherPhone && { motherPhone }),
-      ...(relationToPatient && { relationToPatient }),
-      ...(allergies && { allergies }),
-      ...(nationality && { nationality }),
-      ...(preferredLanguage && { preferredLanguage }),
+      ...(isAdult !== undefined && isAdult !== "undefined" && { isAdult }),
+      ...(contactPerson !== undefined && contactPerson !== "undefined" && { contactPerson }),
+      ...(fatherPhone !== undefined && fatherPhone !== "undefined" && { fatherPhone }),
+      ...(motherPhone !== undefined && motherPhone !== "undefined" && { motherPhone }),
+      ...(relationToPatient !== undefined && relationToPatient !== "undefined" && { relationToPatient }),
+      ...(allergies !== undefined && allergies !== "undefined" && { allergies }),
+      ...(nationality !== undefined && nationality !== "undefined" && { nationality }),
+      ...(preferredLanguage !== undefined && preferredLanguage !== "undefined" && { preferredLanguage }),
     };
 
-    // Handle consents update
-    if (consents) {
-      updateData.consents = consents;
+    // Handle consents update - only if we have valid parsed consents
+    if (parsedConsents.length > 0) {
+      updateData.consents = parsedConsents;
     }
 
     // Handle documents update - append new documents to existing ones
@@ -1138,24 +1255,24 @@ console.log("smsConsentAgreed",smsConsentAgreed)
 
     // Update patient with new data
     const updatedPatient = await patient.findOneAndUpdate(
-      {_id:patientId},
+      {_id: patientId},
       updateData,
       { new: true, runValidators: true }
     );
 
     if (!updatedPatient) {
-      return res.status(404).json({ error: "Patient not found" });
+      return res.status(404).json({ error: "Nie znaleziono pacjenta" });
     }
 
     res.status(200).json({
-      message: "Patient updated successfully",
+      message: "Dane pacjenta zostały zaktualizowane pomyślnie",
       patient: updatedPatient,
     });
   } catch (error) {
     console.error("Update patient error:", error);
     res
       .status(500)
-      .json({ error: "Internal Server Error", details: error.message });
+      .json({ error: "Błąd wewnętrzny serwera", details: error.message });
   }
 };
 
@@ -1209,7 +1326,7 @@ exports.getAppointmentsList = async (req, res) => {
     // Execute the query with pagination and sorting
     const appointments = await Appointment
       .find(query)
-      .populate("patient", "name patientId dateOfBirth sex profilePicture username")
+      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone")
       .populate("doctor", "name")
       .sort(sort)
       .skip(skipAmount)
@@ -1250,15 +1367,15 @@ exports.getAppointmentsList = async (req, res) => {
           : "Unknown",
         username: appointment.patient?.username ? `@${appointment.patient.username}` : "",
         date: appointmentDate,
-        email: appointment.patient?.email || "Not specified",
-        phone: appointment.patient?.phone || "Not specified",
-        sex: appointment.patient?.sex || "Not specified",
+        email: appointment.patient?.email || "Nieokreślony",
+        phone: appointment.patient?.phone || "Nieokreślony",
+        sex: appointment.patient?.sex || "Nieokreślony",
         isCheckedIn: appointment.checkedIn || false,
-        dateOfBirth: appointment.patient?.dateOfBirth || "Not specified",
+        dateOfBirth: appointment.patient?.dateOfBirth || "Nieokreślony",
         age,
         avatar: appointment.patient?.profilePicture || "",
-        disease: appointment.consultation?.description || "Not specified",
-        status: appointment.status || "booked",
+        disease: appointment.consultation?.description || "Nieokreślony",
+        status: appointment.status || "zarezerwowane",
         doctor: doctorName,
         _id: appointment._id,
         patient_id: appointment.patient?._id,
@@ -1281,7 +1398,7 @@ exports.getAppointmentsList = async (req, res) => {
     console.error("Error fetching appointments list:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch appointments list",
+      message: "Nie udało się pobrać listy wizyt",
       error: error.message,
     });
   }

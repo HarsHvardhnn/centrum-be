@@ -36,7 +36,7 @@ const addDoctor = async (req, res) => {
     if (existingDoctor) {
       return res.status(400).json({
         success: false,
-        message: "Doctor with this email already exists",
+        message: "Lekarz z tym emailem już istnieje",
       });
     }
     // Create the base user document
@@ -100,14 +100,14 @@ const addDoctor = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Doctor created successfully",
+      message: "Lekarz utworzony pomyślnie",
       doctor: responseDoctor,
     });
   } catch (error) {
     console.error("Error adding doctor:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to add doctor",
+      message: "Nie udało się dodać lekarza",
       error: error.message,
     });
   }

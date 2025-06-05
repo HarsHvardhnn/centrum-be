@@ -8,14 +8,19 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: true,
-      unique: true,
+      unique: false,
+      sparse: true,
+      default: "",
     },
     sex: {
       type: String,
       enum:["Male","Female","Others"]
     },
-    phone: String,
+    phone: {
+      type: String,
+      required: true,
+      unique: true,
+    },
     password: {
       type: String,
       required: true,
@@ -27,7 +32,7 @@ const userSchema = new mongoose.Schema(
     },
     signupMethod: {
       type: String,
-      enum: ["google", "email", "apple", "fb"],
+      enum: ["google", "email", "apple", "fb","phone"],
       required: true,
     },
     profilePicture: String,

@@ -91,7 +91,7 @@ exports.getAllSmsData = async (req, res) => {
     console.error("Error fetching SMS data:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch SMS data",
+      message: "Nie udało się pobrać danych SMS",
       error: error.message,
     });
   }
@@ -109,7 +109,7 @@ exports.getSmsDataById = async (req, res) => {
     if (!smsData) {
       return res.status(404).json({
         success: false,
-        message: "SMS data not found",
+        message: "Dane SMS nie znalezione",
       });
     }
 
@@ -121,7 +121,7 @@ exports.getSmsDataById = async (req, res) => {
     console.error("Error fetching SMS data:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch SMS data",
+      message: "Nie udało się pobrać danych SMS",
       error: error.message,
     });
   }
@@ -145,7 +145,7 @@ exports.getSmsDataByBatchId = async (req, res) => {
     console.error("Error fetching SMS data by batch ID:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch SMS data",
+      message: "Nie udało się pobrać danych SMS",
       error: error.message,
     });
   }
@@ -209,7 +209,7 @@ exports.getSmsDataByUserId = async (req, res) => {
     console.error("Error fetching SMS data by user ID:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch SMS data",
+      message: "Nie udało się pobrać danych SMS",
       error: error.message,
     });
   }

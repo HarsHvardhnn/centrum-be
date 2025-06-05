@@ -78,10 +78,10 @@ exports.getServiceById = async (req, res) => {
       _id: req.params.id,
       isDeleted: false,
     });
-    if (!service) return res.status(404).json({ message: "Service not found" });
+    if (!service) return res.status(404).json({ message: "Usługa nie znaleziona" });
     res.json(service);
   } catch (error) {
-    res.status(500).json({ message: "Failed to get service", error });
+    res.status(500).json({ message: "Nie udało się pobrać usługi", error });
   }
 };
 
@@ -128,6 +128,6 @@ exports.deleteService = async (req, res) => {
     });
     res.json({ message: "Service deleted" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete service", error });
+    res.status(500).json({ message: "Nie udało się usunąć usługi", error });
   }
 };

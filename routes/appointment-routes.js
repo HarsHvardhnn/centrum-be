@@ -15,7 +15,6 @@ const { upload } = require("../middlewares/cloudinaryUpload");
 router.post(
   "/",
   [
-    authorizeRoles(["doctor","receptionist","admin"]),
     [
       check("doctor", "Doctor ID is required").notEmpty(),
       check("date", "Valid date is required").isDate(),

@@ -110,15 +110,16 @@ router.post(
       if (!files || files.length === 0) {
         return res
           .status(400)
-          .json({ success: false, message: "No files uploaded" });
+          .json({ success: false, message: "Nie udało się przesłać plików" });
       }
+      console.log("patientId",patientId,"appointmentId",appointmentId)
 
       // Check if patient exists
       const patient = await User.findById(patientId);
       if (!patient) {
         return res
           .status(404)
-          .json({ success: false, message: "Patient not found" });
+          .json({ success: false, message: "Pacjent nie znaleziony" });
       }
 
 
@@ -145,13 +146,13 @@ router.post(
       await patient.save();
       res.status(200).json({
         success: true,
-        message: "uploaded documents and checked in user",
+        message: "Przesłano dokumenty i sprawdzono użytkownika",
       });
     } catch (error) {
       console.error("Error uploading documents:", error);
       res.status(500).json({
         success: false,
-        message: "Failed to upload documents",
+        message: "Nie udało się przesłać dokumentów",
         error: error.message,
       });
     }

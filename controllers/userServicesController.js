@@ -18,13 +18,13 @@ exports.addServicesToUser = async (req, res) => {
     
     if (!userId || !userType || !services || !Array.isArray(services) || services.length === 0) {
       return res.status(400).json({ 
-        message: "User ID, user type, and at least one service are required" 
+        message: "Użytkownik ID, typ użytkownika i co najmniej jedna usługa są wymagane" 
       });
     }
 
     if (!["patient", "doctor"].includes(userType)) {
       return res.status(400).json({ 
-        message: "User type must be either 'patient' or 'doctor'" 
+        message: "Typ użytkownika musi być albo 'pacjent' albo 'lekarz'" 
       });
     }
 
@@ -43,7 +43,7 @@ exports.addServicesToUser = async (req, res) => {
 
     if (existingServices.length !== serviceIds.length) {
       return res.status(400).json({ 
-        message: "One or more services do not exist" 
+        message: "Jedna lub więcej usług nie istnieje" 
       });
     }
 
@@ -103,13 +103,13 @@ exports.addServicesToUser = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message: `Services added successfully to ${userType}`,
+      message: `Usługi dodane pomyślnie do ${userType}`,
       data: userService
     });
   } catch (error) {
     // console.error(`Error adding services to ${req.body.userType || 'user'}:`, error);
     return res.status(500).json({ 
-      message: `Failed to add services to ${req.body.userType || 'user'}`,
+      message: `Nie udało się dodać usług do ${req.body.userType || 'użytkownika'}`,
       error: error.message
     });
   }
@@ -122,7 +122,7 @@ exports.getUserServices = async (req, res) => {
 
     if (!userType || !["patient", "doctor"].includes(userType)) {
       return res.status(400).json({ 
-        message: "User type must be either 'patient' or 'doctor'" 
+        message: "Typ użytkownika musi być albo 'pacjent' albo 'lekarz'" 
       });
     }
 
@@ -144,19 +144,19 @@ exports.getUserServices = async (req, res) => {
 
     if (!userServices) {
       return res.status(200).json({
-        message: `No services found for this ${userType}`,
+        message: `Nie znaleziono usług dla tego ${userType}`,
         data: { user: userId, userType, services: [] }
       });
     }
 
     return res.status(200).json({
-      message: `${userType.charAt(0).toUpperCase() + userType.slice(1)} services retrieved successfully`,
+      message: `Usługi pobrane pomyślnie dla ${userType}`,
       data: userServices
     });
   } catch (error) {
     console.error(`Error retrieving ${req.params.userType || 'user'} services:`, error);
     return res.status(500).json({ 
-      message: `Failed to retrieve ${req.params.userType || 'user'} services`,
+      message: `Nie udało się pobrać usług dla ${req.params.userType || 'użytkownika'}`,
       error: error.message
     });
   }
@@ -170,7 +170,7 @@ exports.updateUserService = async (req, res) => {
 
     if (!userType || !["patient", "doctor"].includes(userType)) {
       return res.status(400).json({ 
-        message: "User type must be either 'patient' or 'doctor'" 
+        message: "Typ użytkownika musi być albo 'pacjent' albo 'lekarz'" 
       });
     }
 
@@ -188,7 +188,7 @@ exports.updateUserService = async (req, res) => {
     });
 
     if (!userService) {
-      return res.status(404).json({ message: `${userType.charAt(0).toUpperCase() + userType.slice(1)} services not found` });
+      return res.status(404).json({ message: `Usługi dla tego ${userType} nie znalezione` });
     }
 
     // Find the specific service in the services array
@@ -197,7 +197,7 @@ exports.updateUserService = async (req, res) => {
     );
 
     if (serviceIndex === -1) {
-      return res.status(404).json({ message: `Service not found for this ${userType}` });
+      return res.status(404).json({ message: `Usługa dla tego ${userType} nie znaleziona` });
     }
 
     // Update the service
@@ -222,13 +222,13 @@ exports.updateUserService = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message: `${userType.charAt(0).toUpperCase() + userType.slice(1)} service updated successfully`,
+      message: `Usługa ${userType} zaktualizowana pomyślnie`,
       data: userService
     });
   } catch (error) {
     console.error(`Error updating ${req.params.userType || 'user'} service:`, error);
     return res.status(500).json({ 
-      message: `Failed to update ${req.params.userType || 'user'} service`,
+      message: `Nie udało się zaktualizować usługi dla ${req.params.userType || 'użytkownika'}`,
       error: error.message
     });
   }
@@ -241,7 +241,7 @@ exports.deleteUserServices = async (req, res) => {
 
     if (!userType || !["patient", "doctor"].includes(userType)) {
       return res.status(400).json({ 
-        message: "User type must be either 'patient' or 'doctor'" 
+        message: "Typ użytkownika musi być albo 'pacjent' albo 'lekarz'" 
       });
     }
 
@@ -259,16 +259,16 @@ exports.deleteUserServices = async (req, res) => {
     );
 
     if (!result) {
-      return res.status(404).json({ message: `${userType.charAt(0).toUpperCase() + userType.slice(1)} services not found` });
+      return res.status(404).json({ message: `Usługi dla tego ${userType} nie znalezione` });
     }
 
     return res.status(200).json({
-      message: `${userType.charAt(0).toUpperCase() + userType.slice(1)} services deleted successfully`
+      message: `Usługi dla tego ${userType} usunięte pomyślnie`
     });
   } catch (error) {
     console.error(`Error deleting ${req.params.userType || 'user'} services:`, error);
     return res.status(500).json({ 
-      message: `Failed to delete ${req.params.userType || 'user'} services`,
+      message: `Nie udało się usunąć usług dla ${req.params.userType || 'użytkownika'}`,
       error: error.message
     });
   }
@@ -281,7 +281,7 @@ exports.removeServiceFromUser = async (req, res) => {
 
     if (!userType || !["patient", "doctor"].includes(userType)) {
       return res.status(400).json({ 
-        message: "User type must be either 'patient' or 'doctor'" 
+        message: "Typ użytkownika musi być albo 'pacjent' albo 'lekarz'" 
       });
     }
 
@@ -299,7 +299,7 @@ exports.removeServiceFromUser = async (req, res) => {
     });
 
     if (!userService) {
-      return res.status(404).json({ message: `${userType.charAt(0).toUpperCase() + userType.slice(1)} services not found` });
+      return res.status(404).json({ message: `Usługi dla tego ${userType} nie znalezione` });
     }
 
     // Find and remove the specific service
@@ -321,13 +321,13 @@ exports.removeServiceFromUser = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      message: `Service removed successfully from ${userType}`,
+      message: `Usługa usunięta pomyślnie z ${userType}`,
       data: userService
     });
   } catch (error) {
     console.error(`Error removing service from ${req.params.userType || 'user'}:`, error);
     return res.status(500).json({ 
-      message: `Failed to remove service from ${req.params.userType || 'user'}`,
+      message: `Nie udało się usunąć usługi z ${req.params.userType || 'użytkownika'}`,
       error: error.message
     });
   }

@@ -26,7 +26,7 @@ exports.getAllCategories = async (req, res) => {
 exports.deleteCategory = async (req, res) => {
   try {
     await Category.findByIdAndUpdate(req.params.id, { isDeleted: true });
-    res.status(200).json({ message: "Category deleted" });
+    res.status(200).json({ message: "Kategoria usunięta" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

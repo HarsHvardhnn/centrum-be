@@ -103,7 +103,7 @@ exports.getNewsById = async (req, res) => {
   try {
     const news = await NewsArticle.findById(req.params.id).populate("category");
     if (!news || news.isDeleted) {
-      return res.status(404).json({ message: "News article not found" });
+      return res.status(404).json({ message: "Artykuł news nie znaleziony" });
     }
     res.status(200).json(news);
   } catch (error) {
@@ -140,7 +140,7 @@ exports.updateNews = async (req, res) => {
 exports.deleteNews = async (req, res) => {
   try {
     await NewsArticle.findByIdAndUpdate(req.params.id, { isDeleted: true });
-    res.status(200).json({ message: "News article deleted" });
+    res.status(200).json({ message: "Artykuł news usunięty" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

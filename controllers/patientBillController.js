@@ -9,13 +9,17 @@ const cloudinary = require("../utils/cloudinary");
 const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
 const { generateNextInvoiceId } = require("./invoiceName");
+const patientServices = require("../models/patientServices");
+const puppeteer = require('puppeteer-core');
+// const path = require('path');
+// const fs = require('fs');
+// const puppeteer=require("puppeteer");
 
 // Generate a new bill for an appointment
 exports.generateBill = async (req, res) => {
   try {
     const { appointmentId } = req.params;
     const {
-      services,
       subtotal,
       taxPercentage,
       taxAmount,
@@ -27,6 +31,22 @@ exports.generateBill = async (req, res) => {
       notes,
     } = req.body;
 
+    const pat_services = await patientServices
+    .find({ appointment: appointmentId, isDeleted: false })
+    .populate("services.service")
+    .lean();
+  
+   let services_temp = pat_services.reduce((allServices, doc) => {
+      return allServices.concat(doc.services || []);
+    }, []);
+  // Extract all services from all documents
+  const services = (services_temp || []).map(serviceItem => ({
+    serviceId: serviceItem.service._id,
+    title: serviceItem.service?.title || "", // assuming 'name' field in Service model
+    price: serviceItem.service.price,
+    status: serviceItem.status
+  }));
+  console.log(services,"services")
     // Find appointment and check if it exists
     const appointment = await Appointment.findById(appointmentId).populate({
       path: "doctor",
@@ -48,7 +68,7 @@ exports.generateBill = async (req, res) => {
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found",
+        message: "Nie znaleziono wizyty",
       });
     }
 
@@ -57,19 +77,18 @@ exports.generateBill = async (req, res) => {
     if (existingBill) {
       return res.status(400).json({
         success: false,
-        message: "Bill already exists for this appointment",
+        message: "Faktura już istnieje dla tej wizyty",
       });
     }
 
+    const invoiceId=await generateNextInvoiceId();
  
     // Get consultation charges
     let consultationCharges = 0;
     
     if (appointment.mode === "online") {
       consultationCharges = copiedDoctor.onlineConsultationFee || 0;
-    } else {
-      consultationCharges = copiedDoctor.offlineConsultationFee || 0;
-    }
+    } 
     console.log(consultationCharges,"consultationCharges");
 
     // Create new bill
@@ -83,8 +102,9 @@ exports.generateBill = async (req, res) => {
       taxAmount,
       discount,
       additionalCharges,
+      invoiceId,
       additionalChargeNote,
-      totalAmount:parseFloat(totalAmount) + parseFloat(consultationCharges),
+      totalAmount: parseFloat(totalAmount),
       paymentMethod,
       billedAt: new Date(),
       billedBy: req.user._id,
@@ -100,14 +120,14 @@ exports.generateBill = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Bill generated successfully",
+      message: "Faktura została wygenerowana pomyślnie",
       data: newBill,
     });
   } catch (error) {
     console.error("Error generating bill:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to generate bill",
+      message: "Nie udało się wygenerować faktury",
       error: error.message,
     });
   }
@@ -125,7 +145,7 @@ exports.getAllBills = async (req, res) => {
       startDate,
       endDate,
       paymentStatus,
-     
+      search
     } = req.query;
 
     // Convert to numbers
@@ -144,7 +164,6 @@ exports.getAllBills = async (req, res) => {
       query.patient = patientId;
     }
 
- 
     if (startDate && endDate) {
       query.billedAt = {
         $gte: new Date(startDate),
@@ -160,7 +179,29 @@ exports.getAllBills = async (req, res) => {
       query.paymentStatus = paymentStatus;
     }
 
-    // Get bills with pagination
+    // Handle search parameter for both patient name and invoiceId
+    if (search) {
+      const trimmedSearch = search.trim();
+      if (trimmedSearch) { // Only proceed if there's non-whitespace content
+        const searchRegex = new RegExp(trimmedSearch, 'i');
+        
+        // First find matching patients
+        const matchingPatients = await User.find({
+          $or: [
+            { 'name.first': { $regex: searchRegex } },
+            { 'name.last': { $regex: searchRegex } }
+          ]
+        }).select('_id');
+
+        // Combine patient search and invoiceId search in the main query
+        query.$or = [
+          { patient: { $in: matchingPatients.map(p => p._id) } },
+          { invoiceId: { $regex: searchRegex } }
+        ];
+      }
+    }
+
+    // Get bills with search and filters
     let bills = await PatientBill.find(query)
       .populate({
         path: "patient",
@@ -177,11 +218,11 @@ exports.getAllBills = async (req, res) => {
       .sort(sortObject)
       .skip(skip)
       .limit(limit);
-      console.log("total bills",bills)
 
-          if (req.user.role=="doctor") {
+    if (req.user.role == "doctor") {
       bills = bills.filter((bill) => bill.appointment.doctor == req.user.id);
     }
+
     // Get total count for pagination
     const totalBills = await PatientBill.countDocuments(query);
 
@@ -199,7 +240,7 @@ exports.getAllBills = async (req, res) => {
     console.error("Error getting bills:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to get bills",
+      message: "Nie udało się pobrać faktur",
       error: error.message,
     });
   }
@@ -254,7 +295,7 @@ exports.getPatientBills = async (req, res) => {
     console.error("Error getting patient bills:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to get patient bills",
+      message: "Nie udało się pobrać faktur pacjenta",
       error: error.message,
     });
   }
@@ -269,7 +310,7 @@ exports.getBillById = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(billId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid bill ID format",
+        message: "Nieprawidłowy format ID faktury",
       });
     }
 
@@ -299,7 +340,7 @@ exports.getBillById = async (req, res) => {
     if (!bill || bill.isDeleted) {
       return res.status(404).json({
         success: false,
-        message: "Bill not found",
+        message: "Nie znaleziono faktury",
       });
     }
 
@@ -311,7 +352,7 @@ exports.getBillById = async (req, res) => {
     console.error("Error getting bill details:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to get bill details",
+      message: "Nie udało się pobrać szczegółów faktury",
       error: error.message,
     });
   }
@@ -339,16 +380,45 @@ exports.updateBillPaymentStatus = async (req, res) => {
 
     await bill.save();
 
+    console.log(bill,"bill")
+    console.log(bill.invoiceUrl,"bill.invoiceUrl")
+    // If bill is marked as paid and doesn't have an invoice, generate one
+    if (paymentStatus === 'paid' && !bill.invoiceUrl) {
+      try {
+        // Create a mock request object for generateInvoice
+        const mockReq = {
+          params: { billId: bill._id }
+        };
+        const mockRes = {
+          status: (code) => ({
+            json: (data) => {
+              if (data.success && data.data?.invoiceUrl) {
+                bill.invoiceUrl = data.data.invoiceUrl;
+                // bill.invoiceId = data.data.billId;
+                bill.save();
+              }
+            }
+          })
+        };
+        
+        // Call generateInvoice
+        await exports.generateInvoice(mockReq, mockRes);
+      } catch (invoiceError) {
+        console.error("Error auto-generating invoice:", invoiceError);
+        // Don't fail the payment status update if invoice generation fails
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      message: "Bill payment status updated successfully",
+      message: "Status płatności faktury został zaktualizowany pomyślnie",
       data: bill,
     });
   } catch (error) {
     console.error("Error updating bill payment status:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to update bill payment status",
+      message: "Nie udało się zaktualizować statusu płatności faktury",
       error: error.message,
     });
   }
@@ -364,7 +434,7 @@ exports.deleteBill = async (req, res) => {
     if (!bill) {
       return res.status(404).json({
         success: false,
-        message: "Bill not found",
+        message: "Nie znaleziono faktury",
       });
     }
 
@@ -374,13 +444,13 @@ exports.deleteBill = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Bill deleted successfully",
+      message: "Faktura została usunięta pomyślnie",
     });
   } catch (error) {
     console.error("Error deleting bill:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to delete bill",
+      message: "Nie udało się usunąć faktury",
       error: error.message,
     });
   }
@@ -432,14 +502,41 @@ exports.getBillStatistics = async (req, res) => {
     console.error("Error getting bill statistics:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to get bill statistics",
+      message: "Nie udało się pobrać statystyk faktur",
       error: error.message,
     });
   }
 };
 
 // Generate invoice PDF for a bill
+
+
+// Function to find Chrome executable
+const findChrome = () => {
+  const possiblePaths = [
+    process.env.CHROME_EXECUTABLE_PATH,
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+  ];
+
+  for (const chromePath of possiblePaths) {
+    if (chromePath && fs.existsSync(chromePath)) {
+      return chromePath;
+    }
+  }
+
+  throw new Error('Chrome executable not found. Please install Chrome or set CHROME_EXECUTABLE_PATH environment variable.');
+};
+
 exports.generateInvoice = async (req, res) => {
+  let browser = null;
+  
   try {
     const { billId } = req.params;
 
@@ -450,25 +547,6 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // Function to normalize Polish characters
-    const normalizePolishText = (text) => {
-      if (!text) return '';
-      
-      const polishCharMap = {
-        'ą': 'a', 'Ą': 'A',
-        'ć': 'c', 'Ć': 'C',
-        'ę': 'e', 'Ę': 'E',
-        'ł': 'l', 'Ł': 'L',
-        'ń': 'n', 'Ń': 'N',
-        'ó': 'o', 'Ó': 'O',
-        'ś': 's', 'Ś': 'S',
-        'ź': 'z', 'Ź': 'Z',
-        'ż': 'z', 'Ż': 'Z'
-      };
-      
-      return text.replace(/[ąĄćĆęĘłŁńŃóÓśŚźŹżŻ]/g, (match) => polishCharMap[match] || match);
-    };
-
     // Find the bill with populated data
     const bill = await PatientBill.findById(billId)
       .populate({
@@ -477,7 +555,7 @@ exports.generateInvoice = async (req, res) => {
       })
       .populate({
         path: "appointment",
-        select: "date startTime endTime doctor consultation",
+        select: "date startTime endTime doctor consultation mode",
         populate: {
           path: "doctor",
           select: "name email",
@@ -499,7 +577,7 @@ exports.generateInvoice = async (req, res) => {
     if (bill.invoiceUrl) {
       return res.status(200).json({
         success: true,
-        message: "Faktura jest juz dostepna",
+        message: "Faktura jest już dostępna",
         data: {
           invoiceUrl: bill.invoiceUrl,
           billId: bill._id,
@@ -508,11 +586,9 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    const nextId = await generateNextInvoiceId();
-    // Replace forward slashes with underscores for filename safety
+    const nextId = bill?.invoiceId || await generateNextInvoiceId();
     const safeInvoiceId = nextId.replace(/\//g, '_');
-    // Create a unique filename
-    const filename = `faktura_${safeInvoiceId}_${uuidv4()}.pdf`;
+    const filename = `faktura_${safeInvoiceId}.pdf`;
     const tempFilePath = path.join(__dirname, "..", "temp", filename);
     
     // Make sure temp directory exists
@@ -521,189 +597,21 @@ exports.generateInvoice = async (req, res) => {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Create a PDF document
-    const doc = new PDFDocument({
-      size: "A4",
-      margin: 50,
-      info: {
-        Title: normalizePolishText(`Faktura #${nextId}`),
-        Author: "Centrum Medyczne",
-      },
-    });
-
-    // Function to safely add text with normalized Polish characters
-    const addText = (text, x, y, options = {}) => {
-      const normalizedText = normalizePolishText(text);
-      return doc.text(normalizedText, x, y, options);
-    };
-
-    // Pipe the PDF into a file
-    const stream = fs.createWriteStream(tempFilePath);
-    doc.pipe(stream);
-
-    // Load logo
-    const logoPath = path.join(__dirname, "../public/logo_teal.png");
-    
-    // Add content to PDF
-    // Header with logo and title
-    if (fs.existsSync(logoPath)) {
-      doc.image(logoPath, 50, 30, { width: 80 });
-    }
-    
-    doc.fontSize(20).font('Helvetica-Bold');
-    addText("FAKTURA", 350, 40, { align: "right" });
-    
-    doc.fontSize(10).font('Helvetica');
-    addText(`Faktura Nr: ${bill._id}`, 350, 65, { align: "right" });
-    addText(`Data: ${new Date(bill.billedAt).toLocaleDateString('pl-PL')}`, 350, 80, { align: "right" });
-
-    // Move to next section
-    doc.y = 120;
-    
-    // Add horizontal line
-    doc.moveTo(50, doc.y)
-      .lineTo(550, doc.y)
-      .stroke();
-
-    // Hospital and billing info
-    doc.fontSize(10).font('Helvetica');
-    doc.y += 15;
-    let currentY = doc.y;
-    
-    addText("Centrum Medyczne", 50, currentY);
-    addText("Powstancow Warszawy 7/1.5", 50, currentY + 12);
-    addText("26-110 Skarzysko-Kamienna", 50, currentY + 24);
-    addText("Nagle przypadki: (+48) 797 097 487, (+48) 797 127 487", 50, currentY + 36);
-    addText("Telefon: (+48) 797 097 487", 50, currentY + 48);
-    addText("Email: kontakt@centrummedyczne7.pl", 50, currentY + 60);
-
-    // Patient information
-    doc.y = currentY + 85;
-    doc.fontSize(12).font('Helvetica-Bold');
-    addText("DANE PACJENTA:", 50, doc.y, { underline: true });
-    
-    doc.fontSize(10).font('Helvetica');
-    
-    currentY = doc.y + 20;
-    addText(`Imie i Nazwisko: ${bill.patient?.name?.first || ""} ${bill.patient?.name?.last || ""}`, 50, currentY);
-    addText(`ID Pacjenta: ${bill.patient?.patientId || ""}`, 50, currentY + 12);
-    addText(`Email: ${bill.patient?.email || ""}`, 50, currentY + 24);
-    addText(`Telefon: ${bill.patient?.phone || ""}`, 50, currentY + 36);
-
-    // Appointment details
-    const appointmentDate = bill.appointment?.date ? 
-      new Date(bill.appointment.date).toLocaleDateString('pl-PL') : "Brak danych";
-    
-    doc.y = currentY + 60;
-    doc.fontSize(12).font('Helvetica-Bold');
-    addText("SZCZEGOLY WIZYTY:", 50, doc.y, { underline: true });
-    
-    doc.fontSize(10).font('Helvetica');
-    
-    currentY = doc.y + 20;
-    addText(`Data: ${appointmentDate}`, 50, currentY);
-    addText(`Godzina: ${bill.appointment?.startTime || "Brak danych"}`, 50, currentY + 12);
-    addText(`Lekarz: ${bill.appointment?.doctor?.name?.first || ""} ${bill.appointment?.doctor?.name?.last || ""}`, 50, currentY + 24);
-    addText(`Typ konsultacji: ${bill.appointment?.consultation?.consultationType || "Konsultacja ogolna"}`, 50, currentY + 36);
-
-    // Bill items table header
-    doc.y = currentY + 60;
-    doc.fontSize(12).font('Helvetica-Bold');
-    addText("SZCZEGOLY PLATNOSCI:", 50, doc.y, { underline: true });
-    
-    // Table headers
-    doc.fontSize(10);
-    doc.y += 20;
-    
-    const tableTop = doc.y;
-    doc.font('Helvetica-Bold');
-    addText("Pozycja", 50, tableTop);
-    addText("Cena", 350, tableTop, { width: 90, align: "right" });
-    addText("Status", 450, tableTop, { width: 90, align: "right" });
-    
-    // Add horizontal line
-    doc.y = tableTop + 15;
-    doc.moveTo(50, doc.y)
-      .lineTo(550, doc.y)
-      .stroke();
-
-    // Table rows for services
-    doc.font('Helvetica');
-    let y = doc.y + 10;
-    
-    // Translate service status
+    // Helper functions for translations
     const translateStatus = (status) => {
       const statusMap = {
         'active': 'aktywny',
-        'completed': 'zakonczony',
+        'completed': 'zakończony',
         'cancelled': 'anulowany'
       };
       return statusMap[status] || status;
     };
-    
-    // Add consultation charge as first item if present
-    if (bill.consultationCharges > 0) {
-      const consultationType = bill.appointment?.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni";
-      addText(consultationType, 50, y);
-      addText(`${bill.consultationCharges.toFixed(2)} PLN`, 350, y, { width: 90, align: "right" });
-      addText("zakonczony", 450, y, { width: 90, align: "right" });
-      y += 20;
-    }
-    
-    bill.services.forEach((service) => {
-      addText(service.title, 50, y);
-      addText(`${service.price} PLN`, 350, y, { width: 90, align: "right" });
-      addText(translateStatus(service.status), 450, y, { width: 90, align: "right" });
-      y += 20;
-    });
 
-    // Add horizontal line
-    doc.moveTo(50, y + 10)
-      .lineTo(550, y + 10)
-      .stroke();
-
-    // Billing summary
-    y += 30;
-    addText("Suma czesciowa:", 350, y, { width: 90, align: "right" });
-    addText(`${bill.subtotal.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
-    
-    y += 20;
-    if (bill.taxPercentage > 0) {
-      addText(`Podatek VAT (${bill.taxPercentage}%):`, 350, y, { width: 90, align: "right" });
-      addText(`${bill.taxAmount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
-      y += 20;
-    }
-    
-    if (bill.discount > 0) {
-      addText("Znizka:", 350, y, { width: 90, align: "right" });
-      addText(`-${bill.discount.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
-      y += 20;
-    }
-    
-    if (bill.additionalCharges > 0) {
-      addText("Dodatkowe oplaty:", 350, y, { width: 90, align: "right" });
-      addText(`${bill.additionalCharges.toFixed(2)} PLN`, 450, y, { width: 90, align: "right" });
-      
-      if (bill.additionalChargeNote) {
-        y += 15;
-        doc.fontSize(8);
-        addText(`(${bill.additionalChargeNote})`, 350, y, { width: 180, align: "right" });
-      }
-      y += 20;
-    }
-
-    // Total amount
-    doc.fontSize(12).font('Helvetica-Bold');
-    addText("RAZEM DO ZAPLATY:", 350, y, { width: 90, align: "right" });
-    addText(`${bill.totalAmount} PLN`, 450, y, { width: 90, align: "right" });
-
-    // Payment information
-    // Translate payment status and method
     const translatePaymentStatus = (status) => {
       const statusMap = {
-        'pending': 'OCZEKUJACA',
-        'paid': 'ZAPLACONO',
-        'partial': 'CZESCIOWO ZAPLACONO',
+        'pending': 'OCZEKUJĄCA',
+        'paid': 'ZAPŁACONO',
+        'partial': 'CZĘŚCIOWO ZAPŁACONO',
         'cancelled': 'ANULOWANO'
       };
       return statusMap[status] || status.toUpperCase();
@@ -711,91 +619,469 @@ exports.generateInvoice = async (req, res) => {
     
     const translatePaymentMethod = (method) => {
       const methodMap = {
-        'cash': 'GOTOWKA',
+        'cash': 'GOTÓWKA',
         'card': 'KARTA',
         'online': 'PRZELEW ONLINE',
         'insurance': 'UBEZPIECZENIE',
-        'other': 'INNE'
+        'other': 'INNE',
+        'bank_transfer': 'PRZELEW BANKOWY'
       };
       return methodMap[method] || method.toUpperCase();
     };
+
+    // Enhanced HTML content with better styling
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Faktura #${nextId}</title>
+        <style>
+            @page {
+                margin: 20mm;
+                size: A4;
+            }
+            
+            body {
+                font-family: 'DejaVu Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 0;
+                font-size: 11px;
+                line-height: 1.4;
+                color: #333;
+            }
+            
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 25px;
+                border-bottom: 2px solid #2c5aa0;
+                padding-bottom: 15px;
+            }
+            
+            .company-info {
+                flex: 1;
+            }
+            
+            .company-name {
+                font-size: 16px;
+                font-weight: bold;
+                color: #2c5aa0;
+                margin-bottom: 8px;
+            }
+            
+            .invoice-info {
+                text-align: right;
+                flex: 1;
+            }
+            
+            .invoice-title {
+                font-size: 24px;
+                font-weight: bold;
+                color: #2c5aa0;
+                margin-bottom: 8px;
+            }
+            
+            .invoice-number {
+                font-size: 12px;
+                font-weight: bold;
+                margin-bottom: 4px;
+            }
+            
+            .section-title {
+                font-size: 13px;
+                font-weight: bold;
+                color: #2c5aa0;
+                margin: 20px 0 10px 0;
+                padding-bottom: 5px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            
+            .info-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-bottom: 20px;
+            }
+            
+            .info-row {
+                margin-bottom: 6px;
+                display: flex;
+            }
+            
+            .info-label {
+                font-weight: bold;
+                min-width: 120px;
+            }
+            
+            .services-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 15px 0;
+                font-size: 10px;
+            }
+            
+            .services-table th {
+                background: linear-gradient(135deg, #2c5aa0, #3d6db0);
+                color: white;
+                padding: 10px 8px;
+                text-align: left;
+                font-weight: bold;
+                border: none;
+            }
+            
+            .services-table td {
+                padding: 8px;
+                border-bottom: 1px solid #e0e0e0;
+            }
+            
+            .services-table tbody tr:hover {
+                background-color: #f8f9fa;
+            }
+            
+            .services-table td:nth-child(2), 
+            .services-table td:nth-child(3) {
+                text-align: right;
+            }
+            
+            .summary {
+                margin-top: 20px;
+                padding: 15px;
+                background-color: #f8f9fa;
+                border-radius: 5px;
+                border-left: 4px solid #2c5aa0;
+            }
+            
+            .summary-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 8px;
+                padding: 2px 0;
+            }
+            
+            .total-row {
+                font-weight: bold;
+                font-size: 13px;
+                color: #2c5aa0;
+                border-top: 2px solid #2c5aa0;
+                padding-top: 8px;
+                margin-top: 10px;
+            }
+            
+            .payment-info {
+                margin-top: 20px;
+                padding: 15px;
+                background: linear-gradient(135deg, #e8f0fe, #f0f7ff);
+                border-radius: 5px;
+                border: 1px solid #d0e0f0;
+            }
+            
+            .payment-status {
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 15px;
+                font-weight: bold;
+                font-size: 10px;
+            }
+            
+            .status-paid {
+                background-color: #d4edda;
+                color: #155724;
+                border: 1px solid #c3e6cb;
+            }
+            
+            .status-pending {
+                background-color: #fff3cd;
+                color: #856404;
+                border: 1px solid #ffeaa7;
+            }
+            
+            .notes {
+                margin-top: 20px;
+                padding: 12px;
+                background-color: #fff8dc;
+                border-left: 4px solid #ffd700;
+                border-radius: 0 3px 3px 0;
+            }
+            
+            .footer {
+                margin-top: 30px;
+                text-align: center;
+                font-size: 9px;
+                color: #666;
+                border-top: 1px solid #e0e0e0;
+                padding-top: 15px;
+            }
+            
+            .footer-line {
+                margin-bottom: 5px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="company-info">
+                <div class="company-name">CM7 Sp. z o.o.</div>
+                <div>ul. Powstańców Warszawy 7/1.5</div>
+                <div>26-110 Skarżysko-Kamienna</div>
+                <div style="margin-top: 8px;">
+                <div>Email: kontakt@autanaslub.pl</div>
+                    <div>Telefon kontaktowy: 797-097-487</div>
+                </div>
+            </div>
+            <div class="invoice-info">
+                <div class="invoice-title">FAKTURA</div>
+                <div class="invoice-number">Nr: ${nextId}</div>
+                <div>Data wystawienia: ${new Date(bill.billedAt).toLocaleDateString('pl-PL')}</div>
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div>
+                <div class="section-title">DANE PACJENTA</div>
+                <div class="info-row">
+                    <span class="info-label">Imię i Nazwisko:</span>
+                    <span>${bill.patient?.name?.first || ""} ${bill.patient?.name?.last || ""}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">ID Pacjenta:</span>
+                    <span>${bill.patient?.patientId || "P-129723"}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Adres E-mail:</span>
+                    <span>${bill.patient?.email || ""}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Numer Telefonu:</span>
+                    <span>${bill.patient?.phone || ""}</span>
+                </div>
+            </div>
+            
+            <div>
+                <div class="section-title">SZCZEGÓŁY WIZYTY</div>
+                <div class="info-row">
+                    <span class="info-label">Data:</span>
+                    <span>${bill.appointment?.date ? new Date(bill.appointment.date).toLocaleDateString('pl-PL') : "Brak danych"}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Godzina:</span>
+                    <span>${bill.appointment?.startTime || "Brak danych"}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Lekarz:</span>
+                    <span>${bill.appointment?.doctor?.name?.first || ""} ${bill.appointment?.doctor?.name?.last || ""}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Typ konsultacji:</span>
+                    <span>${bill.appointment?.consultation?.consultationType || "Konsultacja ogólna"}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-title">SZCZEGÓŁY PŁATNOŚCI</div>
+        <table class="services-table">
+            <thead>
+                <tr>
+                    <th style="width: 60%;">Opis usługi</th>
+                    <th style="width: 20%;">Cena</th>
+                    <th style="width: 20%;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${bill.services.map(service => `
+                    <tr>
+                        <td>${service.title}</td>
+                        <td>${Number(service.price).toFixed(2)} ZŁ</td>
+                        <td>${translateStatus(service.status)}</td>
+                    </tr>
+                `).join('')}
+                ${bill.appointment?.mode === "online" ? `
+                    <tr>
+                        <td>Konsultacja online</td>
+                        <td>-</td>
+                        <td><span class="payment-status status-paid">OPŁACONO</span></td>
+                    </tr>
+                ` : ''}
+            </tbody>
+        </table>
+
+        <div class="summary">
+            <div class="summary-row">
+                <span>Suma częściowa:</span>
+                <span><strong>${bill.subtotal.toFixed(2)} ZŁ</strong></span>
+            </div>
+            ${bill.taxPercentage > 0 ? `
+            <div class="summary-row">
+                <span>Podatek VAT (${bill.taxPercentage}%):</span>
+                <span>${bill.taxAmount.toFixed(2)} ZŁ</span>
+            </div>
+            ` : ''}
+            ${bill.discount > 0 ? `
+            <div class="summary-row">
+                <span>Zniżka:</span>
+                <span style="color: #28a745;">-${bill.discount.toFixed(2)} ZŁ</span>
+            </div>
+            ` : ''}
+            ${bill.additionalCharges > 0 ? `
+            <div class="summary-row">
+                <span>Dodatkowe opłaty:</span>
+                <span>${bill.additionalCharges.toFixed(2)} ZŁ</span>
+            </div>
+            ${bill.additionalChargeNote ? `
+            <div style="font-size: 9px; color: #666; margin-top: 3px; font-style: italic;">
+                ${bill.additionalChargeNote}
+            </div>
+            ` : ''}
+            ` : ''}
+            
+            <div class="summary-row total-row">
+                <span>RAZEM DO ZAPŁATY:</span>
+                <span>${Number(bill.totalAmount).toFixed(2)} ZŁ</span>
+            </div>
+        </div>
+
+        <div class="payment-info">
+            <div class="info-row">
+                <span class="info-label">Status płatności:</span>
+                <span class="payment-status ${bill.paymentStatus === 'paid' ? 'status-paid' : 'status-pending'}">
+                    ${translatePaymentStatus(bill.paymentStatus)}
+                </span>
+            </div>
+            <div class="info-row" style="margin-top: 8px;">
+                <span class="info-label">Metoda płatności:</span>
+                <span><strong>${translatePaymentMethod(bill.paymentMethod)}</strong></span>
+            </div>
+        </div>
+
+        ${bill.notes ? `
+        <div class="notes">
+            <strong>Uwagi:</strong><br>
+            ${bill.notes}
+        </div>
+        ` : ''}
+
+    </body>
+    </html>
+    `;
+    // function translatePaymentMethod(method) {
+    //   const translations = {
+    //     cash: "Gotówka",
+    //     card: "Karta",
+    //     online: "Online",
+    //     insurance: "Ubezpieczenie",
+    //     other: "Inne",
+    //     bank_transfer: "Przelew bankowy"
+    //   };
     
-    doc.fontSize(10).font('Helvetica');
-    y += 30;
-    addText(`Status platnosci: ${translatePaymentStatus(bill.paymentStatus)}`, 50, y);
-    addText(`Metoda platnosci: ${translatePaymentMethod(bill.paymentMethod)}`, 50, y + 12);
+    //   return translations[method] || "Nieznana metoda płatności";
+    // }
+    
 
-    // Notes if any
-    if (bill.notes) {
-      y += 30;
-      addText(`Uwagi: ${bill.notes}`, 50, y);
-    }
-
-    // Footer
-    doc.fontSize(10);
-    addText("Dziekujemy za wybor Centrum Medycznego dla Twoich potrzeb zdrowotnych.", 50, 750, { align: "center" });
-    addText("W sprawie platnosci, prosimy o kontakt: kontakt@centrummedyczne7.pl", 50, 765, { align: "center" });
-
-    // Finalize the PDF
-    doc.end();
-
-    // Wait for the PDF to be created
-    stream.on("finish", async () => {
-      try {
-        // Upload to cloudinary
-        const result = await cloudinary.uploader.upload(tempFilePath, {
-          folder: "invoices",
-          resource_type: "raw",
-        });
-
-        // Remove the temp file
-        fs.unlinkSync(tempFilePath);
-
-        // Update bill with invoice URL if it doesn't have one yet
-        if (!bill.invoiceUrl) {
-          bill.invoiceUrl = result.secure_url;
-          bill.invoiceId = nextId;
-          await bill.save();
-        }
-
-        // Return the download URL
-        return res.status(200).json({
-          success: true,
-          message: "Faktura wygenerowana pomyslnie",
-          data: {
-            invoiceUrl: result.secure_url,
-            billId: bill._id,
-          },
-        });
-      } catch (error) {
-        console.error("Error uploading invoice to Cloudinary:", error);
-        
-        // Return local path as fallback
-        return res.status(200).json({
-          success: true,
-          message: "Faktura wygenerowana, ale nie udalo sie przeslac do chmury",
-          data: {
-            invoiceUrl: `/temp/${filename}`,
-            billId: bill._id,
-          },
-        });
+    // Launch browser with puppeteer-core
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: findChrome(),
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-extensions'
+      ]
+    });
+    
+    const page = await browser.newPage();
+    
+    // Set content and wait for it to load
+    await page.setContent(htmlContent, { 
+      waitUntil: ['networkidle0', 'domcontentloaded'],
+      timeout: 30000 
+    });
+    
+    // Generate PDF with high quality settings
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      preferCSSPageSize: true,
+      margin: {
+        top: '15mm',
+        right: '15mm',
+        bottom: '15mm',
+        left: '15mm'
       }
     });
 
-    // Handle errors during PDF creation
-    stream.on("error", (error) => {
-      console.error("Error generating invoice PDF:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Nie udalo sie wygenerowac faktury",
-        error: error.message,
+    await browser.close();
+    browser = null;
+
+    // Save PDF to temp file
+    fs.writeFileSync(tempFilePath, pdfBuffer);
+
+    try {
+      // Upload to cloudinary
+      const result = await cloudinary.uploader.upload(tempFilePath, {
+        folder: "invoices",
+        resource_type: "raw",
+        public_id: bill.invoiceId?.replace(/\//g, '_') || safeInvoiceId
       });
-    });
+
+      // Remove the temp file
+      fs.unlinkSync(tempFilePath);
+
+      // Update bill with invoice URL if it doesn't have one yet
+      if (!bill.invoiceUrl) {
+        bill.invoiceUrl = result.secure_url;
+        bill.invoiceId = nextId;
+        await bill.save();
+      }
+
+      // Return the download URL
+      return res.status(200).json({
+        success: true,
+        message: "Faktura wygenerowana pomyślnie",
+        data: {
+          invoiceUrl: result.secure_url,
+          billId: bill._id,
+        },
+      });
+    } catch (uploadError) {
+      console.error("Error uploading invoice to Cloudinary:", uploadError);
+      
+      // Return local path as fallback
+      return res.status(200).json({
+        success: true,
+        message: "Faktura wygenerowana, ale nie udało się przesłać do chmury",
+        data: {
+          invoiceUrl: `/temp/${filename}`,
+          billId: bill._id,
+        },
+      });
+    }
+
   } catch (error) {
     console.error("Error generating invoice:", error);
+    
+    // Ensure browser is closed even if there's an error
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error("Error closing browser:", closeError);
+      }
+    }
+    
     return res.status(500).json({
       success: false,
-      message: "Nie udalo sie wygenerowac faktury",
+      message: "Nie udało się wygenerować faktury",
       error: error.message,
     });
   }
@@ -823,7 +1109,7 @@ exports.updateBillDetails = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(billId)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid bill ID format"
+        message: "Nieprawidłowy format ID faktury",
       });
     }
 
@@ -833,7 +1119,7 @@ exports.updateBillDetails = async (req, res) => {
     if (!bill || bill.isDeleted) {
       return res.status(404).json({
         success: false,
-        message: "Bill not found"
+        message: "Nie znaleziono faktury",
       });
     }
 
@@ -879,14 +1165,14 @@ exports.updateBillDetails = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Bill details updated successfully",
+      message: "Szczegóły faktury zostały zaktualizowane pomyślnie",
       data: updatedBill
     });
   } catch (error) {
     console.error("Error updating bill details:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to update bill details",
+      message: "Nie udało się zaktualizować szczegółów faktury",
       error: error.message
     });
   }

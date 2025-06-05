@@ -11,12 +11,13 @@ exports.getZohoAuthUrl = async (req, res) => {
   try {
     // Only allow admins to set up Zoho Meetings
     // const userId = req.user._id;
-    const user = await User.findById('68306e50aef3773ad8447fb6');
+    const admin = await User.findOne({role: "admin"});
+    const user = await User.findById(admin._id);
 
     if (!user || user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Only admin users can set up Zoho Meetings integration",
+        message: "Tylko użytkownicy administracyjni mogą skonfigurować integrację Zoho Meetings",
       });
     }
 
@@ -30,7 +31,7 @@ exports.getZohoAuthUrl = async (req, res) => {
     console.error("Error generating Zoho auth URL:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to generate Zoho authorization URL",
+      message: "Nie udało się wygenerować URL autoryzacji Zoho",
       error: error.message,
     });
   }
@@ -49,22 +50,23 @@ exports.handleZohoCallback = async (req, res) => {
     if (!code) {
       return res.status(400).json({
         success: false,
-        message: "Authorization code is missing",
+        message: "Brak kodu autoryzacji",
       });
     }
 
+    const admin = await User.findOne({role: "admin"});
     // Store tokens
-    await initializeZohoMeetings('68306e50aef3773ad8447fb6', code);
+    await initializeZohoMeetings(admin._id, code);
 
     return res.status(200).json({
       success: true,
-      message: "Zoho Meetings integration successfully set up",
+      message: "Integracja Zoho Meetings pomyślnie skonfigurowana",
     });
   } catch (error) {
     console.error("Error handling Zoho callback:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to complete Zoho Meetings integration",
+      message: "Nie udało się ukończyć integracji Zoho Meetings",
       error: error.message,
     });
   }
