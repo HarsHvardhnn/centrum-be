@@ -9,7 +9,10 @@
     "setup-google": "node scripts/setup-google-service-account.js",
     "setup-delegation": "node scripts/setup-google-delegation.js",
     "test-email": "node scripts/test-zoho-email.js",
-    "debug-smtp": "node scripts/debug-zoho-smtp.js"
+    "debug-smtp": "node scripts/debug-zoho-smtp.js",
+    "migrate:slugs": "node migrations/runAllMigrations.js",
+    "migrate:news-slugs": "node migrations/addSlugsToNews.js",
+    "migrate:service-slugs": "node migrations/addSlugsToServices.js"
   },
   "keywords": [],
   "author": "",

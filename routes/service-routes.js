@@ -14,6 +14,9 @@ router.post(
 
 // Read
 router.get("/", serviceController.getAllServices);
+// New slug-based route for SEO-friendly URLs
+router.get("/slug/:slug", serviceController.getServiceBySlug);
+// Keep ID route for backward compatibility
 router.get("/:id", serviceController.getServiceById);
 
 // Update

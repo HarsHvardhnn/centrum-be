@@ -18,6 +18,9 @@ router.post(
 );
 
 router.get("/", newsController.getAllNews);
+// New slug-based route for SEO-friendly URLs
+router.get("/slug/:slug", newsController.getNewsBySlug);
+// Keep ID route for backward compatibility
 router.get("/:id", newsController.getNewsById);
 router.put(
   "/:id",

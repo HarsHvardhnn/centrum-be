@@ -23,6 +23,12 @@ const newsArticleSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    slug: {
+      type: String,
+      unique: true,
+      required: true,
+      index: true
+    },
     description: {
       // ✅ New Field
       type: String,
