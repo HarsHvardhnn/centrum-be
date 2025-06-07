@@ -5,10 +5,6 @@ const { v4: uuidv4 } = require("uuid");
 const { sendSMS } = require("../utils/smsapi");
 const MessageReceipt = require("../models/smsData");
 const User = require("../models/user-entity/user");
-// Middleware to check if user is authenticated
-
-const SMSAPI_BASE_URL = "https://api.smsapi.pl/sms.do";
-const SMSAPI_TOKEN = process.env.SMSAPI_TOKEN;
 
 // Route to send SMS
 router.post("/send-sms", async (req, res) => {

@@ -53,14 +53,17 @@ router.get(
       }
 
       // Get all chats where this user is the admin
-    const chats = await chatRoom.find({ 
-    admin: userId, 
-    user: { $ne: userId } // exclude chats where user and admin are the same
-})
-.populate("user", "name profilePicture")
-.sort({ updatedAt: -1 }); 
+      const chats = await chatRoom.find({ 
+        admin: userId, 
+        user: { $ne: userId, $ne: null } // exclude chats where user and admin are the same or user is null
+      })
+      .populate("user", "name profilePicture")
+      .sort({ updatedAt: -1 });
 
-      res.json({ chats });
+      // Filter out any chats where user population resulted in null
+      const filteredChats = chats.filter(chat => chat.user !== null); 
+
+      res.json({ chats: filteredChats });
     } catch (error) {
       console.error("Error fetching admin chats:", error);
       res.status(500).json({ message: "Server error" });
