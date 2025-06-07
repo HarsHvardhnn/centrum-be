@@ -4,6 +4,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const { sendSMS } = require("../utils/smsapi");
 const MessageReceipt = require("../models/smsData");
+const User = require("../models/user-entity/user");
 // Middleware to check if user is authenticated
 
 const SMSAPI_BASE_URL = "https://api.smsapi.pl/sms.do";
@@ -124,8 +125,8 @@ router.post("/send-bulk-sms", async (req, res) => {
       let receipt = null;
       
       try {
-        // Create a receipt record first
         receipt = await createMessageReceipt(recipient, content, batchId);
+        console.log("receipt", receipt);
         
         // Validate phone number
         if (!recipient.phone || recipient.phone.trim() === "") {
@@ -141,8 +142,24 @@ router.post("/send-bulk-sms", async (req, res) => {
           continue;
         }
 
+        let smsConsentAgreed = false;
+        if (recipient.userId) {
+          try {
+            const user = await User.findById(recipient.userId);
+            if (user) {
+              console.log("user", user);
+              smsConsentAgreed = user.smsConsentAgreed || false;
+              console.log("smsConsentAgreed", smsConsentAgreed);
+            }
+          } catch (userFetchError) {
+            console.error("Error fetching user:", userFetchError);
+            smsConsentAgreed = false;
+          }
+        }
+        console.log("smsConsentAgreed", smsConsentAgreed);
+
         // Check SMS consent
-        if (!recipient.smsConsentAgreed) {
+        if (!smsConsentAgreed) {
           await updateReceiptStatus(receipt, 'FAILED', {
             error: 'Użytkownik nie wyraził zgody na otrzymywanie wiadomości SMS'
           });
@@ -155,7 +172,6 @@ router.post("/send-bulk-sms", async (req, res) => {
           continue;
         }
 
-        // Send the SMS
         const result = await sendSMS(recipient.phone, content);
 
         if (result.success) {

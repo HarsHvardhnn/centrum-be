@@ -1556,29 +1556,7 @@ exports.getAppointments = async (req, res) => {
       query.doctor = new mongoose.Types.ObjectId(doctorId);
     }
 
-    // Search by patient name or disease
-    if (searchTerm) {
-      query.$or = [{ mainComplaint: { $regex: searchTerm, $options: "i" } }];
-
-      // Add lookup pipeline for patient fields
-      const patientLookup = {
-        $lookup: {
-          from: "users",
-          localField: "patient",
-          foreignField: "_id",
-          as: "patientData",
-        },
-      };
-
-      // Add match conditions for patient fields
-      query.$or = [
-        { mainComplaint: { $regex: searchTerm, $options: "i" } },
-        { "patientData.name.first": { $regex: searchTerm, $options: "i" } },
-        { "patientData.name.last": { $regex: searchTerm, $options: "i" } },
-        { "patientData.email": { $regex: searchTerm, $options: "i" } },
-        { "patientData.phone": { $regex: searchTerm, $options: "i" } },
-      ];
-    }
+    // Note: Search logic is handled separately in clinic vs non-clinic branches
 
     // Build sort object
     const sortObject = {};
@@ -1618,10 +1596,33 @@ exports.getAppointments = async (req, res) => {
         },
       ];
 
-      // Add base query conditions if they exist
-      if (Object.keys(query).length > 0) {
+      // Build the match conditions for the clinic case
+      const matchConditions = {};
+      
+      // Add base query conditions (status, date range, doctorId)
+      if (status && status !== "all") {
+        if (status === "checkedIn") {
+          matchConditions.status = status;
+        } else {
+          matchConditions.status = status.toLowerCase();
+        }
+      }
+
+      if (startDate && endDate) {
+        matchConditions.date = {
+          $gte: new Date(startDate),
+          $lte: new Date(endDate),
+        };
+      }
+
+      if (doctorId) {
+        matchConditions.doctor = new mongoose.Types.ObjectId(doctorId);
+      }
+
+      // Add base conditions if they exist
+      if (Object.keys(matchConditions).length > 0) {
         appointmentsPipeline.push({
-          $match: query,
+          $match: matchConditions,
         });
       }
 
@@ -1828,22 +1829,8 @@ exports.getAppointments = async (req, res) => {
 
       // Add search term filter if provided
       if (searchTerm) {
-        appointmentQuery.$or = [
-          // Search through patient name fields
-          { "patient.name.first": { $regex: searchTerm, $options: "i" } },
-          { "patient.name.last": { $regex: searchTerm, $options: "i" } },
-          // Search through consultation fields
-          { "consultation.consultationNotes": { $regex: searchTerm, $options: "i" } },
-          { "consultation.description": { $regex: searchTerm, $options: "i" } },
-          { "consultation.interview": { $regex: searchTerm, $options: "i" } },
-          { "consultation.physicalExamination": { $regex: searchTerm, $options: "i" } },
-          { "consultation.treatment": { $regex: searchTerm, $options: "i" } },
-          { "consultation.recommendations": { $regex: searchTerm, $options: "i" } },
-          { notes: { $regex: searchTerm, $options: "i" } },
-        ];
-
-        // Since we need to search through populated patient fields, we need to use $lookup and $match
-        const appointmentsWithPatientName = await Appointment.aggregate([
+        // Build aggregation pipeline to search through patient fields and appointment fields
+        const searchPipeline = [
           {
             $lookup: {
               from: "users", // The collection name for patients
@@ -1856,27 +1843,73 @@ exports.getAppointments = async (req, res) => {
             $unwind: "$patientData"
           },
           {
-            $match: {
-              $or: [
-                ...appointmentQuery.$or,
-                { "patientData.name.first": { $regex: searchTerm, $options: "i" } },
-                { "patientData.name.last": { $regex: searchTerm, $options: "i" } },
-                { "patientData.email": { $regex: searchTerm, $options: "i" } },
-                { "patientData.phone": { $regex: searchTerm, $options: "i" } },
-                { "patientData.patientId": { $regex: searchTerm, $options: "i" } }
-              ]
+            $lookup: {
+              from: "users", // The collection name for doctors
+              localField: "doctor",
+              foreignField: "_id",
+              as: "doctorData"
             }
+          },
+          {
+            $unwind: "$doctorData"
           }
-        ]);
+        ];
+
+        // Add base filters to the pipeline
+        if (Object.keys(appointmentQuery).length > 0) {
+          searchPipeline.push({
+            $match: appointmentQuery
+          });
+        }
+
+        // Add search conditions
+        searchPipeline.push({
+          $match: {
+            $or: [
+              // Patient name search (first, last, and full name)
+              { "patientData.name.first": { $regex: searchTerm, $options: "i" } },
+              { "patientData.name.last": { $regex: searchTerm, $options: "i" } },
+              // Full name search (combined first and last)
+              {
+                $expr: {
+                  $regexMatch: {
+                    input: {
+                      $concat: [
+                        "$patientData.name.first",
+                        " ",
+                        "$patientData.name.last",
+                      ],
+                    },
+                    regex: searchTerm,
+                    options: "i",
+                  },
+                },
+              },
+              // Patient contact details
+              { "patientData.email": { $regex: searchTerm, $options: "i" } },
+              { "patientData.phone": { $regex: searchTerm, $options: "i" } },
+              { "patientData.patientId": { $regex: searchTerm, $options: "i" } },
+              // Appointment fields
+              { notes: { $regex: searchTerm, $options: "i" } },
+              { "consultation.consultationNotes": { $regex: searchTerm, $options: "i" } },
+              { "consultation.description": { $regex: searchTerm, $options: "i" } },
+              { "consultation.interview": { $regex: searchTerm, $options: "i" } },
+              { "consultation.physicalExamination": { $regex: searchTerm, $options: "i" } },
+              { "consultation.treatment": { $regex: searchTerm, $options: "i" } },
+              { "consultation.recommendations": { $regex: searchTerm, $options: "i" } },
+            ],
+          },
+        });
+
+        // Execute aggregation to get matching appointment IDs
+        const appointmentsWithPatientName = await Appointment.aggregate(searchPipeline);
 
         // Get the IDs of matching appointments
         const matchingAppointmentIds = appointmentsWithPatientName.map(app => app._id);
         
-        // Add these IDs to the main query
+        // Replace the query with just the matching IDs
+        Object.keys(appointmentQuery).forEach(key => delete appointmentQuery[key]);
         appointmentQuery._id = { $in: matchingAppointmentIds };
-        
-        // Remove the original $or condition since we're now using the IDs
-        delete appointmentQuery.$or;
       }
 
       // Get all appointments with filters

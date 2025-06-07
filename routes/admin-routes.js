@@ -26,10 +26,10 @@ router.post("/receptionists", authorizeRoles(["admin"]), addReceptionist);
 
 router.patch(
   "/users/:userId/delete",
-  authorizeRoles(["admin"]),
+  authorizeRoles(["admin","receptionist","doctor"]),
   markUserDeleted
 );
-router.patch("/users/:userId/revive", authorizeRoles(["admin"]), unMarkDeleted);
+router.patch("/users/:userId/revive", authorizeRoles(["admin","receptionist","doctor"]), unMarkDeleted);
 
 router.get("/users/non-admins",   authorizeRoles(["admin", "receptionist","doctor"]), getAllNonAdminUsers);
 router.get("/users/:id", authorizeRoles(["admin"]), getUserById);
@@ -107,23 +107,28 @@ router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (r
       filter.role = role;
     }
 
-    console.log("search",search)
+    // Helper function to escape regex special characters
+    const escapeRegex = (string) => {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    };
+
     // Add search filter if provided
     if (search) {
-      console.log("search",search)
-      const searchLower = search.toLowerCase().trim();
+      const searchTerm = search.trim();
+      const escapedSearch = escapeRegex(searchTerm.toLowerCase());
+      
       filter.$or = [
         { 
           $expr: {
             $regexMatch: {
               input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
-              regex: searchLower,
+              regex: escapedSearch,
               options: "i"
             }
           }
         },
-        { email: { $regex: searchLower, $options: "i" } },
-        { phone: { $regex: searchLower, $options: "i" } }
+        { email: { $regex: escapedSearch, $options: "i" } },
+        { phone: { $regex: escapedSearch, $options: "i" } }
       ];
     }
 
@@ -168,9 +173,25 @@ router.get("/users", authorizeRoles(["admin","receptionist","doctor"]), async (r
     });
   } catch (error) {
     console.error("Error fetching users:", error);
+    
+    // Handle specific error types
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: "Nieprawidłowy format danych wyszukiwania",
+      });
+    }
+    
+    if (error.message && error.message.includes('regex')) {
+      return res.status(400).json({
+        success: false,
+        message: "Nieprawidłowy format wyszukiwania. Sprawdź wprowadzone dane.",
+      });
+    }
+    
     return res.status(500).json({
       success: false,
-      message: "Błąd serwera podczas pobierania użytkowników",
+      message: "Wystąpił błąd serwera podczas pobierania użytkowników. Spróbuj ponownie.",
     });
   }
 });
