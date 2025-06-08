@@ -147,8 +147,25 @@ const patientSchema = new mongoose.Schema({
   ],
 });
 
-// Add the pre-save hook for username generation
+// Add the pre-save hook for username generation and phone cleaning
 patientSchema.pre("save", async function (next) {
+  // Clean phone number - remove +48 if present
+  if (this.phone && typeof this.phone === 'string') {
+    // Remove +48 prefix if it exists (with or without spaces)
+    this.phone = this.phone.replace(/^\+48\s?/, '');
+    // Also clean any other common formats
+    this.phone = this.phone.replace(/^48\s?/, ''); // Remove 48 without + 
+    this.phone = this.phone.trim(); // Remove leading/trailing spaces
+  }
+
+  // Also clean phoneFormatted if it exists
+  if (this.phoneFormatted && typeof this.phoneFormatted === 'string') {
+    this.phoneFormatted = this.phoneFormatted.replace(/^\+48\s?/, '');
+    this.phoneFormatted = this.phoneFormatted.replace(/^48\s?/, '');
+    this.phoneFormatted = this.phoneFormatted.trim();
+  }
+
+  // Username generation logic
   if (!this.username) {
     let unique = false;
     while (!unique) {

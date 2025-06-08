@@ -551,7 +551,7 @@ exports.generateInvoice = async (req, res) => {
     const bill = await PatientBill.findById(billId)
       .populate({
         path: "patient",
-        select: "name email phone dateOfBirth patientId address city pinCode",
+        // Remove select to get all fields and see what's available
       })
       .populate({
         path: "appointment",
@@ -628,6 +628,22 @@ exports.generateInvoice = async (req, res) => {
       };
       return methodMap[method] || method.toUpperCase();
     };
+
+    // Construct patient address from available fields
+    const constructPatientAddress = (patient) => {
+      const addressParts = [];
+      if (patient?.address) addressParts.push(patient.address);
+      if (patient?.city) addressParts.push(patient.city);
+      if (patient?.district) addressParts.push(patient.district);
+      if (patient?.state) addressParts.push(patient.state);
+      if (patient?.pinCode) addressParts.push(patient.pinCode);
+      if (patient?.country) addressParts.push(patient.country);
+      
+      return addressParts.length > 0 ? addressParts.join(", ") : "";
+    };
+
+    const patientAddress = constructPatientAddress(bill.patient);
+    console.log(patientAddress,"patientAddress")
 
     // Enhanced HTML content with better styling
     const htmlContent = `
@@ -826,6 +842,8 @@ exports.generateInvoice = async (req, res) => {
                 <div class="company-name">CM7 Sp. z o.o.</div>
                 <div>ul. Powstańców Warszawy 7/1.5</div>
                 <div>26-110 Skarżysko-Kamienna</div>
+                <div>NIP : 6631891951</div>
+                <div>REGON : 541934650</div>
                 <div style="margin-top: 8px;">
                 <div>Email: kontakt@autanaslub.pl</div>
                     <div>Telefon kontaktowy: 797-097-487</div>
@@ -845,6 +863,33 @@ exports.generateInvoice = async (req, res) => {
                     <span class="info-label">Imię i Nazwisko:</span>
                     <span>${bill.patient?.name?.first || ""} ${bill.patient?.name?.last || ""}</span>
                 </div>
+             <div class="info-row">
+  <span class="info-label">Płeć:</span>
+  <span>
+    ${bill.patient?.sex === "Male" 
+      ? "Mężczyzna" 
+      : bill.patient?.sex === "Female" 
+        ? "Kobieta" 
+        : "Inna"}
+  </span>
+</div>
+
+                <div class="info-row">
+                    <span class="info-label">PESEL:</span>
+                    <span>${bill.patient?.govtId || "Nieznany"}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Data urodzenia:</span>
+                    <span>${bill.patient?.dateOfBirth ? new Date(bill.patient.dateOfBirth).toLocaleDateString('pl-PL') : ""}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Adres zamieszkania:</span>
+                    <span>${patientAddress}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Numer Telefonu:</span>
+                    <span>${bill.patient?.phone || ""}</span>
+                </div>
                 <div class="info-row">
                     <span class="info-label">ID Pacjenta:</span>
                     <span>${bill.patient?.patientId || "P-129723"}</span>
@@ -852,10 +897,6 @@ exports.generateInvoice = async (req, res) => {
                 <div class="info-row">
                     <span class="info-label">Adres E-mail:</span>
                     <span>${bill.patient?.email || ""}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Numer Telefonu:</span>
-                    <span>${bill.patient?.phone || ""}</span>
                 </div>
             </div>
             
@@ -917,7 +958,10 @@ exports.generateInvoice = async (req, res) => {
                 <span>Podatek VAT (${bill.taxPercentage}%):</span>
                 <span>${bill.taxAmount.toFixed(2)} ZŁ</span>
             </div>
-            ` : ''}
+            ` : `  <div class="summary-row">
+                <span>Podatek VAT (${bill.taxPercentage}%):</span>
+                <span>ZW</span>
+            </div>`}
             ${bill.discount > 0 ? `
             <div class="summary-row">
                 <span>Zniżka:</span>

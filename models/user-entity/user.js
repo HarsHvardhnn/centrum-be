@@ -71,6 +71,19 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// Add pre-save hook to clean phone numbers
+userSchema.pre("save", function (next) {
+  // Clean phone number - remove +48 if present
+  if (this.phone && typeof this.phone === 'string') {
+    // Remove +48 prefix if it exists (with or without spaces)
+    this.phone = this.phone.replace(/^\+48\s?/, '');
+    // Also clean any other common formats
+    this.phone = this.phone.replace(/^48\s?/, ''); // Remove 48 without + 
+    this.phone = this.phone.trim(); // Remove leading/trailing spaces
+  }
+  next();
+});
+
 userSchema.methods.hasRefreshToken = function (token) {
   return this.refreshTokens.some((t) => t.token === token);
 };

@@ -119,6 +119,10 @@ exports.bookAppointment = async (req, res) => {
       smsConsentAgreed,
       consultationType,
       time,
+      privacyPolicyAgreed,
+      medicalDataProcessingAgreed,
+      teleportationConfirmed,
+      contactConsentAgreed,
     } = req.body;
 
     // Validate required fields
@@ -149,6 +153,20 @@ exports.bookAppointment = async (req, res) => {
             "Nieprawidłowy typ konsultacji. Musi być albo 'online' albo 'offline'",
         });
     }
+
+    // Validate consent fields
+    // Privacy policy is mandatory for all consultations
+    if (!privacyPolicyAgreed) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Zgoda na politykę prywatności jest wymagana",
+        });
+    }
+
+    // Additional consents are mandatory for online consultations
+
 
     // Parse name into first and last
     const nameParts = name.trim().split(" ");
@@ -213,11 +231,40 @@ exports.bookAppointment = async (req, res) => {
 
     console.log("smsConsentAgreed", smsConsentAgreed);
 
+    // Create consent objects
     const smsConsent = {
       id: Date.now(),
       text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
       agreed: smsConsentAgreed,
     };
+
+    const privacyPolicyConsent = {
+      id: Date.now() + 1,
+      text: "Pacjent wyraża zgodę na politykę prywatności",
+      agreed: privacyPolicyAgreed,
+    };
+
+    // Additional consents for online consultations
+    const additionalConsents = [];
+    if (consultationType.toLowerCase() === "online") {
+      additionalConsents.push(
+        {
+          id: Date.now() + 2,
+          text: "Pacjent wyraża zgodę na przetwarzanie danych medycznych",
+          agreed: medicalDataProcessingAgreed,
+        },
+        {
+          id: Date.now() + 3,
+          text: "Pacjent potwierdza teleportację",
+          agreed: teleportationConfirmed,
+        },
+        {
+          id: Date.now() + 4,
+          text: "Pacjent wyraża zgodę na kontakt",
+          agreed: contactConsentAgreed,
+        }
+      );
+    }
 
     // If patient doesn't exist, create a new one
     if (!patient) {
@@ -242,6 +289,10 @@ exports.bookAppointment = async (req, res) => {
         // Create new user if no existing user found
         const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
+        // Prepare all consents for new user
+        const allConsents = [smsConsent, privacyPolicyConsent, ...additionalConsents];
+        console.log(allConsents,"allConsents")
+
         patient = new User({
           name: {
             first: firstName,
@@ -249,9 +300,9 @@ exports.bookAppointment = async (req, res) => {
           },
           email: isValidEmail ? email.toLowerCase() : null,
           sex:
-            gender === "Male"
+            gender === "male"
               ? "Male"
-              : gender === "Female"
+              : gender === "female"
               ? "Female"
               : "Others",
           phone,
@@ -259,7 +310,7 @@ exports.bookAppointment = async (req, res) => {
           role: "patient",
           signupMethod: "phone",
           smsConsentAgreed: smsConsentAgreed,
-          consents: [smsConsent], // Store directly as array
+          consents: allConsents, // Store all consents as array
         });
 
         try {
@@ -291,17 +342,25 @@ exports.bookAppointment = async (req, res) => {
       // Ensure consents is always an array
       const existingConsents = Array.isArray(patient.consents) ? patient.consents : [];
       
-      const consentIndex = existingConsents.findIndex(
-        (c) => c.text === smsConsent.text
-      );
+      // Helper function to update or add consent
+      const updateConsent = (consent) => {
+        const consentIndex = existingConsents.findIndex(
+          (c) => c.text === consent.text
+        );
+        
+        if (consentIndex === -1) {
+          // Consent doesn't exist, add it
+          existingConsents.push(consent);
+        } else {
+          // Update existing consent's agreed status
+          existingConsents[consentIndex].agreed = consent.agreed;
+        }
+      };
 
-      if (consentIndex === -1) {
-        // Consent doesn't exist, add it
-        existingConsents.push(smsConsent);
-      } else {
-        // Update existing consent's agreed status
-        existingConsents[consentIndex].agreed = smsConsentAgreed;
-      }
+      // Update all consents
+      updateConsent(smsConsent);
+      updateConsent(privacyPolicyConsent);
+      additionalConsents.forEach(updateConsent);
 
       patient.smsConsentAgreed = smsConsentAgreed;
       patient.consents = existingConsents; // Store directly as array

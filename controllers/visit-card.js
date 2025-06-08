@@ -47,7 +47,7 @@ exports.generateVisitCard = async (req, res) => {
 
     // Find the appointment with populated patient and doctor data
     const appointment = await Appointment.findById(appointmentId)
-      .populate("patient", "name dateOfBirth address city pinCode phone phoneFormatted documents")
+      .populate("patient")  // Remove select to get all fields and see what's available
       .populate("doctor", "name.first name.last")
       .exec();
 
@@ -80,6 +80,21 @@ exports.generateVisitCard = async (req, res) => {
         message: "Pacjent nie znaleziony w wizycie",
       });
     }
+
+    console.log("=== VISIT CARD PATIENT DEBUG INFO ===");
+    console.log("Full patient object:", JSON.stringify(patient, null, 2));
+    console.log("Patient name:", patient?.name);
+    console.log("Patient dateOfBirth:", patient?.dateOfBirth);
+    console.log("Patient address:", patient?.address);
+    console.log("Patient city:", patient?.city);
+    console.log("Patient district:", patient?.district);
+    console.log("Patient state:", patient?.state);
+    console.log("Patient country:", patient?.country);
+    console.log("Patient pinCode:", patient?.pinCode);
+    console.log("Patient phone:", patient?.phone);
+    console.log("Patient phoneFormatted:", patient?.phoneFormatted);
+    console.log("Available patient keys:", Object.keys(patient || {}));
+    console.log("=== END VISIT CARD DEBUG INFO ===");
 
     const visitDate = appointment.date
     ? new Date(appointment.date).toLocaleDateString("en-GB")
@@ -146,10 +161,16 @@ exports.generateVisitCard = async (req, res) => {
       ? new Date(patient.dateOfBirth).toLocaleDateString("en-GB")
       : "Nie dostarczone";
 
-    // Get patient's address
-    const address = patient.address
-      ? `${patient.address}, ${patient.city || ""} ${patient.pinCode || ""}`
-      : "Nie dostarczone";
+    // Get patient's address - construct from available fields
+    const addressParts = [];
+    if (patient.address) addressParts.push(patient.address);
+    if (patient.city) addressParts.push(patient.city);
+    if (patient.district) addressParts.push(patient.district);
+    if (patient.state) addressParts.push(patient.state);
+    if (patient.pinCode) addressParts.push(patient.pinCode);
+    if (patient.country) addressParts.push(patient.country);
+    
+    const address = addressParts.length > 0 ? addressParts.join(", ") : "Nie dostarczone";
 
     // Get patient's phone
     const phone = patient.phone || patient.phoneFormatted || "Nie dostarczone";
@@ -168,8 +189,35 @@ exports.generateVisitCard = async (req, res) => {
       });
     }
 
+    // Add company information
+    doc.y = 90;
+    doc.fontSize(10);
+    doc.fillColor("black");
+    
+    const companyInfo = [
+      "CM7 sp. z o.o.",
+      "ul. Powstańców Warszawy 7/1.5",
+      "26-110 Skarżysko-Kamienna",
+      "Tel: (+48) 797-097-487"
+    ];
+
+    // Center the company information
+    companyInfo.forEach((line, index) => {
+      const textWidth = doc.widthOfString(normalizePolishText(line));
+      const centerX = (doc.page.width - textWidth) / 2;
+      addText(line, { 
+        x: centerX, 
+        y: doc.y,
+        continued: false 
+      });
+      if (index < companyInfo.length - 1) {
+        doc.moveDown(0.4);
+      }
+    });
+
     // Move to header section
-    doc.y = 100;
+    doc.moveDown(1.5);
+    doc.y = Math.max(doc.y, 180); // Ensure enough space after company info
     doc.fontSize(10);
 
     // Calculate column widths
@@ -185,7 +233,7 @@ exports.generateVisitCard = async (req, res) => {
     doc.x = leftColumnX;
     doc.y = headerStartY;
     
-    addText(`Data wizyty: ${visitDate}`, { 
+    addText(`Data wizyty: ${new Date(visitDate).toLocaleDateString("pl-PL")}`, { 
       width: columnWidth,
       continued: false 
     });
@@ -212,7 +260,7 @@ exports.generateVisitCard = async (req, res) => {
     });
     doc.moveDown(0.5);
     
-    addText(`Data urodzenia: ${dob}`, { 
+    addText(`Data urodzenia: ${new Date(dob).toLocaleDateString("pl-PL")}`, { 
       width: columnWidth,
       continued: false 
     });
