@@ -1582,6 +1582,12 @@ exports.getAppointments = async (req, res) => {
         {
           $unwind: "$patientData",
         },
+        // Filter out deleted patients
+        {
+          $match: {
+            "patientData.deleted": { $ne: true }
+          }
+        },
         // Lookup to get doctor details
         {
           $lookup: {
@@ -1801,6 +1807,7 @@ exports.getAppointments = async (req, res) => {
       const patients = await user
         .find({
           role: "patient",
+          deleted: { $ne: true }, // Exclude deleted patients
           ...patientQuery,
         })
         .select(
@@ -1841,6 +1848,12 @@ exports.getAppointments = async (req, res) => {
           },
           {
             $unwind: "$patientData"
+          },
+          // Filter out deleted patients
+          {
+            $match: {
+              "patientData.deleted": { $ne: true }
+            }
           },
           {
             $lookup: {
@@ -1948,7 +1961,6 @@ exports.getAppointments = async (req, res) => {
             age--;
           }
         }
-        // console.log("processedPatients",processedPatients)
 
         return {
           id: appointment._id,
@@ -1986,19 +1998,31 @@ exports.getAppointments = async (req, res) => {
       // Sort by date (newest to oldest)
       processedPatients.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+      // Filter for unique patients only (keep the most recent appointment for each patient)
+      const uniquePatients = [];
+      const seenPatientIds = new Set();
+      
+      processedPatients.forEach((appointment) => {
+        const patientId = appointment.patient?.id?.toString();
+        if (patientId && !seenPatientIds.has(patientId)) {
+          seenPatientIds.add(patientId);
+          uniquePatients.push(appointment);
+        }
+      });
+
       // Calculate skip for pagination
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
       // Apply pagination
-      responseData = processedPatients.slice(skip, skip + parseInt(limit));
+      responseData = uniquePatients.slice(skip, skip + parseInt(limit));
 
       return res.status(200).json({
         success: true,
         data: responseData,
         pagination: {
-          total: processedPatients.length,
+          total: uniquePatients.length,
           page: parseInt(page),
-          pages: Math.ceil(processedPatients.length / parseInt(limit)),
+          pages: Math.ceil(uniquePatients.length / parseInt(limit)),
           limit: parseInt(limit),
         },
       });

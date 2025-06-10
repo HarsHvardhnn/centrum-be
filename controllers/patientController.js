@@ -292,19 +292,21 @@ exports.getPatientById = async (req, res) => {
     }
     // Transform documents
     const transformedDocuments = info?.documents?.map((docUrlOrObj) => {
+      console.log("docUrlOrObj",docUrlOrObj)
       const url =
         typeof docUrlOrObj === "string"
           ? docUrlOrObj
           : docUrlOrObj.url || docUrlOrObj.path;
+          if(url==null){ url=docUrlOrObj.url}
       const fileType = url.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
       return {
         id: Date.now() + Math.random(),
         name: docUrlOrObj.fileName,
         type: fileType,
-        preview: fileType.startsWith("image/") ? url : null,
+        preview: url,
         isPdf: fileType === "application/pdf",
       };
-    });
+    }).filter(doc => doc.type === "application/pdf");
 
     const transformedInfo = {
       ...info,

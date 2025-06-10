@@ -12,7 +12,8 @@
     "debug-smtp": "node scripts/debug-zoho-smtp.js",
     "migrate:slugs": "node migrations/runAllMigrations.js",
     "migrate:news-slugs": "node migrations/addSlugsToNews.js",
-    "migrate:service-slugs": "node migrations/addSlugsToServices.js"
+    "migrate:service-slugs": "node migrations/addSlugsToServices.js",
+    "test:cookie-consent": "node scripts/test-cookie-consent.js"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +28,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
     "express-validator": "^7.2.1",
     "fs": "^0.0.1-security",
     "google-auth-library": "^9.15.1",

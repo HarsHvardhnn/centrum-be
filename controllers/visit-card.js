@@ -51,6 +51,8 @@ exports.generateVisitCard = async (req, res) => {
       .populate("doctor", "name.first name.last")
       .exec();
 
+      console.log("appointment",appointment.reports)
+
     if (!appointment) {
       return res.status(404).json({
         success: false,
@@ -222,9 +224,9 @@ exports.generateVisitCard = async (req, res) => {
 
     // Calculate column widths
     const pageWidth = doc.page.width - (doc.options.margin * 2);
-    const columnWidth = pageWidth / 2 - 10; // 10px gap between columns
+    const columnWidth = (pageWidth - 30) / 2; // 30px gap between columns
     const leftColumnX = doc.options.margin;
-    const rightColumnX = doc.options.margin + columnWidth + 20;
+    const rightColumnX = doc.options.margin + columnWidth + 30;
 
     // Save current position
     const headerStartY = doc.y;
@@ -234,52 +236,89 @@ exports.generateVisitCard = async (req, res) => {
     doc.y = headerStartY;
     
     addText(`Data wizyty: ${new Date(visitDate).toLocaleDateString("pl-PL")}`, { 
+      x: leftColumnX,
+      y: doc.y,
       width: columnWidth,
       continued: false 
     });
-    doc.moveDown(0.5);
+    doc.y += 15;
     
     addText(`Godzina wizyty: ${visitTime}`, { 
+      x: leftColumnX,
+      y: doc.y,
       width: columnWidth,
       continued: false 
     });
-    doc.moveDown(0.5);
+    doc.y += 15;
     
     addText(`Lekarz: ${doctorName}`, { 
+      x: leftColumnX,
+      y: doc.y,
       width: columnWidth,
       continued: false 
     });
 
     // RIGHT COLUMN - Patient Information
-    doc.x = rightColumnX;
-    doc.y = headerStartY;
+    let rightColumnY = headerStartY;
     
     addText(`Imię i nazwisko: ${patientName}`, { 
+      x: rightColumnX,
+      y: rightColumnY,
       width: columnWidth,
       continued: false 
     });
-    doc.moveDown(0.5);
+    rightColumnY += 15;
     
-    addText(`Data urodzenia: ${new Date(dob).toLocaleDateString("pl-PL")}`, { 
+    addText(`PESEL: ${patient.govtId || "Nieznany"}`, { 
+      x: rightColumnX,
+      y: rightColumnY,
       width: columnWidth,
       continued: false 
     });
-    doc.moveDown(0.5);
+    rightColumnY += 15;
     
-    addText(`Adres: ${address}`, { 
+    addText(`Data urodzenia: ${dob !== "Nie dostarczone" ? new Date(patient.dateOfBirth).toLocaleDateString("pl-PL") : dob}`, { 
+      x: rightColumnX,
+      y: rightColumnY,
       width: columnWidth,
       continued: false 
     });
-    doc.moveDown(0.5);
+    rightColumnY += 15;
+    
+    addText(`Adres zamieszkania: ${address}`, { 
+      x: rightColumnX,
+      y: rightColumnY,
+      width: columnWidth,
+      continued: false 
+    });
+    rightColumnY += 15;
     
     addText(`Numer telefonu: ${phone}`, { 
+      x: rightColumnX,
+      y: rightColumnY,
+      width: columnWidth,
+      continued: false 
+    });
+    rightColumnY += 15;
+    
+    addText(`ID Pacjenta: ${patient.patientId || "Nieznany"}`, { 
+      x: rightColumnX,
+      y: rightColumnY,
+      width: columnWidth,
+      continued: false 
+    });
+    rightColumnY += 15;
+    
+    addText(`Adres E-mail: ${patient.email || "Nieznany"}`, { 
+      x: rightColumnX,
+      y: rightColumnY,
       width: columnWidth,
       continued: false 
     });
 
     // Reset to full width and add title
     doc.x = doc.options.margin;
-    doc.y = Math.max(doc.y, headerStartY + 80); // Ensure we're below both columns
+    doc.y = Math.max(doc.y, headerStartY + 120); // Increased to accommodate more patient info fields
     doc.moveDown(1);
 
     doc.fontSize(16);

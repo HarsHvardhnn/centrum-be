@@ -9,6 +9,7 @@ const adminData = {
     email: "admin@centrum.com",
     password: "Admin@123", // This will be hashed before saving
     role: "admin",
+    phone: "9876543210",
     isVerified: true,
     signupMethod: "email",
 };
