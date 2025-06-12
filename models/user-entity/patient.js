@@ -142,8 +142,52 @@ const patientSchema = new mongoose.Schema({
   ],
   documents: [
     {
-      type: mongoose.Schema.Types.Mixed,
-    },
+      _id: {
+        type: String,
+        default: () => new mongoose.Types.ObjectId().toString()
+      },
+      documentId: {
+        type: String,
+        default: function() { return this._id; }
+      },
+      fileName: {
+        type: String,
+        required: true
+      },
+      originalName: String,
+      path: {
+        type: String,
+        required: true
+      },
+      preview: String,
+      url: String,
+      downloadUrl: String, // Explicit download URL for PDFs
+      mimeType: String,
+      fileType: String,
+      fileExtension: String, // Store file extension separately
+      isPdf: {
+        type: Boolean,
+        default: false
+      },
+      documentType: {
+        type: String,
+        enum: ['medical_record', 'report', 'prescription', 'lab_result', 'imaging', 'consent_form', 'insurance', 'visit-card', 'other'],
+        default: 'medical_record'
+      },
+      uploadDate: {
+        type: Date,
+        default: Date.now
+      },
+      size: Number,
+      createdAt: {
+        type: Date,
+        default: Date.now
+      },
+      updatedAt: {
+        type: Date,
+        default: Date.now
+      }
+    }
   ],
 });
 

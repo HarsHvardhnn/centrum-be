@@ -41,8 +41,11 @@ const upload = multer({
       // Determine file type based on mimetype
       const isDocument =
         file.mimetype === "application/pdf" ||
-        file.mimetype.includes("document") ||
-        file.mimetype === "text/plain";
+        file.mimetype?.includes("document") ||
+        file.mimetype === "text/plain" ||
+        file.type === "application/pdf" ||
+        file.type?.includes("document") ||
+        file.type === "text/plain";
 
       const folderPath = isDocument
         ? "hospital_app/documents"
@@ -55,6 +58,15 @@ const upload = multer({
           ? ["pdf", "doc", "docx", "txt"]
           : ["jpg", "jpeg", "png", "webp"],
       };
+
+      // For documents, preserve the original filename and extension
+      if (isDocument) {
+        // Extract file extension
+        const fileExtension = file.originalname.split('.').pop().toLowerCase();
+        params.public_id = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
+        params.use_filename = true;
+        params.unique_filename = false;
+      }
 
       // Only apply transformations to images
       if (!isDocument) {

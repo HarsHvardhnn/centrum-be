@@ -19,6 +19,9 @@ const patient = require("../models/user-entity/patient");
 const path = require("path");
 const fs = require("fs");
 
+// Import the standardized document helper from patient controller
+const { createStandardizedDocument } = require("./patientController");
+
 // Helper function to check if patient has consented to SMS notifications
 const hasPatientConsentedToSMS = (patientDetails) => {
   if (!patientDetails.consents || patientDetails.consents.length === 0) {
@@ -1102,7 +1105,52 @@ exports.updateAppointmentDetails = async (req, res) => {
       if (req.query.appendReports === "true") {
         updateData.$push = {
           reports: {
-            $each: reports.map((report) => ({
+            $each: reports.map((report) => {
+              // If this is a file object, use standardized creation
+              if (report.originalname || report.mimetype) {
+                const standardizedDocument = createStandardizedDocument(report, "report");
+                return {
+                  ...standardizedDocument,
+                  name: report.name || report.originalname,
+                  type: report.type || "Other",
+                  description: report.description || "",
+                  fileUrl: standardizedDocument.url,
+                  fileType: standardizedDocument.mimeType.split("/")[1] || "pdf",
+                  metadata: standardizedDocument.metadata || {},
+                };
+              } else {
+                // If this is already a report object, keep it as is but add missing fields
+                return {
+                  name: report.name,
+                  type: report.type,
+                  fileUrl: report.fileUrl,
+                  fileType: report.fileType,
+                  description: report.description || "",
+                  uploadedAt: new Date(),
+                  metadata: report.metadata || {},
+                };
+              }
+            }),
+          },
+        };
+      } else {
+        // Replace all reports
+        updateData.reports = reports.map((report) => {
+          // If this is a file object, use standardized creation
+          if (report.originalname || report.mimetype) {
+            const standardizedDocument = createStandardizedDocument(report, "report");
+            return {
+              ...standardizedDocument,
+              name: report.name || report.originalname,
+              type: report.type || "Other",
+              description: report.description || "",
+              fileUrl: standardizedDocument.url,
+              fileType: standardizedDocument.mimeType.split("/")[1] || "pdf",
+              metadata: standardizedDocument.metadata || {},
+            };
+          } else {
+            // If this is already a report object, keep it as is but add missing fields
+            return {
               name: report.name,
               type: report.type,
               fileUrl: report.fileUrl,
@@ -1110,20 +1158,9 @@ exports.updateAppointmentDetails = async (req, res) => {
               description: report.description || "",
               uploadedAt: new Date(),
               metadata: report.metadata || {},
-            })),
-          },
-        };
-      } else {
-        // Replace all reports
-        updateData.reports = reports.map((report) => ({
-          name: report.name,
-          type: report.type,
-          fileUrl: report.fileUrl,
-          fileType: report.fileType,
-          description: report.description || "",
-          uploadedAt: new Date(),
-          metadata: report.metadata || {},
-        }));
+            };
+          }
+        });
       }
     }
 
@@ -1260,15 +1297,20 @@ exports.uploadAppointmentReport = async (req, res) => {
       });
     }
 
-    // Create report object
+    // Create standardized report document
+    const standardizedDocument = createStandardizedDocument(req.file, "report");
+    
+    // Create report object with standardized structure
     const report = {
+      ...standardizedDocument,
       name: req.body.name || req.file.originalname,
       type: req.body.type || "Other",
-      fileUrl: req.file.path,
-      fileType: req.file.mimetype.split("/")[1] || "pdf",
       description: req.body.description || "",
-      uploadedAt: new Date(),
+      // Keep appointment-specific fields
+      fileUrl: standardizedDocument.url, // For backward compatibility
+      fileType: standardizedDocument.mimeType.split("/")[1] || "pdf",
       metadata: {
+        ...standardizedDocument.metadata,
         originalName: req.file.originalname,
         size: req.file.size,
         cloudinaryId: req.file.filename || req.file.public_id,
@@ -2066,20 +2108,26 @@ exports.uploadAppointmentReports = async (req, res) => {
       });
     }
 
-    // Create report objects from uploaded files
-    const reports = req.files.map((file) => ({
-      name: req.body.name || file.originalname,
-      type: req.body.type || "Other",
-      fileUrl: file.path, // Cloudinary URL from your middleware
-      fileType: file.mimetype.split("/")[1] || "pdf",
-      description: req.body.description || "",
-      uploadedAt: new Date(),
-      metadata: {
-        originalName: file.originalname,
-        size: file.size,
-        cloudinaryId: file.filename || file.public_id,
-      },
-    }));
+    // Create standardized report objects from uploaded files
+    const reports = req.files.map((file) => {
+      const standardizedDocument = createStandardizedDocument(file, "report");
+      
+      return {
+        ...standardizedDocument,
+        name: req.body.name || file.originalname,
+        type: req.body.type || "Other",
+        description: req.body.description || "",
+        // Keep appointment-specific fields for backward compatibility
+        fileUrl: standardizedDocument.url,
+        fileType: standardizedDocument.mimeType.split("/")[1] || "pdf",
+        metadata: {
+          ...standardizedDocument.metadata,
+          originalName: file.originalname,
+          size: file.size,
+          cloudinaryId: file.filename || file.public_id,
+        },
+      };
+    });
 
     // Update appointment with new reports
     let updatedAppointment;

@@ -67,12 +67,48 @@ const healthDataSchema = new mongoose.Schema({
   }
 });
 
-// Define the reports schema
+// Define the reports schema with standardized document structure
 const reportSchema = new mongoose.Schema({
+  // Standardized document fields
+  _id: {
+    type: String,
+    default: () => new mongoose.Types.ObjectId().toString()
+  },
+  documentId: {
+    type: String,
+    default: function() { return this._id; }
+  },
+  fileName: String,
+  originalName: String,
+  path: String,
+  preview: String,
+  url: String,
+  downloadUrl: String,
+  mimeType: String,
+  fileType: String,
+  fileExtension: String,
+  isPdf: {
+    type: Boolean,
+    default: false
+  },
+  documentType: {
+    type: String,
+    enum: ['medical_record', 'report', 'prescription', 'lab_result', 'imaging', 'consent_form', 'insurance', 'visit-card', 'other'],
+    default: 'report'
+  },
+  size: Number,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  },
+  // Appointment-specific fields (for backward compatibility)
   name: String,
   type: String, // e.g., "Lab", "Imaging", "Procedure"
-  fileUrl: String,
-  fileType: String, // e.g., "pdf", "jpg", "png"
+  fileUrl: String, // For backward compatibility
   description: String,
   uploadedAt: {
     type: Date,

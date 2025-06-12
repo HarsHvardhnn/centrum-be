@@ -8,6 +8,104 @@ const Specialization = require("../models/specialization");
 const sendWelcomeEmail = require("../utils/welcomeEmail");
 const { ObjectId } = mongoose.Types;
 
+// Helper function to create standardized document structure
+exports.createStandardizedDocument = (fileData, documentType = "general") => {
+  const documentId = new mongoose.Types.ObjectId().toString();
+  const timestamp = new Date();
+  
+  // Handle both file upload objects and existing document objects
+  if (fileData.originalname || fileData.name) {
+    // This is a file upload from multer
+    const isPdf = fileData.mimetype === "application/pdf";
+    let downloadUrl = fileData.path;
+    
+    // For PDFs, ensure we have a proper download URL with file extension
+    if (isPdf && downloadUrl && !downloadUrl.includes('.pdf')) {
+      // Extract the file extension and add it to the URL
+      const fileExtension = fileData.originalname.split('.').pop().toLowerCase();
+      if (downloadUrl.includes('cloudinary.com')) {
+        // For Cloudinary URLs, add the extension as a query parameter for proper content-type
+        downloadUrl = `${fileData.path}.${fileExtension}`;
+      }
+    }
+    
+    return {
+      _id: documentId,
+      documentId: documentId,
+      fileName: fileData.originalname || fileData.name,
+      originalName: fileData.originalname || fileData.name,
+      path: fileData.path,
+      preview: downloadUrl, // Use the processed URL for preview
+      url: downloadUrl, // Use the processed URL for download
+      downloadUrl: downloadUrl, // Explicit download URL
+      mimeType: fileData.mimetype,
+      fileType: fileData.mimetype,
+      isPdf: isPdf,
+      documentType: documentType,
+      uploadDate: timestamp,
+      size: fileData.size || null,
+      fileExtension: fileData.originalname ? fileData.originalname.split('.').pop().toLowerCase() : null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+  } else {
+    // This is an existing document object being updated
+    const isPdfType = (fileData.mimeType || fileData.type || fileData.mimetype) === "application/pdf";
+    let processedUrl = fileData.url || fileData.path;
+    
+    // Process URL for existing documents too
+    if (isPdfType && processedUrl && !processedUrl.includes('.pdf')) {
+      const fileExtension = (fileData.fileName || fileData.name || "").split('.').pop()?.toLowerCase();
+      if (fileExtension && processedUrl.includes('cloudinary.com')) {
+        processedUrl = `${processedUrl}.${fileExtension}`;
+      }
+    }
+    
+    return {
+      _id: documentId,
+      documentId: documentId,
+      fileName: fileData.fileName || fileData.name || "Unknown",
+      originalName: fileData.originalName || fileData.fileName || fileData.name || "Unknown",
+      path: fileData.path || fileData.url,
+      preview: processedUrl,
+      url: processedUrl,
+      downloadUrl: processedUrl,
+      mimeType: fileData.mimeType || fileData.type || fileData.mimetype,
+      fileType: fileData.fileType || fileData.type || fileData.mimetype,
+      isPdf: isPdfType,
+      documentType: fileData.documentType || fileData.document_type || documentType,
+      uploadDate: fileData.uploadDate || timestamp,
+      size: fileData.size || null,
+      fileExtension: (fileData.fileName || fileData.name || "").split('.').pop()?.toLowerCase(),
+      createdAt: fileData.createdAt || timestamp,
+      updatedAt: timestamp,
+      ...fileData // Spread any additional properties
+    };
+  }
+};
+
+// Helper function to delete a document by ID from patient's documents array
+exports.deleteDocumentById = async (patientId, documentId) => {
+  try {
+    const updatedPatient = await patient.findByIdAndUpdate(
+      patientId,
+      {
+        $pull: {
+          documents: {
+            $or: [
+              { _id: documentId },
+              { documentId: documentId }
+            ]
+          }
+        }
+      },
+      { new: true }
+    );
+    return updatedPatient;
+  } catch (error) {
+    throw new Error(`Failed to delete document: ${error.message}`);
+  }
+};
 
 // Create a new patient
 exports.createPatient = async (req, res) => {
@@ -147,16 +245,10 @@ exports.createPatient = async (req, res) => {
 
 
     console.log("req.files are ",req.files)
-    const documents = (req.files || []).map((file) => ({
-      fileName: file.originalname,
-      path: file.path,
-      preview: file.path,
-      isPdf: file.mimetype === "application/pdf",
-      type: file.mimetype,
-      name: file.originalname,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-    }));
+    // Use standardized document creation
+    const documents = (req.files || []).map((file) => 
+      exports.createStandardizedDocument(file, "medical_record")
+    );
 
     // console.log(consultingSpecialization);  
     const consultSpec = await Specialization.findOne({
@@ -297,28 +389,11 @@ exports.getPatientById = async (req, res) => {
       parsedConsents=info.consents;
     }
     // Transform documents
-    const transformedDocuments = info?.documents?.map((docUrlOrObj) => {
-      // console.log("docUrlOrObj",docUrlOrObj)
-      const url =
-        typeof docUrlOrObj === "string"
-          ? docUrlOrObj
-          : docUrlOrObj.url || docUrlOrObj.path;
-          if(url==null){ url=docUrlOrObj.url}
-      const fileType = url.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
-      return {
-        id: Date.now() + Math.random(),
-        name: docUrlOrObj.fileName,
-        type: fileType,
-        preview: url,
-        isPdf: fileType === "application/pdf",
-      };
-    })
-    console.log("transformedDocuments are ",transformedDocuments?.length)
+
 
     const transformedInfo = {
       ...info,
       consents: parsedConsents,
-      documents: transformedDocuments || [],
     };
 
     res.status(200).json(transformedInfo);
@@ -678,24 +753,24 @@ if (consultationData) {
       new: true,
       runValidators: true,
     });
-if (uploadedFiles && uploadedFiles.length > 0) {
-  // Ensure patient.documents is initialized
-  if (!updatedPatient.documents) {
-    updatedPatient.documents = [];
-  }
+    // Handle uploaded files with standardized document structure
+    if (uploadedFiles && uploadedFiles.length > 0) {
+      // Ensure patient.documents is initialized
+      if (!updatedPatient.documents) {
+        updatedPatient.documents = [];
+      }
 
-  // 2. Prepare new documents with document_type "report"
-  const newDocuments = uploadedFiles.map((doc) => ({
-    ...doc,
-    document_type: "report", // Always hardcoded here
-  }));
+      // Create standardized documents with "report" type
+      const newDocuments = uploadedFiles.map((doc) => 
+        exports.createStandardizedDocument(doc, "report")
+      );
 
-  // 3. Push new report documents
-  updatedPatient.documents.push(...newDocuments);
+      // Push new standardized documents
+      updatedPatient.documents.push(...newDocuments);
 
-  // 4. Save updated patient
-  await updatedPatient.save();
-}
+      // Save updated patient
+      await updatedPatient.save();
+    }
 
 
     if (!updatedPatient) {
@@ -1176,16 +1251,10 @@ exports.updatePatient = async (req, res) => {
       }
     }
 
-    const newDocuments = (req.files || []).map((file) => ({
-      fileName: `${new Date().toISOString().split('T')[0]}`,
-      path: file.path,
-      preview: file.path,
-      isPdf: file.mimetype === "application/pdf",
-      type: file.mimetype,
-      name: file.originalname,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-    }));
+    // Use standardized document creation for uploaded files
+    const newDocuments = (req.files || []).map((file) => 
+      exports.createStandardizedDocument(file, "medical_record")
+    );
 
     console.log("newDocuments",newDocuments)
 
@@ -1288,6 +1357,178 @@ exports.updatePatient = async (req, res) => {
     res
       .status(500)
       .json({ error: "Błąd wewnętrzny serwera", details: error.message });
+  }
+};
+
+// Delete a specific document from patient's documents array
+exports.deletePatientDocument = async (req, res) => {
+  try {
+    const { patientId, documentId } = req.params;
+
+    // Validate MongoDB IDs
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID format"
+      });
+    }
+
+    if (!documentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Document ID is required"
+      });
+    }
+
+    // Delete the document
+    const updatedPatient = await exports.deleteDocumentById(patientId, documentId);
+
+    if (!updatedPatient) {
+      return res.status(404).json({
+        success: false,
+        message: "Nie znaleziono pacjenta"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Dokument został pomyślnie usunięty",
+      patient: updatedPatient
+    });
+  } catch (error) {
+    console.error("Error deleting document:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się usunąć dokumentu",
+      error: error.message
+    });
+  }
+};
+
+// Get all documents for a specific patient
+exports.getPatientDocuments = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const { documentType, limit = 50, page = 1 } = req.query;
+
+    // Validate MongoDB ID
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID format"
+      });
+    }
+
+    // Build query
+    const query = { _id: patientId };
+    
+    // Find patient
+    const patientData = await patient.findById(patientId).select('documents name patientId').lean();
+    
+    if (!patientData) {
+      return res.status(404).json({
+        success: false,
+        message: "Nie znaleziono pacjenta"
+      });
+    }
+
+    let documents = patientData.documents || [];
+
+    // Filter by document type if specified
+    if (documentType && documentType !== 'all') {
+      documents = documents.filter(doc => doc.documentType === documentType);
+    }
+
+    // Sort by upload date (newest first)
+    documents.sort((a, b) => new Date(b.uploadDate) - new Date(a.uploadDate));
+
+    // Pagination
+    const startIndex = (parseInt(page) - 1) * parseInt(limit);
+    const endIndex = startIndex + parseInt(limit);
+    const paginatedDocuments = documents.slice(startIndex, endIndex);
+
+    res.status(200).json({
+      success: true,
+      count: paginatedDocuments.length,
+      total: documents.length,
+      pages: Math.ceil(documents.length / parseInt(limit)),
+      currentPage: parseInt(page),
+      patient: {
+        id: patientData._id,
+        name: patientData.name,
+        patientId: patientData.patientId
+      },
+      documents: paginatedDocuments
+    });
+  } catch (error) {
+    console.error("Error fetching patient documents:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się pobrać dokumentów pacjenta",
+      error: error.message
+    });
+  }
+};
+
+// Fix existing PDF documents with broken URLs
+exports.fixPatientDocumentUrls = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+
+    // Validate MongoDB ID
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID format"
+      });
+    }
+
+    // Find patient
+    const patientData = await patient.findById(patientId);
+    
+    if (!patientData) {
+      return res.status(404).json({
+        success: false,
+        message: "Nie znaleziono pacjenta"
+      });
+    }
+
+    let fixedCount = 0;
+
+    // Fix document URLs
+    if (patientData.documents && patientData.documents.length > 0) {
+      patientData.documents = patientData.documents.map(doc => {
+        if (doc.isPdf && doc.url && !doc.url.includes('.pdf') && doc.fileName) {
+          const fileExtension = doc.fileName.split('.').pop().toLowerCase();
+          if (fileExtension === 'pdf' && doc.url.includes('cloudinary.com')) {
+            doc.url = `${doc.url}.pdf`;
+            doc.downloadUrl = `${doc.url}`;
+            doc.preview = `${doc.url}`;
+            doc.fileExtension = 'pdf';
+            doc.updatedAt = new Date();
+            fixedCount++;
+          }
+        }
+        return doc;
+      });
+    }
+
+    // Save the updated patient
+    await patientData.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Fixed ${fixedCount} document URLs`,
+      fixedCount: fixedCount,
+      totalDocuments: patientData.documents?.length || 0
+    });
+  } catch (error) {
+    console.error("Error fixing document URLs:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się naprawić adresów URL dokumentów",
+      error: error.message
+    });
   }
 };
 

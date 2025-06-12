@@ -162,4 +162,9 @@ router.post(
 
 router.get("/by-id/medical-details/:appointmentId",authorizeRoles(["patient"]), patientController.getPatientMedicalDetails);
 
+// Document management routes
+router.get("/:patientId/documents", patientController.getPatientDocuments);
+router.delete("/:patientId/documents/:documentId", authorizeRoles(["doctor", "admin", "receptionist"]), patientController.deletePatientDocument);
+router.patch("/:patientId/documents/fix-urls", patientController.fixPatientDocumentUrls);
+
 module.exports = router;

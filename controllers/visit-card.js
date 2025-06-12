@@ -8,6 +8,9 @@ const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
 const mongoose = require("mongoose");
 
+// Import the standardized document helper from patient controller
+const { createStandardizedDocument } = require("./patientController");
+
 /**
  * Generate a visit card PDF for a patient based on appointment
  * @param {Object} req - Express request object with appointmentId parameter and optional forceNew query parameter
@@ -438,15 +441,30 @@ exports.generateVisitCard = async (req, res) => {
     // Delete the temporary file
     fs.unlinkSync(tempFilePath);
 
-    // Create a report for the appointment
+    // Create a mock file object for the standardized document creation
+    const mockFileData = {
+      originalname: filename,
+      filename: result.public_id,
+      path: result.secure_url,
+      mimetype: "application/pdf",
+      size: result.bytes || null,
+      public_id: result.public_id
+    };
+
+    // Create standardized document for the visit card
+    const standardizedDocument = createStandardizedDocument(mockFileData, "report");
+    
+    // Create a report for the appointment using standardized structure
     const newReport = {
+      ...standardizedDocument,
       name: `Karta wizyty - ${visitDate}`,
       type: "visit-card",
+      description: `Karta wizyty wygenerowana dla wizyty z dnia ${visitDate}`,
+      // Keep appointment-specific fields for backward compatibility
       fileUrl: result.secure_url,
       fileType: "pdf",
-      description: `Karta wizyty wygenerowana dla wizyty z dnia ${visitDate}`,
-      uploadedAt: new Date(),
       metadata: {
+        ...standardizedDocument.metadata,
         originalName: filename,
         cloudinaryId: result.public_id,
         appointmentId: appointmentId,
@@ -461,21 +479,19 @@ exports.generateVisitCard = async (req, res) => {
     appointment.reports.push(newReport);
     await appointment.save();
 
-    // Save the document reference to the patient as well for backward compatibility
+    // Save the standardized document reference to the patient as well for backward compatibility
     const patientDoc = await Patient.findById(patient._id);
     if (patientDoc) {
       if (!patientDoc.documents) {
         patientDoc.documents = [];
       }
 
-      patientDoc.documents.push({
-        type: "visit-card",
-        url: result.secure_url,
-        publicId: result.public_id,
-        createdAt: new Date(),
-        appointmentId: appointmentId
-      });
-
+      // Create standardized document for patient's documents array
+      const patientDocument = createStandardizedDocument(mockFileData, "report");
+      patientDocument.documentType = "visit-card"; // Override document type for patient
+      patientDocument.appointmentId = appointmentId; // Add appointment reference
+      
+      patientDoc.documents.push(patientDocument);
       await patientDoc.save();
     }
 
