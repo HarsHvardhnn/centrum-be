@@ -184,13 +184,44 @@ exports.getAllBills = async (req, res) => {
       const trimmedSearch = search.trim();
       if (trimmedSearch) { // Only proceed if there's non-whitespace content
         const searchRegex = new RegExp(trimmedSearch, 'i');
+        const searchWords = trimmedSearch.split(/\s+/); // Split by spaces
         
-        // First find matching patients
+        // Build patient search conditions
+        let patientSearchConditions = [
+          // Search in individual name fields
+          { 'name.first': { $regex: searchRegex } },
+          { 'name.last': { $regex: searchRegex } }
+        ];
+
+        // If multiple words, also search for full name combinations
+        if (searchWords.length >= 2) {
+          const firstWord = new RegExp(searchWords[0], 'i');
+          const lastWord = new RegExp(searchWords[searchWords.length - 1], 'i');
+          
+          patientSearchConditions.push(
+            // First word matches first name AND last word matches last name
+            {
+              $and: [
+                { 'name.first': { $regex: firstWord } },
+                { 'name.last': { $regex: lastWord } }
+              ]
+            }
+          );
+
+          // Also try reverse order (last name first, first name last)
+          patientSearchConditions.push(
+            {
+              $and: [
+                { 'name.first': { $regex: lastWord } },
+                { 'name.last': { $regex: firstWord } }
+              ]
+            }
+          );
+        }
+
+        // Find matching patients
         const matchingPatients = await User.find({
-          $or: [
-            { 'name.first': { $regex: searchRegex } },
-            { 'name.last': { $regex: searchRegex } }
-          ]
+          $or: patientSearchConditions
         }).select('_id');
 
         // Combine patient search and invoiceId search in the main query
@@ -845,7 +876,7 @@ exports.generateInvoice = async (req, res) => {
                 <div>NIP : 6631891951</div>
                 <div>REGON : 541934650</div>
                 <div style="margin-top: 8px;">
-                <div>Email: kontakt@autanaslub.pl</div>
+                <div>Email: kontakt@centrummedyczne7.pl</div>
                     <div>Telefon kontaktowy: 797-097-487</div>
                 </div>
             </div>
@@ -959,8 +990,8 @@ exports.generateInvoice = async (req, res) => {
                 <span>${bill.taxAmount.toFixed(2)} ZŁ</span>
             </div>
             ` : `  <div class="summary-row">
-                <span>Podatek VAT (${bill.taxPercentage}%):</span>
-                <span>ZW</span>
+                <span>Podatek VAT (ZW):</span>
+                <span>${bill.taxAmount.toFixed(2)} ZŁ</span>
             </div>`}
             ${bill.discount > 0 ? `
             <div class="summary-row">
@@ -983,19 +1014,6 @@ exports.generateInvoice = async (req, res) => {
             <div class="summary-row total-row">
                 <span>RAZEM DO ZAPŁATY:</span>
                 <span>${Number(bill.totalAmount).toFixed(2)} ZŁ</span>
-            </div>
-        </div>
-
-        <div class="payment-info">
-            <div class="info-row">
-                <span class="info-label">Status płatności:</span>
-                <span class="payment-status ${bill.paymentStatus === 'paid' ? 'status-paid' : 'status-pending'}">
-                    ${translatePaymentStatus(bill.paymentStatus)}
-                </span>
-            </div>
-            <div class="info-row" style="margin-top: 8px;">
-                <span class="info-label">Metoda płatności:</span>
-                <span><strong>${translatePaymentMethod(bill.paymentMethod)}</strong></span>
             </div>
         </div>
 

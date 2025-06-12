@@ -10,9 +10,10 @@ const mongoose = require("mongoose");
 
 /**
  * Generate a visit card PDF for a patient based on appointment
- * @param {Object} req - Express request object with appointmentId parameter
+ * @param {Object} req - Express request object with appointmentId parameter and optional forceNew query parameter
  * @param {Object} res - Express response object
  * @returns {Object} JSON with download URL
+ * @query {boolean} forceNew - Set to 'true' to generate a new visit card even if one already exists
  */
 exports.generateVisitCard = async (req, res) => {
   try {
@@ -37,6 +38,17 @@ exports.generateVisitCard = async (req, res) => {
 
     // Get appointment ID from parameters
     const appointmentId = req.params.appointmentId;
+    
+    // Get the forceNew query parameter to allow creating new visit cards even if one exists
+    const forceNew = req.query.forceNew === 'true' || req.query.forceNew === true;
+    
+    // Debug logging
+    console.log("=== FORCE NEW DEBUG ===");
+    console.log("req.query:", req.query);
+    console.log("req.query.forceNew:", req.query.forceNew);
+    console.log("typeof req.query.forceNew:", typeof req.query.forceNew);
+    console.log("forceNew result:", forceNew);
+    console.log("=== END FORCE NEW DEBUG ===");
 
     if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
       return res.status(400).json({
@@ -61,8 +73,14 @@ exports.generateVisitCard = async (req, res) => {
     }
 
     // Check if a visit card already exists for this appointment
+    // Only return existing visit card if forceNew is not set to true
     const existingVisitCard = appointment.reports?.find(report => report.type === "visit-card");
-    if (existingVisitCard) {
+    console.log("existingVisitCard found:", !!existingVisitCard);
+    console.log("!forceNew:", !forceNew);
+    console.log("Will return existing?", existingVisitCard && !forceNew);
+    
+    if (existingVisitCard && !forceNew) {
+      console.log("Returning existing visit card");
       return res.status(200).json({
         success: true,
         message: "Karta wizyty już istnieje",
@@ -72,6 +90,10 @@ exports.generateVisitCard = async (req, res) => {
           appointmentId: appointmentId
         },
       });
+    }
+    
+    if (forceNew && existingVisitCard) {
+      console.log("forceNew=true, proceeding to create new visit card despite existing one");
     }
 
     // Get the patient from appointment

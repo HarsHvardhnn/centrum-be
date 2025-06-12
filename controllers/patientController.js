@@ -59,7 +59,7 @@ exports.createPatient = async (req, res) => {
       preferredLanguage,
     } = req.body;
 
-    console.log("req.body is ",dateOfBirth)
+    // console.log("req.body is ",dateOfBirth)
     // Remove leading zeros from phone number
     const phoneNumber = req.body.mobileNumber?.replace(/^0+/, '') || '';
     
@@ -140,26 +140,32 @@ exports.createPatient = async (req, res) => {
         parsedConsents = []; // Reset to empty array if parsing fails
       }
     }
-    console.log("consents are ",parsedConsents)
+    // console.log("consents are ",parsedConsents)
     //move back uip
  
 
 
+
+    console.log("req.files are ",req.files)
     const documents = (req.files || []).map((file) => ({
-      fileName: `${new Date().toISOString().split('T')[0]}`,
+      fileName: file.originalname,
       path: file.path,
+      preview: file.path,
+      isPdf: file.mimetype === "application/pdf",
+      type: file.mimetype,
+      name: file.originalname,
       originalname: file.originalname,
       mimetype: file.mimetype,
     }));
 
-    console.log(consultingSpecialization);  
+    // console.log(consultingSpecialization);  
     const consultSpec = await Specialization.findOne({
       _id: consultingSpecialization,
     });
 
     // Calculate age from dateOfBirth
     const calculatedAge = calculateAge(dateOfBirth);
-    console.log("Calculated age:", calculatedAge);
+    // console.log("Calculated age:", calculatedAge);
 
     const newPatient = new patient({
       name: {
@@ -284,7 +290,7 @@ exports.getPatientById = async (req, res) => {
     let parsedConsents = [];
     console.log(info.consents);
     // Parse deeply stringified consent data
-    if (info.consents && typeof info.consents==='string') {
+    if (info.consents.length >0 && info.consents && typeof info.consents[0]==='string') {
    parsedConsents= JSON.parse(info?.consents);
     }
     else{
@@ -292,7 +298,7 @@ exports.getPatientById = async (req, res) => {
     }
     // Transform documents
     const transformedDocuments = info?.documents?.map((docUrlOrObj) => {
-      console.log("docUrlOrObj",docUrlOrObj)
+      // console.log("docUrlOrObj",docUrlOrObj)
       const url =
         typeof docUrlOrObj === "string"
           ? docUrlOrObj
@@ -306,7 +312,8 @@ exports.getPatientById = async (req, res) => {
         preview: url,
         isPdf: fileType === "application/pdf",
       };
-    }).filter(doc => doc.type === "application/pdf");
+    })
+    console.log("transformedDocuments are ",transformedDocuments?.length)
 
     const transformedInfo = {
       ...info,
@@ -1172,9 +1179,15 @@ exports.updatePatient = async (req, res) => {
     const newDocuments = (req.files || []).map((file) => ({
       fileName: `${new Date().toISOString().split('T')[0]}`,
       path: file.path,
+      preview: file.path,
+      isPdf: file.mimetype === "application/pdf",
+      type: file.mimetype,
+      name: file.originalname,
       originalname: file.originalname,
       mimetype: file.mimetype,
     }));
+
+    console.log("newDocuments",newDocuments)
 
     // Handle consulting specialization
     let consultingSpecName = existingPatient.consultingSpecialization;
