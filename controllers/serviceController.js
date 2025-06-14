@@ -48,6 +48,7 @@ exports.getAllServices = async (req, res) => {
       .select('title slug description shortDescription images price bulletPoints createdAt updatedAt');
     res.json(services);
   } catch (error) {
+    console.error('Error getting services:', error);
     res.status(500).json({ message: "Failed to get services", error });
   }
 };

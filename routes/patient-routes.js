@@ -8,6 +8,9 @@ const authorizeRoles = require("../middlewares/authenticateRole");
 const { default: mongoose } = require("mongoose");
 const appointment = require("../models/appointment");
 
+// Import the standardized document helper
+const { createStandardizedDocument } = require("../controllers/patientController");
+
 router.post("/", upload.array("files", 10), patientController.createPatient);
 router.put("/:id", upload.array("files", 10), patientController.updatePatient);
 
@@ -128,13 +131,10 @@ router.post(
       appointmentData.checkedIn=true;
       appointmentData.checkInDate=new Date();
       await appointmentData.save();
-      // Upload each file to cloudinary
-       const uploadedDocuments = files.map((file) => ({
-         type: file.mimetype,
-         fileName: file.originalname,
-         url: file.path, // Cloudinary auto-gives the file URL here via multer-storage-cloudinary
-         uploadedAt: new Date(),
-       }));
+      // Create standardized documents for uploaded files
+      const uploadedDocuments = files.map((file) => 
+        createStandardizedDocument(file, "medical_record")
+      );
 
       patient.checkedIn = true;
       patient.checkedInDate = new Date();
