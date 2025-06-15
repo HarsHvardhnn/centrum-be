@@ -75,6 +75,10 @@ const patientSchema = new mongoose.Schema({
   mainComplaint: String,
   reviewNotes: String,
   consultingDepartment: String,
+  consultingSpecialization: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Specialization",
+  },
   consultingDoctor: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",

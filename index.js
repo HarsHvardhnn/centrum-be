@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
+const cookieParser = require("cookie-parser");
 
 const connectDB = require("./config/db");
 const seedAdmin = require("./utils/adminSeeder");
@@ -27,6 +28,10 @@ const invoiceRoutes = require("./routes/invoice-routes");
 const emailTestRoutes = require("./routes/email-test-routes");
 const zohoAuthRoutes = require("./routes/zoho-auth-routes");
 const cookieConsentRoutes = require("./routes/cookie-consent-routes");
+
+// Import SEO middleware
+const { seoMiddleware } = require("./backend-seo-implementation");
+
 dotenv.config();
 
 // Initialize database and seed admin
@@ -46,13 +51,32 @@ const initializeApp = async () => {
 // Call initialization
 initializeApp();
 
+console.log(
+  "process.env",
+  process.env.NODE_ENV,
+  process.env.NODE_ENV === "production"
+    ? process.env.FRONTEND_URL
+    : "http://localhost:5173");
 const app = express();
 const server = http.createServer(app); // Create HTTP server with Express
+
+// Helper function to normalize origin URL
+const normalizeOrigin = (url) => {
+  if (!url) return url;
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+};
+
+const frontendOrigin = process.env.NODE_ENV === 'production' 
+  ? normalizeOrigin(process.env.FRONTEND_URL)
+  : "http://localhost:5173";
+
+console.log("frontendOrigin", frontendOrigin);
+
 const io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
-      ? process.env.FRONTEND_URL 
-      : "http://localhost:5173",
+      ? frontendOrigin 
+      : ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true
   },
@@ -60,15 +84,69 @@ const io = new Server(server, {
 
 // Configure CORS for Express
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
-    : "http://localhost:5173",
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const normalizedOrigin = normalizeOrigin(origin);
+    console.log("normalizedOrigin", normalizedOrigin);
+    
+    // In development, allow both localhost origins
+    if (process.env.NODE_ENV !== 'production') {
+      if (normalizedOrigin === 'http://localhost:3000' || 
+          normalizedOrigin === 'http://localhost:5173' || 
+          normalizedOrigin === 'http://127.0.0.1:3000' || 
+          normalizedOrigin === 'http://127.0.0.1:5173') {
+        return callback(null, true);
+      }
+    }
+    
+    // In production, check against FRONTEND_URL
+    if (normalizedOrigin === frontendOrigin) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked:', normalizedOrigin, 'expected:', frontendOrigin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: [
+    "Content-Type", 
+    "Authorization",
+    "strict-transport-security",
+    "content-security-policy",
+    "X-Requested-With",
+    "X-Content-Type-Options",
+    "X-Frame-Options",
+    "X-XSS-Protection",
+    "X-Permitted-Cross-Domain-Policies",
+    "X-Content-Security-Policy",
+    "X-WebKit-CSP",
+    "X-Content-Security-Policy-Report-Only",
+    "Accept",
+    "Accept-Encoding",
+    "Referrer-Policy",
+    "Permissions-Policy",
+    "Cross-Origin-Opener-Policy",
+    "Cross-Origin-Embedder-Policy",
+    "Cross-Origin-Resource-Policy",
+    "Cross-Origin-Embedder-Policy-Report-Only",
+    "Cross-Origin-Resource-Policy-Report-Only",
+    "Origin"
+  ],
+  exposedHeaders: [
+    "strict-transport-security",
+    "content-security-policy"
+  ]
 }));
 
 app.use(express.json());
+app.use(cookieParser());
+
+// Add SEO middleware BEFORE routes (for crawler detection)
+app.use(seoMiddleware);
+
 app.use("/auth", authRoutes);
 app.use("/docs", doctorRoutes);
 app.use("/patients", patientRoutes);
@@ -90,14 +168,24 @@ app.use("/api/invoice", invoiceRoutes);
 app.use("/api/email", emailTestRoutes);
 app.use("/zoho", zohoAuthRoutes);
 app.use("/api/cookie-consent", cookieConsentRoutes);
+
+// Test route for SEO (can be removed later)
+app.get("/seo-test", (req, res) => {
+  res.json({ 
+    message: "SEO middleware is active",
+    userAgent: req.headers['user-agent'],
+    isCrawler: require("./backend-seo-implementation").isCrawler(req.headers['user-agent'])
+  });
+});
+
 // Import socket handler and pass io
 const socketHandler = require("./config/socketHandler");
 socketHandler(io);
 
-app.get("/", (req, res) => {
-  res.send("API is running...");
-});
+const PORT =
+  process.env.NODE_ENV === "production"
+    ? process.env.PORT_PROD
+    : process.env.PORT_DEV;
 
-const PORT = process.env.PORT || 5000;
 // Use server.listen instead of app.listen
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

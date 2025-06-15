@@ -7,7 +7,7 @@ const sendEmail = require("./mailer");
  */
 const getEmailTemplates = (userData) => {
   const { name, email, password } = userData;
-  
+
   // English template
   const englishSubject = "Welcome to Centrum Medical Center";
   const englishHtml = `
@@ -108,7 +108,7 @@ W razie pytań prosimy o kontakt z naszym zespołem wsparcia.
 
   return {
     english: { subject: englishSubject, html: englishHtml, text: englishText },
-    polish: { subject: polishSubject, html: polishHtml, text: polishText }
+    polish: { subject: polishSubject, html: polishHtml, text: polishText },
   };
 };
 
@@ -118,46 +118,50 @@ W razie pytań prosimy o kontakt z naszym zespołem wsparcia.
  * @param {string} language - Language preference ('english' or 'polish')
  * @returns {Promise} Email sending result
  */
-const   sendWelcomeEmail = async (userData, language = 'polish') => {
+const sendWelcomeEmail = async (userData, language = "polish") => {
   try {
     // Validate required user data
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
     if (!emailRegex.test(userData.email)) {
-return
+      return;
     }
 
     // Prepare user data with defaults
     const user = {
-      name: userData.name?.first && userData.name?.last 
-        ? `${userData.name.first} ${userData.name.last}`
-        : userData.name || 'Patient',
+      name:
+        userData.name?.first && userData.name?.last
+          ? `${userData.name.first} ${userData.name.last}`
+          : userData.name || "Patient",
       email: userData.email,
-      password: userData.password
+      password: userData.password,
     };
 
     // Get email templates
     const templates = getEmailTemplates(user);
-    
+
     // Select language template (default to English if invalid language provided)
-    const emailContent = language.toLowerCase() === 'polish' 
-      ? templates.polish 
-      : templates.english;
+    const emailContent =
+      language.toLowerCase() === "polish"
+        ? templates.polish
+        : templates.english;
 
     // Send email
     const result = await sendEmail({
       to: user.email,
       subject: emailContent.subject,
       html: emailContent.html,
-      text: emailContent.text
+      text: emailContent.text,
     });
 
-    console.log(`Welcome email sent successfully to ${user.email} in ${language}`);
+    console.log(
+      `Welcome email sent successfully to ${user.email} in ${language}`
+    );
     return result;
   } catch (error) {
-    console.error('Failed to send welcome email:', error);
+    console.error("Failed to send welcome email:", error);
     throw error;
   }
 };
 
-module.exports = sendWelcomeEmail; 
+module.exports = sendWelcomeEmail;

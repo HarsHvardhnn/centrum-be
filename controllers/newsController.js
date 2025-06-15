@@ -85,6 +85,7 @@ exports.getAllNews = async (req, res) => {
 exports.getNewsBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
+    console.log('slug',slug);
     const news = await NewsArticle.findOne({ slug, isDeleted: false })
       .populate("category");
     
@@ -94,6 +95,7 @@ exports.getNewsBySlug = async (req, res) => {
     
     res.status(200).json(news);
   } catch (error) {
+    console.log('error',error);
     res.status(500).json({ message: error.message });
   }
 };

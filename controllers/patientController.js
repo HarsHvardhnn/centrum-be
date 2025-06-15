@@ -118,6 +118,7 @@ exports.createPatient = async (req, res) => {
       spouseName,
       sex,
       dateOfBirth,
+      
       birthWeight,
       maritalStatus,
       motherTongue,
@@ -291,13 +292,13 @@ exports.createPatient = async (req, res) => {
       state,
       country,
       pinCode,
+      consultingSpecialization: new mongoose.Types.ObjectId(consultingSpecialization),
       alternateContact,
       govtId,
       isInternationalPatient:!!isInternationalPatient,
       ivrLanguage,
       mainComplaint,
       reviewNotes,
-      consultingSpecialization: consultSpec?.name || "General",
       consultingDoctor: new mongoose.Types.ObjectId(consultingDoctor),
       photo,
       otherHospitalIds,
@@ -865,6 +866,7 @@ const consultationData = {
         " " +
         patient.consultingDoctor.name.last
       : "",
+  consultingSpecialization: patient?.consultingSpecialization?.name || "Ogólny",
 
   consultationType: latestConsultation?.consultationType || "",
   locationType: latestConsultation?.locationType || "",
@@ -1153,6 +1155,7 @@ exports.updatePatient = async (req, res) => {
       referrerEmail,
       referrerNumber,
       referrerType,
+      
       consents,
       mobileNumber,
       // New fields
@@ -1305,7 +1308,7 @@ exports.updatePatient = async (req, res) => {
       ...(mainComplaint !== undefined && mainComplaint !== "undefined" && { mainComplaint }),
       ...(reviewNotes !== undefined && reviewNotes !== "undefined" && { reviewNotes }),
       ...(consultingSpecialization && {
-        consultingSpecialization: consultingSpecName,
+        consultingSpecialization: new mongoose.Types.ObjectId(consultingSpecialization),
       }),
       ...(consultingDoctor && {
         consultingDoctor: new mongoose.Types.ObjectId(consultingDoctor),
