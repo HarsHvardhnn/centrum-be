@@ -28,9 +28,13 @@ const invoiceRoutes = require("./routes/invoice-routes");
 const emailTestRoutes = require("./routes/email-test-routes");
 const zohoAuthRoutes = require("./routes/zoho-auth-routes");
 const cookieConsentRoutes = require("./routes/cookie-consent-routes");
+const ipRestrictionRoutes = require("./routes/ip-restriction-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
+
+// Import IP restriction middleware
+const { generalIpRestriction, adminIpRestriction } = require("./middlewares/ipRestriction");
 
 dotenv.config();
 
@@ -92,7 +96,7 @@ app.use(cors({
     console.log("normalizedOrigin", normalizedOrigin);
     
     // In development, allow both localhost origins
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV === 'production') {
       if (normalizedOrigin === 'http://localhost:3000' || 
           normalizedOrigin === 'http://localhost:5173' || 
           normalizedOrigin === 'http://127.0.0.1:3000' || 
@@ -147,7 +151,14 @@ app.use(cookieParser());
 // Add SEO middleware BEFORE routes (for crawler detection)
 app.use(seoMiddleware);
 
-app.use("/auth", authRoutes);
+// Add IP restriction management routes BEFORE applying IP restriction middleware
+// This allows admins to manage IPs even when restrictions are active
+app.use("/api/ip-restrictions", ipRestrictionRoutes);
+
+// Apply IP restriction middleware to all other routes
+// Note: Apply this AFTER SEO middleware but BEFORE authentication routes
+// 
+app.use("/auth",generalIpRestriction, authRoutes);
 app.use("/docs", doctorRoutes);
 app.use("/patients", patientRoutes);
 app.use("/admin", adminRoutes);
