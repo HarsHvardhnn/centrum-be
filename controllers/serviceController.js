@@ -62,6 +62,7 @@ exports.getServiceBySlug = async (req, res) => {
       isDeleted: false,
     });
     
+    console.log(service,"service")
     if (!service) {
       return res.status(404).json({ message: "Service not found" });
     }

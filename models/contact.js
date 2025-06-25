@@ -27,6 +27,10 @@ const contactSchema = new mongoose.Schema(
       type: String,
       enum: ["new", "read", "replied"],
       default: "new"
+    },
+    privacyPolicyAccepted: {
+      type: Boolean,
+      default: false
     }
   },
   {

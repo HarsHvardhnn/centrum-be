@@ -392,6 +392,7 @@ exports.getBillById = async (req, res) => {
 // Update bill payment status
 exports.updateBillPaymentStatus = async (req, res) => {
   try {
+    console.log(req.body,"req.body")
     const { billId } = req.params;
     const { paymentStatus, paymentMethod, notes } = req.body;
 

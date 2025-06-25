@@ -824,7 +824,7 @@ exports.getPatientDetails = async (req, res) => {
     const patientData = {
       id: patient._id,
       name: `${patient.name.first || ""} ${patient.name.last || ""}`,
-      age: patient.age,
+      age: patient?.age || patient?.dateOfBirth ? calculateAge(patient.dateOfBirth) : null,
       gender: patient.sex,
       email: patient.email,
       phone: patient.phone,

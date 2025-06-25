@@ -77,7 +77,7 @@ const io = new Server(server, {
     origin: process.env.NODE_ENV === 'production' 
       ? frontendOrigin 
       : ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS","PATCH"],
     credentials: true
   },
 });
@@ -110,7 +110,7 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: [
     "Content-Type", 
     "Authorization",
