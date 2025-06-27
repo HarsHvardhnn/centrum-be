@@ -8,9 +8,10 @@ const {
   deleteContact
 } = require("../controllers/contactController");
 const authorizeRoles = require("../middlewares/authenticateRole");
+const { createRecaptchaMiddleware } = require("../middlewares/recaptchaVerification");
 
-// Public route - anyone can create a contact message
-router.post("/", createContact);
+// Public route - anyone can create a contact message (with CAPTCHA)
+router.post("/", createRecaptchaMiddleware.contact(), createContact);
 
 // Protected routes - only admin and receptionist can access
 router.get("/", authorizeRoles(["admin", "receptionist"]), getAllContacts);

@@ -29,6 +29,7 @@ const emailTestRoutes = require("./routes/email-test-routes");
 const zohoAuthRoutes = require("./routes/zoho-auth-routes");
 const cookieConsentRoutes = require("./routes/cookie-consent-routes");
 const ipRestrictionRoutes = require("./routes/ip-restriction-routes");
+const captchaRoutes = require("./routes/captcha-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -179,6 +180,7 @@ app.use("/api/invoice", invoiceRoutes);
 app.use("/api/email", emailTestRoutes);
 app.use("/zoho", zohoAuthRoutes);
 app.use("/api/cookie-consent", cookieConsentRoutes);
+app.use("/api/captcha", captchaRoutes);
 
 // Test route for SEO (can be removed later)
 app.get("/seo-test", (req, res) => {
