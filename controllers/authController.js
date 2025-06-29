@@ -927,16 +927,29 @@ const send2FACode = async (user, method = 'sms') => {
     }
 
     if (method === 'sms') {
-      // Send SMS with branded message
-      const message = `CM7 Medical - Twój kod weryfikacyjny: ${code}. Kod jest ważny przez 5 minut. Nie udostępniaj go nikomu.`;
-      const smsResult = await sendSMS(user.phone, message);
-
-      if (smsResult.success) {
-        console.log(`SMS 2FA code sent to user ${user._id}`);
-        return { success: true, messageId: smsResult.messageId, method: 'sms' };
+      // Check if we're in development environment
+      if (process.env.NODE_ENV === 'development') {
+        // In development, just simulate SMS sending to save credits
+        console.log(`[DEV MODE] SMS 2FA code would be sent to ${user.phone}: ${code}`);
+        console.log(`[DEV MODE] Simulating successful SMS delivery for user ${user._id}`);
+        return { 
+          success: true, 
+          messageId: `dev-sim-${Date.now()}`, 
+          method: 'sms',
+          simulated: true 
+        };
       } else {
-        console.error(`Failed to send SMS 2FA code to user ${user._id}:`, smsResult.error);
-        return { success: false, error: smsResult.error };
+        // In production, send actual SMS
+        const message = `CM7 Medical - Twój kod weryfikacyjny: ${code}. Kod jest ważny przez 5 minut. Nie udostępniaj go nikomu.`;
+        const smsResult = await sendSMS(user.phone, message);
+
+        if (smsResult.success) {
+          console.log(`SMS 2FA code sent to user ${user._id}`);
+          return { success: true, messageId: smsResult.messageId, method: 'sms' };
+        } else {
+          console.error(`Failed to send SMS 2FA code to user ${user._id}:`, smsResult.error);
+          return { success: false, error: smsResult.error };
+        }
       }
     } else {
       // Send Email with branded template
@@ -1397,7 +1410,7 @@ const requestEmailFallback = async (req, res) => {
 const toggle2FA = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { enable, currentPassword } = req.body;
+    const { enable, password:currentPassword } = req.body;
 
     // Find user
     const user = await User.findById(userId);
@@ -1405,10 +1418,26 @@ const toggle2FA = async (req, res) => {
       return res.status(404).json({ message: "Użytkownik nie znaleziony" });
     }
 
-    // Verify current password
-    const passwordMatches = await bcrypt.compare(currentPassword, user.password);
+    // Verify current password - check plain text first, then bcrypt
+    let passwordMatches = false;
+    
+    console.log("currentPassword", currentPassword);
+    console.log("user.password", user.password);
+    // First check if password matches in plain text
+    if (currentPassword === user.password) {
+      passwordMatches = true;
+    } else {
+      // If plain text doesn't match, try bcrypt comparison
+      try {
+        passwordMatches = await bcrypt.compare(currentPassword, user.password);
+      } catch (error) {
+        console.error("Bcrypt comparison error:", error);
+        passwordMatches = false;
+      }
+    }
+    
     if (!passwordMatches) {
-      return res.status(401).json({ message: "Nieprawidłowe hasło" });
+      return res.status(400).json({ message: "Nieprawidłowe hasło" });
     }
 
     // Check if user has phone number
