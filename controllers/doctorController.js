@@ -5,6 +5,7 @@ const { format, startOfDay, endOfDay } = require("date-fns");
 const appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const mongoose = require("mongoose");
+const { generateUniqueSlug } = require("../utils/slugUtils");
 
 // Helper function to generate default shifts
 const generateDefaultShifts = () => {
@@ -100,9 +101,14 @@ const addDoctor = async (req, res) => {
     // Generate default shifts for all days
     const defaultShifts = generateDefaultShifts();
 
+    // Generate unique slug for the doctor
+    const tempDoctor = { name: userData.name };
+    const slug = await generateUniqueSlug(tempDoctor, Doctor);
+
     // Doctor-specific fields
     const doctorFields = {
       d_id: `dr-${Date.now()}`, // Generate unique ID
+      slug: slug, // Add generated slug
       specialization: doctorData.specialization || [],
       qualifications: doctorData.qualifications || [],
       experience: doctorData.experience || 0,
@@ -199,6 +205,7 @@ const getAllDoctors = async (req, res) => {
     // Find doctors based on query with pagination and sorting
     const doctors = await User.find({ ...query, deleted: false })
       .populate("specialization")
+      .select('name specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating')
       .sort(sortConfig)
       .skip(skip)
       .limit(limitNum);
@@ -206,7 +213,12 @@ const getAllDoctors = async (req, res) => {
     const formattedDoctors = doctors.map((doc) => ({
       _id: doc._id,
       id: doc.d_id,
+      slug: doc.slug, // Add slug for SEO URLs
       name: `${doc.name.first} ${doc.name.last}`,
+      nameObj: {
+        first: doc.name.first,
+        last: doc.name.last
+      },
       specialty:
         doc.specialization && doc.specialization[0]
           ? doc.specialization[0]
@@ -214,7 +226,8 @@ const getAllDoctors = async (req, res) => {
       department: doc.department || "", // Include the department in the response
       available: doc.isAvailable,
       status: doc.isAvailable ? "Available" : "Unavailable",
-      experience: doc.experience ? `${doc.experience} years` : "0 years",
+      experience: doc.experience || 0,
+      experienceText: doc.experience ? `${doc.experience} years` : "0 years",
       image: doc.profilePicture,
       visitType: "Consultation",
       date: new Date().toISOString().split("T")[0],
@@ -223,6 +236,11 @@ const getAllDoctors = async (req, res) => {
       bio: doc.bio || "",
       consultationFee: doc.consultationFee || 0,
       offlineConsultationFee: doc.offlineConsultationFee || 0,
+      onlineConsultationFee: doc.onlineConsultationFee || 0,
+      ratings: {
+        average: doc.averageRating || 0,
+        total: doc.ratings || 0
+      }
     }));
 
     // Calculate pagination metadata
@@ -1125,6 +1143,78 @@ const updateDoctor = async (req, res) => {
   }
 };
 
+/**
+ * Get doctor by slug for SEO-optimized profile pages
+ * @param {Object} req - Request object
+ * @param {Object} res - Response object
+ */
+const getDoctorBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    
+    // Validate slug
+    if (!slug || slug.trim() === '' || slug === 'undefined') {
+      return res.status(400).json({
+        success: false,
+        message: 'Nieprawidłowy slug'
+      });
+    }
+    
+    // Find doctor by slug
+    const doctor = await Doctor.findOne({ slug: slug.toLowerCase() })
+      .populate('specialization', 'name description')
+      .select('name specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug createdAt updatedAt ratings averageRating reviews d_id');
+    
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lekarz nie znaleziony'
+      });
+    }
+    
+    // Format response for SEO optimization
+    const response = {
+      id: doctor._id,
+      d_id: doctor.d_id,
+      name: {
+        first: doctor.name?.first || '',
+        last: doctor.name?.last || '',
+        full: `${doctor.name?.first || ''} ${doctor.name?.last || ''}`.trim()
+      },
+      slug: doctor.slug,
+      specializations: doctor.specialization.map(spec => ({
+        name: spec.name,
+        description: spec.description || ''
+      })),
+      experience: doctor.experience || 0,
+      image: doctor.profilePicture || '',
+      bio: doctor.bio || '',
+      qualifications: doctor.qualifications || [],
+      onlineConsultationPrice: doctor.onlineConsultationFee || 0,
+      offlineConsultationPrice: doctor.offlineConsultationFee || 0,
+      ratings: {
+        average: doctor.averageRating || 0,
+        count: doctor.reviews?.length || 0,
+        total: doctor.ratings || 0
+      },
+      createdAt: doctor.createdAt,
+      updatedAt: doctor.updatedAt
+    };
+    
+    res.status(200).json({
+      success: true,
+      data: response
+    });
+    
+  } catch (error) {
+    console.error('Error fetching doctor by slug:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Błąd serwera podczas pobierania profilu lekarza'
+    });
+  }
+};
+
 module.exports = {
   addDoctor,
   getAllDoctors,
@@ -1139,4 +1229,5 @@ module.exports = {
   getNextAvailableDate,
   getDoctorDetails,
   updateDoctor,
+  getDoctorBySlug,
 };

@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const User = require("./user");
+const { generateUniqueSlug } = require("../../utils/slugUtils");
 
 const shiftSchema = new mongoose.Schema(
   {
@@ -187,6 +188,19 @@ doctorSchema.virtual("averageRating").get(function () {
   if (!this.reviews?.length) return 0;
   const sum = this.reviews?.reduce((acc, curr) => acc + curr.rating, 0);
   return Math.round((sum / this.reviews.length) * 10) / 10;
+});
+
+// Pre-save middleware to generate slug
+doctorSchema.pre('save', async function(next) {
+  // Only generate slug if name is modified or slug doesn't exist
+  if (this.isModified('name') || !this.slug) {
+    try {
+      this.slug = await generateUniqueSlug(this, this.constructor);
+    } catch (error) {
+      return next(error);
+    }
+  }
+  next();
 });
 
 doctorSchema.set("toJSON", { virtuals: true });

@@ -35,6 +35,11 @@ const userSchema = new mongoose.Schema(
       enum: ["patient", "doctor", "receptionist", "admin"],
       required: true,
     },
+    slug: {
+      type: String,
+      sparse: true, // Allow null values and only enforce uniqueness on non-null values
+      index: true
+    },
     signupMethod: {
       type: String,
       enum: ["google", "email", "apple", "fb","phone"],

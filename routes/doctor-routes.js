@@ -14,6 +14,7 @@ const {
   getNextAvailableDate,
   getDoctorDetails,
   updateDoctor,
+  getDoctorBySlug,
 } = require("../controllers/doctorController");
 const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
@@ -21,6 +22,9 @@ const authorizeRoles = require("../middlewares/authenticateRole");
 router.post("/", upload.single("file"), addDoctor);
 
 router.get("/", getAllDoctors);
+
+// SEO-optimized doctor profile endpoint - MUST come before /:id route
+router.get("/profile/slug/:slug", getDoctorBySlug);
 
 // Doctor profile endpoints
 router.get("/profile", authorizeRoles(["doctor"]), getDoctorProfile);

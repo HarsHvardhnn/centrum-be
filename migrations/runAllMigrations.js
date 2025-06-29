@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const addSlugsToNews = require('./addSlugsToNews');
 const addSlugsToServices = require('./addSlugsToServices');
+const { addSlugsToExistingDoctors } = require('./addSlugsToExistingDoctors');
 
 const runAllMigrations = async () => {
   try {
@@ -21,13 +22,19 @@ const runAllMigrations = async () => {
     console.log('\n🛠️ Running services migration...');
     await addSlugsToServices();
     
+    // Run doctors migration
+    console.log('\n👨‍⚕️ Running doctors migration...');
+    await addSlugsToExistingDoctors();
+    
     console.log('\n🎉 All migrations completed successfully!');
     console.log('\n📋 Summary:');
     console.log('✅ News articles now have SEO-friendly slugs');
     console.log('✅ Services now have SEO-friendly slugs');
+    console.log('✅ Doctors now have SEO-friendly slugs');
     console.log('✅ New API endpoints available:');
     console.log('   - GET /news/slug/:slug');
     console.log('   - GET /services/slug/:slug');
+    console.log('   - GET /docs/profile/slug/:slug');
     
   } catch (error) {
     console.error('❌ Migration failed:', error);
