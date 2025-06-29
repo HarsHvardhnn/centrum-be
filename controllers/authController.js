@@ -8,6 +8,7 @@ const nodemailer = require("nodemailer");
 const sendEmail = require("../utils/mailer");
 const createChatRoom = require("../utils/createChatroom");
 const user = require("../models/user-entity/user");
+const { sendSMS } = require("../utils/smsapi");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -284,7 +285,16 @@ const login = async (req, res) => {
 
     // Check if user exists
     if (!user) {
+      // Increment failed login attempts even for non-existent users to prevent enumeration
       return res.status(401).json({ message: "Nieprawidłowe dane logowania" });
+    }
+
+    // Check if user is locked out
+    if (user.isLocked()) {
+      return res.status(423).json({ 
+        message: "Konto zostało zablokowane z powodu zbyt wielu nieudanych prób logowania. Spróbuj ponownie później.",
+        lockedUntil: user.lockUntil
+      });
     }
 
     // Check if password matches
@@ -300,9 +310,48 @@ const login = async (req, res) => {
         passwordMatches = true;
       }
     }
+    
     if (!passwordMatches) {
+      // Increment login attempts for wrong password
+      await user.incLoginAttempts();
       return res.status(401).json({ message: "Nieprawidłowe dane logowania" });
     }
+
+    // Password is correct, check if 2FA is enabled
+    if (user.twoFactorEnabled) {
+      // Send SMS code by default
+      const smsResult = await send2FACode(user, 'sms');
+      
+      if (!smsResult.success) {
+        return res.status(500).json({ 
+          message: "Błąd podczas wysyłania kodu SMS. Spróbuj ponownie.",
+          error: smsResult.error 
+        });
+      }
+
+      // Create a temporary token for 2FA verification
+      const tempToken = jwt.sign(
+        { 
+          id: user._id, 
+          purpose: '2fa-verification',
+          timestamp: Date.now()
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "10m" } // 10 minutes to complete 2FA
+      );
+
+      return res.status(200).json({
+        requiresTwoFactor: true,
+        tempToken,
+        message: "Kod weryfikacyjny został wysłany na Twój telefon",
+        phone: `***${user.phone.slice(-3)}`, // Show only last 3 digits
+        email: `***${user.email.slice(-3)}`, // Show last 3 chars of email
+        availableMethods: ['sms', 'email', 'backup'] // Available verification methods
+      });
+    }
+
+    // Reset login attempts on successful login
+    await user.resetLoginAttempts();
 
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(
@@ -336,6 +385,7 @@ const login = async (req, res) => {
         phone: user.phone,
         profilePicture: user.profilePicture,
         singleSessionMode: user.singleSessionMode,
+        twoFactorEnabled: user.twoFactorEnabled,
       },
     });
   } catch (error) {
@@ -831,6 +881,623 @@ const updateProfile = async (req, res) => {
   }
 };
 
+// Helper function to send 2FA code (SMS or Email)
+const send2FACode = async (user, method = 'sms') => {
+  try {
+    // Generate 6-digit code
+    const code = generateOTP();
+    const purpose = method === 'sms' ? 'sms-2fa' : 'email-2fa';
+    
+    // Check if there's an existing 2FA OTP for this user and method
+    const existingOTP = await OTP.findOne({ 
+      userId: user._id, 
+      purpose: purpose 
+    });
+
+    if (existingOTP) {
+      // Check if user is blocked
+      if (existingOTP.isBlocked()) {
+        return {
+          success: false,
+          error: 'Konto tymczasowo zablokowane z powodu zbyt wielu prób. Spróbuj ponownie później.',
+          blockedUntil: existingOTP.blockedUntil
+        };
+      }
+
+      // Update existing OTP
+      existingOTP.otp = code;
+      existingOTP.attempts = 0;
+      existingOTP.createdAt = new Date();
+      existingOTP.verified = false;
+      existingOTP.deliveryMethod = method;
+      await existingOTP.save();
+    } else {
+      // Create new OTP record
+      const newOTP = new OTP({
+        userId: user._id,
+        email: method === 'email' ? user.email : undefined,
+        phone: method === 'sms' ? user.phone : undefined,
+        otp: code,
+        purpose: purpose,
+        deliveryMethod: method,
+        attempts: 0,
+        verified: false
+      });
+      await newOTP.save();
+    }
+
+    if (method === 'sms') {
+      // Send SMS with branded message
+      const message = `CM7 Medical - Twój kod weryfikacyjny: ${code}. Kod jest ważny przez 5 minut. Nie udostępniaj go nikomu.`;
+      const smsResult = await sendSMS(user.phone, message);
+
+      if (smsResult.success) {
+        console.log(`SMS 2FA code sent to user ${user._id}`);
+        return { success: true, messageId: smsResult.messageId, method: 'sms' };
+      } else {
+        console.error(`Failed to send SMS 2FA code to user ${user._id}:`, smsResult.error);
+        return { success: false, error: smsResult.error };
+      }
+    } else {
+      // Send Email with branded template
+      const emailResult = await sendBranded2FAEmail(user.email, code, user.name);
+      
+      if (emailResult.success) {
+        console.log(`Email 2FA code sent to user ${user._id}`);
+        return { success: true, messageId: emailResult.messageId, method: 'email' };
+      } else {
+        console.error(`Failed to send Email 2FA code to user ${user._id}:`, emailResult.error);
+        return { success: false, error: emailResult.error };
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in send2FACode:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Helper function to send branded 2FA email
+const sendBranded2FAEmail = async (email, code, userName) => {
+  try {
+    const emailHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Kod weryfikacyjny - CM7 Medical</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; padding: 20px 0; border-bottom: 2px solid #007bff; }
+        .logo { max-width: 200px; height: auto; }
+        .content { padding: 30px 0; text-align: center; }
+        .code-box { background: #f8f9fa; border: 2px dashed #007bff; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .code { font-size: 32px; font-weight: bold; color: #007bff; letter-spacing: 5px; }
+        .footer { text-align: center; padding: 20px 0; border-top: 1px solid #eee; color: #666; font-size: 12px; }
+        .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <img src="https://cm7med.co.uk/logo.png" alt="CM7 Medical" class="logo">
+          <h1 style="color: #007bff; margin: 10px 0;">CM7 Medical</h1>
+        </div>
+        
+        <div class="content">
+          <h2>Kod weryfikacyjny dwuskładnikowej</h2>
+          <p>Witaj ${userName.first} ${userName.last},</p>
+          <p>Twój kod weryfikacyjny do logowania:</p>
+          
+          <div class="code-box">
+            <div class="code">${code}</div>
+          </div>
+          
+          <div class="warning">
+            <strong>⚠️ Ważne:</strong>
+            <ul style="text-align: left; margin: 10px 0;">
+              <li>Kod jest ważny przez <strong>5 minut</strong></li>
+              <li>Nie udostępniaj tego kodu nikomu</li>
+              <li>Jeśli to nie Ty próbujesz się zalogować, skontaktuj się z administratorem</li>
+            </ul>
+          </div>
+          
+          <p>Jeśli masz problemy z logowaniem, skontaktuj się z naszym zespołem technicznym.</p>
+        </div>
+        
+        <div class="footer">
+          <p>© 2024 CM7 Medical. Wszystkie prawa zastrzeżone.</p>
+          <p>Ten email został wysłany z: admin@cm7med.pl</p>
+          <p>Nie odpowiadaj na ten email - jest wysyłany automatycznie.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    const emailText = `
+CM7 Medical - Kod weryfikacyjny
+
+Witaj ${userName.first} ${userName.last},
+
+Twój kod weryfikacyjny do logowania: ${code}
+
+WAŻNE:
+- Kod jest ważny przez 5 minut
+- Nie udostępniaj tego kodu nikomu
+- Jeśli to nie Ty próbujesz się zalogować, skontaktuj się z administratorem
+
+© 2024 CM7 Medical
+Email wysłany z: admin@cm7med.pl
+    `;
+
+    const result = await sendEmail({
+      to: email,
+      subject: 'CM7 Medical - Kod weryfikacyjny dwuskładnikowej',
+      html: emailHtml,
+      text: emailText,
+      from: 'admin@cm7med.pl'
+    });
+
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('Error sending branded 2FA email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Verify 2FA code (SMS, Email, or Backup Code) and complete login
+const verify2FA = async (req, res) => {
+  try {
+    const { tempToken, smsCode, emailCode, backupCode } = req.body;
+    const ipAddress = req.ip;
+    const device = req.headers["user-agent"] || "unknown";
+
+    // Validate input - at least one verification method required
+    if (!tempToken || (!smsCode && !emailCode && !backupCode)) {
+      return res.status(400).json({ 
+        message: "Token tymczasowy i kod weryfikacyjny (SMS, email lub kod zapasowy) są wymagane" 
+      });
+    }
+
+    // Verify temporary token
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch (error) {
+      return res.status(401).json({ 
+        message: "Token tymczasowy jest nieprawidłowy lub wygasł" 
+      });
+    }
+
+    if (decoded.purpose !== '2fa-verification') {
+      return res.status(401).json({ 
+        message: "Nieprawidłowy token weryfikacyjny" 
+      });
+    }
+
+    // Find user
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ 
+        message: "Użytkownik nie znaleziony" 
+      });
+    }
+
+    // Handle backup code verification
+    if (backupCode) {
+      const backupCodeIndex = user.twoFactorBackupCodes.findIndex(
+        bc => bc.code === backupCode && !bc.used
+      );
+
+      if (backupCodeIndex === -1) {
+        return res.status(401).json({
+          message: "Nieprawidłowy lub już użyty kod zapasowy"
+        });
+      }
+
+      // Mark backup code as used
+      user.twoFactorBackupCodes[backupCodeIndex].used = true;
+      user.twoFactorBackupCodes[backupCodeIndex].usedAt = new Date();
+      await user.save();
+
+      // Complete login with backup code
+      return await complete2FALogin(user, ipAddress, device, res, "Logowanie zakończone pomyślnie przy użyciu kodu zapasowego");
+    }
+
+    // Handle SMS or Email code verification
+    const verificationCode = smsCode || emailCode;
+    const purpose = smsCode ? 'sms-2fa' : 'email-2fa';
+
+    // Find OTP record
+    const otpRecord = await OTP.findOne({
+      userId: user._id,
+      purpose: purpose
+    });
+
+    if (!otpRecord) {
+      return res.status(404).json({ 
+        message: "Kod weryfikacyjny nie znaleziony. Proszę zalogować się ponownie." 
+      });
+    }
+
+    // Check if OTP is blocked
+    if (otpRecord.isBlocked()) {
+      return res.status(423).json({ 
+        message: "Konto tymczasowo zablokowane z powodu zbyt wielu nieudanych prób. Spróbuj ponownie później.",
+        blockedUntil: otpRecord.blockedUntil
+      });
+    }
+
+    // Check if OTP has expired
+    if (otpRecord.hasExpired()) {
+      await OTP.deleteOne({ _id: otpRecord._id });
+      return res.status(410).json({ 
+        message: "Kod weryfikacyjny wygasł. Proszę zalogować się ponownie." 
+      });
+    }
+
+    // Check if max attempts exceeded
+    if (otpRecord.attemptsExceeded()) {
+      await otpRecord.blockUser(); // Block for 15 minutes
+      return res.status(429).json({ 
+        message: "Zbyt wiele nieudanych prób. Konto zostało tymczasowo zablokowane.",
+        blockedUntil: otpRecord.blockedUntil
+      });
+    }
+
+    // Verify code
+    if (otpRecord.otp !== verificationCode) {
+      otpRecord.attempts += 1;
+      await otpRecord.save();
+      
+      return res.status(401).json({
+        message: "Nieprawidłowy kod weryfikacyjny",
+        attemptsLeft: otpRecord.maxAttempts - otpRecord.attempts
+      });
+    }
+
+    // Code is correct - complete login
+    otpRecord.verified = true;
+    await otpRecord.save();
+
+    // Clean up OTP record
+    await OTP.deleteOne({ _id: otpRecord._id });
+
+    // Complete login
+    return await complete2FALogin(user, ipAddress, device, res, "Logowanie zakończone pomyślnie");
+
+  } catch (error) {
+    console.error("2FA verification error:", error);
+    res.status(500).json({ message: "Błąd podczas weryfikacji kodu" });
+  }
+};
+
+// Helper function to complete 2FA login
+const complete2FALogin = async (user, ipAddress, device, res, message = "Logowanie zakończone pomyślnie") => {
+  try {
+    // Reset user login attempts
+    await user.resetLoginAttempts();
+
+    // Generate full tokens
+    const { accessToken, refreshToken } = generateTokens(
+      user,
+      ipAddress,
+      device,
+      false,
+      false
+    );
+
+    // Save user with refresh token
+    await user.save();
+
+    // Set HTTP-only cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    // Send successful response
+    return res.status(200).json({
+      message,
+      token: accessToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        d_id: user.d_id || "",
+        name: `${user.name.first} ${user.name.last}`,
+        role: user.role,
+        phone: user.phone,
+        profilePicture: user.profilePicture,
+        singleSessionMode: user.singleSessionMode,
+        twoFactorEnabled: user.twoFactorEnabled,
+      },
+    });
+  } catch (error) {
+    console.error("Error completing 2FA login:", error);
+    return res.status(500).json({ message: "Błąd podczas finalizacji logowania" });
+  }
+};
+
+// Resend 2FA code (SMS or Email)
+const resend2FACode = async (req, res) => {
+  try {
+    const { tempToken, method = 'sms' } = req.body;
+
+    // Validate input
+    if (!tempToken) {
+      return res.status(400).json({ 
+        message: "Token tymczasowy jest wymagany" 
+      });
+    }
+
+    if (!['sms', 'email'].includes(method)) {
+      return res.status(400).json({ 
+        message: "Nieprawidłowa metoda wysyłania (sms lub email)" 
+      });
+    }
+
+    // Verify temporary token
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch (error) {
+      return res.status(401).json({ 
+        message: "Token tymczasowy jest nieprawidłowy lub wygasł" 
+      });
+    }
+
+    if (decoded.purpose !== '2fa-verification') {
+      return res.status(401).json({ 
+        message: "Nieprawidłowy token weryfikacyjny" 
+      });
+    }
+
+    // Find user
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ 
+        message: "Użytkownik nie znaleziony" 
+      });
+    }
+
+    const purpose = method === 'sms' ? 'sms-2fa' : 'email-2fa';
+
+    // Find existing OTP record for the requested method
+    const otpRecord = await OTP.findOne({
+      userId: user._id,
+      purpose: purpose
+    });
+
+    if (otpRecord) {
+      // Check if user can resend (1 minute cooldown)
+      if (!otpRecord.canResend()) {
+        return res.status(429).json({ 
+          message: "Możesz poprosić o nowy kod za minutę",
+          canResendAt: new Date(otpRecord.lastResendAt.getTime() + 60 * 1000)
+        });
+      }
+
+      // Check if user is blocked
+      if (otpRecord.isBlocked()) {
+        return res.status(423).json({ 
+          message: "Konto tymczasowo zablokowane. Spróbuj ponownie później.",
+          blockedUntil: otpRecord.blockedUntil
+        });
+      }
+
+      // Update resend timestamp
+      otpRecord.lastResendAt = new Date();
+      await otpRecord.save();
+    }
+
+    // Send new code
+    const result = await send2FACode(user, method);
+    
+    if (!result.success) {
+      return res.status(500).json({ 
+        message: `Błąd podczas wysyłania kodu ${method === 'sms' ? 'SMS' : 'email'}`, 
+        error: result.error 
+      });
+    }
+
+    const responseMessage = method === 'sms' 
+      ? "Nowy kod SMS został wysłany" 
+      : "Nowy kod email został wysłany";
+
+    const responseData = {
+      message: responseMessage,
+      method: method
+    };
+
+    if (method === 'sms') {
+      responseData.phone = `***${user.phone.slice(-3)}`;
+    } else {
+      responseData.email = `***${user.email.slice(-3)}`;
+    }
+
+    res.status(200).json(responseData);
+
+  } catch (error) {
+    console.error("Resend 2FA code error:", error);
+    res.status(500).json({ message: "Błąd podczas ponownego wysyłania kodu" });
+  }
+};
+
+// Request email fallback for 2FA
+const requestEmailFallback = async (req, res) => {
+  try {
+    const { tempToken } = req.body;
+
+    // Validate input
+    if (!tempToken) {
+      return res.status(400).json({ 
+        message: "Token tymczasowy jest wymagany" 
+      });
+    }
+
+    // Verify temporary token
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch (error) {
+      return res.status(401).json({ 
+        message: "Token tymczasowy jest nieprawidłowy lub wygasł" 
+      });
+    }
+
+    if (decoded.purpose !== '2fa-verification') {
+      return res.status(401).json({ 
+        message: "Nieprawidłowy token weryfikacyjny" 
+      });
+    }
+
+    // Find user
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ 
+        message: "Użytkownik nie znaleziony" 
+      });
+    }
+
+    // Check if user has email
+    if (!user.email) {
+      return res.status(400).json({ 
+        message: "Brak adresu email przypisanego do konta" 
+      });
+    }
+
+    // Send email fallback code
+    const emailResult = await send2FACode(user, 'email');
+    
+    if (!emailResult.success) {
+      return res.status(500).json({ 
+        message: "Błąd podczas wysyłania kodu email", 
+        error: emailResult.error 
+      });
+    }
+
+    res.status(200).json({
+      message: "Kod weryfikacyjny został wysłany na Twój email jako alternatywa",
+      email: `***${user.email.slice(-3)}`,
+      method: 'email'
+    });
+
+  } catch (error) {
+    console.error("Request email fallback error:", error);
+    res.status(500).json({ message: "Błąd podczas wysyłania kodu email" });
+  }
+};
+
+// Enable/Disable 2FA
+const toggle2FA = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { enable, currentPassword } = req.body;
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
+    }
+
+    // Verify current password
+    const passwordMatches = await bcrypt.compare(currentPassword, user.password);
+    if (!passwordMatches) {
+      return res.status(401).json({ message: "Nieprawidłowe hasło" });
+    }
+
+    // Check if user has phone number
+    if (!user.phone) {
+      return res.status(400).json({ 
+        message: "Numer telefonu jest wymagany do włączenia 2FA" 
+      });
+    }
+
+    if (enable) {
+      // Enabling 2FA
+      if (user.twoFactorEnabled) {
+        return res.status(400).json({ 
+          message: "Uwierzytelnianie dwuskładnikowe jest już włączone" 
+        });
+      }
+
+      // Encrypt phone number
+      user.encryptPhone();
+      user.twoFactorEnabled = true;
+
+      // Generate backup codes
+      const backupCodes = [];
+      for (let i = 0; i < 8; i++) {
+        backupCodes.push({
+          code: crypto.randomBytes(4).toString('hex').toUpperCase(),
+          used: false
+        });
+      }
+      user.twoFactorBackupCodes = backupCodes;
+
+      await user.save();
+
+      res.status(200).json({
+        message: "Uwierzytelnianie dwuskładnikowe zostało włączone",
+        backupCodes: backupCodes.map(bc => bc.code),
+        warning: "Zapisz te kody zapasowe w bezpiecznym miejscu. Nie będą ponownie wyświetlone."
+      });
+
+    } else {
+      // Disabling 2FA
+      if (!user.twoFactorEnabled) {
+        return res.status(400).json({ 
+          message: "Uwierzytelnianie dwuskładnikowe nie jest włączone" 
+        });
+      }
+
+      user.twoFactorEnabled = false;
+      user.encryptedPhone = undefined;
+      user.twoFactorBackupCodes = [];
+
+      await user.save();
+
+      // Clean up any existing 2FA OTP records
+      await OTP.deleteMany({ userId: user._id, purpose: 'sms-2fa' });
+
+      res.status(200).json({
+        message: "Uwierzytelnianie dwuskładnikowe zostało wyłączone"
+      });
+    }
+
+  } catch (error) {
+    console.error("Toggle 2FA error:", error);
+    res.status(500).json({ message: "Błąd podczas zmiany ustawień 2FA" });
+  }
+};
+
+// Get 2FA status
+const get2FAStatus = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const user = await User.findById(userId).select('twoFactorEnabled phone');
+    if (!user) {
+      return res.status(404).json({ message: "Użytkownik nie znaleziony" });
+    }
+
+    res.status(200).json({
+      twoFactorEnabled: user.twoFactorEnabled,
+      hasPhone: !!user.phone,
+      phone: user.phone ? `***${user.phone.slice(-3)}` : null
+    });
+
+  } catch (error) {
+    console.error("Get 2FA status error:", error);
+    res.status(500).json({ message: "Błąd podczas pobierania statusu 2FA" });
+  }
+};
+
 module.exports = {
   signup,
   verifyOTP,
@@ -846,4 +1513,10 @@ module.exports = {
   getUserPublicInfo,
   getProfile,
   updateProfile,
+  // 2FA functions
+  verify2FA,
+  resend2FACode,
+  requestEmailFallback,
+  toggle2FA,
+  get2FAStatus,
 };

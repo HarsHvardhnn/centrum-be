@@ -100,6 +100,7 @@ app.use(cors({
     if (process.env.NODE_ENV === 'production') {
       if (normalizedOrigin === 'http://localhost:3000' || 
           normalizedOrigin === 'https://centrum-pl.netlify.app' || 
+          normalizedOrigin === 'http://localhost:5173' || 
           normalizedOrigin === 'http://127.0.0.1:3000' || 
           normalizedOrigin === 'http://127.0.0.1:5173') {
         return callback(null, true);
