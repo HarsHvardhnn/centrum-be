@@ -30,6 +30,7 @@ const zohoAuthRoutes = require("./routes/zoho-auth-routes");
 const cookieConsentRoutes = require("./routes/cookie-consent-routes");
 const ipRestrictionRoutes = require("./routes/ip-restriction-routes");
 const captchaRoutes = require("./routes/captcha-routes");
+const reportsRoutes = require("./routes/reports-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -71,16 +72,20 @@ const normalizeOrigin = (url) => {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 
-const frontendOrigin = process.env.NODE_ENV === 'production' 
-  ? normalizeOrigin(process.env.FRONTEND_URL)
-  : "http://localhost:5173";
+// Get production URLs
+const frontendOrigins = process.env.NODE_ENV === 'production'
+  ? [
+      normalizeOrigin(process.env.FRONTEND_URL),
+      normalizeOrigin(process.env.FRONTEND_URL_ADMIN)
+    ].filter(Boolean) // Remove any undefined/null values
+  : ["http://localhost:5173"];
 
-console.log("frontendOrigin", frontendOrigin);
+console.log("frontendOrigins", frontendOrigins);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? frontendOrigin 
+    origin: process.env.NODE_ENV === 'production'
+      ? frontendOrigins
       : ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS","PATCH"],
     credentials: true
@@ -107,11 +112,11 @@ app.use(cors({
       }
     }
     
-    // In production, check against FRONTEND_URL
-    if (normalizedOrigin === frontendOrigin) {
+    // In production, check against both frontend URLs
+    if (frontendOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
-      console.log('CORS blocked:', normalizedOrigin, 'expected:', frontendOrigin);
+      console.log('CORS blocked:', normalizedOrigin, 'expected one of:', frontendOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -182,6 +187,7 @@ app.use("/api/email", emailTestRoutes);
 app.use("/zoho", zohoAuthRoutes);
 app.use("/api/cookie-consent", cookieConsentRoutes);
 app.use("/api/captcha", captchaRoutes);
+app.use("/api/reports", reportsRoutes);
 
 // Test route for SEO (can be removed later)
 app.get("/seo-test", (req, res) => {
