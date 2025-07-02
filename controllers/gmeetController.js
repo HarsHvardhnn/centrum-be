@@ -115,6 +115,9 @@ exports.bookAppointment = async (req, res) => {
       gender,
       message,
       name,
+      address,
+      dateOfBirth,
+      govtId,
       phone,
       smsConsentAgreed,
       consultationType,
@@ -309,6 +312,9 @@ exports.bookAppointment = async (req, res) => {
           password: hashedPassword,
           role: "patient",
           signupMethod: "phone",
+          address,
+      dateOfBirth,
+      govtId,
           smsConsentAgreed: smsConsentAgreed,
           consents: allConsents, // Store all consents as array
         });
