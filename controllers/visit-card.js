@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer-core');
+const puppeteer = require("puppeteer-core");
 const fs = require("fs");
 const path = require("path");
 const Patient = require("../models/user-entity/patient");
@@ -17,7 +17,7 @@ const getLogoBase64 = async () => {
     const logoPath = path.join(__dirname, "..", "public", "logo_teal.png");
     if (fs.existsSync(logoPath)) {
       const logoBuffer = fs.readFileSync(logoPath);
-      return logoBuffer.toString('base64');
+      return logoBuffer.toString("base64");
     } else {
       console.warn("Logo file not found, using fallback");
       return null;
@@ -32,14 +32,14 @@ const getLogoBase64 = async () => {
 const findChrome = () => {
   const possiblePaths = [
     process.env.CHROME_EXECUTABLE_PATH,
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/chromium',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
   ];
 
   for (const chromePath of possiblePaths) {
@@ -48,7 +48,9 @@ const findChrome = () => {
     }
   }
 
-  throw new Error('Chrome executable not found. Please install Chrome or set CHROME_EXECUTABLE_PATH environment variable.');
+  throw new Error(
+    "Chrome executable not found. Please install Chrome or set CHROME_EXECUTABLE_PATH environment variable."
+  );
 };
 
 /**
@@ -60,13 +62,14 @@ const findChrome = () => {
  */
 exports.generateVisitCard = async (req, res) => {
   let browser = null;
-  
+
   try {
     // Get appointment ID from parameters
     const appointmentId = req.params.appointmentId;
-    
+
     // Get the forceNew query parameter to allow creating new visit cards even if one exists
-    const forceNew = req.query.forceNew === 'true' || req.query.forceNew === true;
+    const forceNew =
+      req.query.forceNew === "true" || req.query.forceNew === true;
 
     if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
       return res.status(400).json({
@@ -89,8 +92,10 @@ exports.generateVisitCard = async (req, res) => {
     }
 
     // Check if a visit card already exists for this appointment
-    const existingVisitCard = appointment.reports?.find(report => report.type === "visit-card");
-    
+    const existingVisitCard = appointment.reports?.find(
+      (report) => report.type === "visit-card"
+    );
+
     if (existingVisitCard && !forceNew) {
       return res.status(200).json({
         success: true,
@@ -98,7 +103,7 @@ exports.generateVisitCard = async (req, res) => {
         data: {
           url: existingVisitCard.fileUrl,
           reportId: existingVisitCard._id,
-          appointmentId: appointmentId
+          appointmentId: appointmentId,
         },
       });
     }
@@ -137,11 +142,15 @@ exports.generateVisitCard = async (req, res) => {
     if (appointment.doctor) {
       doctorName += `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
     } else {
-      doctorName += req.user ? `${req.user.name.first} ${req.user.name.last}` : "Harsh Vardhan Chawla";
+      doctorName += req.user
+        ? `${req.user.name.first} ${req.user.name.last}`
+        : "Harsh Vardhan Chawla";
     }
 
     // Get patient's full name
-    const patientName = `${patient.name?.first || ""} ${patient.name?.last || ""}`.trim() || "Jan Kowalski";
+    const patientName =
+      `${patient.name?.first || ""} ${patient.name?.last || ""}`.trim() ||
+      "Jan Kowalski";
 
     // Get patient's date of birth
     const dob = patient.dateOfBirth
@@ -156,16 +165,22 @@ exports.generateVisitCard = async (req, res) => {
     if (patient.state) addressParts.push(patient.state);
     if (patient.pinCode) addressParts.push(patient.pinCode);
     if (patient.country) addressParts.push(patient.country);
-    
-    const address = addressParts.length > 0 ? addressParts.join(", ") : "Złota 44/1, Warszawa, mazowieckie, 00-000, Polska";
+
+    const address =
+      addressParts.length > 0
+        ? addressParts.join(", ")
+        : "Złota 44/1, Warszawa, mazowieckie, 00-000, Polska";
 
     // Get patient's phone
     const phone = patient.phone || patient.phoneFormatted || "730953325";
 
     // Get patient gender
-    const gender = patient.sex === "Male" ? "Mężczyzna" 
-      : patient.sex === "Female" ? "Kobieta" 
-      : "ADD gender!!";
+    const gender =
+      patient.sex === "Male"
+        ? "Mężczyzna"
+        : patient.sex === "Female"
+        ? "Kobieta"
+        : "ADD gender!!";
 
     // Get logo as base64
     const logoBase64 = await getLogoBase64();
@@ -182,36 +197,7 @@ exports.generateVisitCard = async (req, res) => {
             @page {
                 margin: 15px 15px 50px 15px;
                 size: A4;
-                @bottom-left {
-                    content: '';
-                    width: 25%;
-                    height: 40px;
-                    background: #17a2b8;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: white;
-                    font-size: 9px;
-                    font-weight: bold;
-                }
-                @bottom-center-left {
-                    content: '';
-                    width: 25%;
-                    height: 40px;
-                    background: #20c997;
-                }
-                @bottom-center-right {
-                    content: '';
-                    width: 25%;
-                    height: 40px;
-                    background: #007bff;
-                }
-                @bottom-right {
-                    content: '';
-                    width: 25%;
-                    height: 40px;
-                    background: #2c3e50;
-                }
+
             }
             
             body {
@@ -277,9 +263,21 @@ exports.generateVisitCard = async (req, res) => {
             .separator-line {
                 width: 100%;
                 height: 3px;
-                background: #2c3e50;
                 margin: 10px 0;
                 page-break-inside: avoid;
+                display: flex;
+            }
+            .separator-line::before {
+                content: '';
+                width: 72.33%;
+                height: 7px;
+                background: #008C8C;
+            }
+            .separator-line::after {
+                content: '';
+                width: 27.67%;
+                height: 7px;
+                background: #2c3e50;
             }
             
             .main-content {
@@ -353,6 +351,87 @@ exports.generateVisitCard = async (req, res) => {
             .content-wrapper {
                 padding-bottom: 20px;
             }
+                 .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 25px;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            font-size: 8px;
+            page-break-inside: avoid;
+        }
+        
+        .footer-item {
+            display: flex;
+            align-items: center;
+            color: white;
+            font-weight: 500;
+            gap: 8px;
+            padding: 0 15px;
+            height: 100%;
+        }
+        
+        .footer-phone1 {
+            background: #008C8C;
+            flex: 1;
+        }
+        
+        .footer-phone2 {
+            background: #008C8C;
+            flex: 1;
+        }
+        
+        .footer-email {
+            background: #008C8C;
+            flex: 1;
+        }
+        
+        .footer-website {
+            background: #2c3e50;
+            flex: 1;
+        }
+        
+        .footer-icon {
+            width: 16px;
+            height: 16px;
+            background: none;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        /* Content wrapper for proper spacing */
+        .content-wrapper {
+            padding-bottom: 20px;
+        }
+        
+        .footer a {
+    color: inherit;       /* Inherit the text color from the parent */
+    text-decoration: none; /* Remove underline */
+}
+
+.footer a:hover {
+    text-decoration: underline; /* Optional: underline on hover for accessibility */
+}
+
+        /* Print-specific adjustments */
+        @media print {
+            body {
+                padding-bottom: 20px;
+            }
+            
+            .footer {
+                position: fixed;
+                bottom: 15px;
+            }
+        }
         </style>
     </head>
     <body>
@@ -360,9 +439,10 @@ exports.generateVisitCard = async (req, res) => {
             <div class="header">
                 <div class="logo-section">
                     <div class="logo">
-                        ${logoBase64 
-                          ? `<img src="data:image/png;base64,${logoBase64}" alt="Centrum Medyczne 7 Logo" />` 
-                          : '<div style="width: 100%; height: 100%; background: #17a2b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; font-weight: bold;">7</div>'
+                        ${
+                          logoBase64
+                            ? `<img src="data:image/png;base64,${logoBase64}" alt="Centrum Medyczne 7 Logo" />`
+                            : '<div style="width: 100%; height: 100%; display: flex; border-radius: 6px; overflow: hidden;"><div style="width: 33.33%; background: #17a2b8; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; font-weight: bold;">7</div><div style="width: 66.67%; background: #2c3e50;"></div></div>'
                         }
                     </div>
                     <div class="company-name">Centrum<br>Medyczne</div>
@@ -438,30 +518,59 @@ exports.generateVisitCard = async (req, res) => {
             <div class="consultation-section">
                 <div class="consultation-item">
                     <div class="consultation-label">Wywiad z pacjentem:</div>
-                    <div class="consultation-content">${consultationData.interview || "Brak danych wywiadu"}</div>
+                    <div class="consultation-content">${
+                      consultationData.interview || "Brak danych wywiadu"
+                    }</div>
                 </div>
                 
                 <div class="consultation-item">
                     <div class="consultation-label">Badanie przedmiotowe:</div>
-                    <div class="consultation-content">${consultationData.physicalExamination || "Brak danych badania"}</div>
+                    <div class="consultation-content">${
+                      consultationData.physicalExamination ||
+                      "Brak danych badania"
+                    }</div>
                 </div>
                 
                 <div class="consultation-item">
                     <div class="consultation-label">Zastosowane leczenie:</div>
-                    <div class="consultation-content">${consultationData.treatment || "Brak danych leczenia"}</div>
+                    <div class="consultation-content">${
+                      consultationData.treatment || "Brak danych leczenia"
+                    }</div>
                 </div>
                 
                 <div class="consultation-item">
                     <div class="consultation-label">Zalecenia:</div>
-                    <div class="consultation-content">${consultationData.recommendations || "Brak zaleceń"}</div>
+                    <div class="consultation-content">${
+                      consultationData.recommendations || "Brak zaleceń"
+                    }</div>
                 </div>
                 
                 <div class="consultation-item">
                     <div class="consultation-label">Notatki:</div>
-                    <div class="consultation-content">${consultationData.description || "Brak notatek"}</div>
+                    <div class="consultation-content">${
+                      consultationData.description || "Brak notatek"
+                    }</div>
                 </div>
             </div>
-        </div>
+        </div><div class="footer">
+    <div class="footer-item footer-phone1">
+        <div class="footer-icon">📞</div>
+        <span><a href="tel:+48797097487">(+48) 797-097-487</a></span>
+    </div>
+    <div class="footer-item footer-phone2">
+        <div class="footer-icon">📞</div>
+        <span><a href="tel:+48797197487">(+48) 797-197-487</a></span>
+    </div>
+    <div class="footer-item footer-email">
+        <div class="footer-icon">✉</div>
+        <span><a href="mailto:kontakt@centrummedycznecm7.pl">kontakt@centrummedycznecm7.pl</a></span>
+    </div>
+    <div class="footer-item footer-website">
+        <div class="footer-icon">🌐</div>
+        <span><a href="https://www.centrummedycznecm7.pl" target="_blank">www.centrummedycznecm7.pl</a></span>
+    </div>
+</div>
+
     </body>
     </html>
     `;
@@ -471,58 +580,48 @@ exports.generateVisitCard = async (req, res) => {
       headless: true,
       executablePath: findChrome(),
       args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-features=TranslateUI',
-        '--disable-extensions'
-      ]
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-first-run",
+        "--no-zygote",
+        "--single-process",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-features=TranslateUI",
+        "--disable-extensions",
+      ],
     });
-    
+
     const page = await browser.newPage();
-    
+
     // Set content and wait for it to load
-    await page.setContent(htmlContent, { 
-      waitUntil: ['networkidle0', 'domcontentloaded'],
-      timeout: 30000 
+    await page.setContent(htmlContent, {
+      waitUntil: ["networkidle0", "domcontentloaded"],
+      timeout: 30000,
     });
-    
+
     // Generate PDF with high quality settings
     const pdfBuffer = await page.pdf({
-      format: 'A4',
+      format: "A4",
       printBackground: true,
       preferCSSPageSize: true,
       margin: {
-        top: '15mm',
-        right: '0mm',
-        bottom: '40mm',
-        left: '0mm'
+        top: "15mm",
+        right: "0mm",
+        bottom: "0mm",
+        left: "0mm",
       },
       displayHeaderFooter: true,
       footerTemplate: `
-        <div style="width: 100%; height: 40px; display: flex; margin: 0; padding: 0; font-size: 9px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-          <div style="flex: 1; background: #17a2b8 !important; color: white !important; display: flex; align-items: center; justify-content: center; font-weight: bold; height: 40px;">
-            <a href="tel:+48797097487" style="color: white !important; text-decoration: none; font-weight: bold;">(+48) 797-097-487</a>
-          </div>
-          <div style="flex: 1; background: #20c997 !important; color: white !important; display: flex; align-items: center; justify-content: center; font-weight: bold; height: 40px;">
-            <a href="tel:+48797197487" style="color: white !important; text-decoration: none; font-weight: bold;">(+48) 797-197-487</a>
-          </div>
-          <div style="flex: 1; background: #007bff !important; color: white !important; display: flex; align-items: center; justify-content: center; font-weight: bold; height: 40px;">
-            <a href="mailto:kontakt@centrummedyczne7.pl" style="color: white !important; text-decoration: none; font-weight: bold;">kontakt@centrummedyczne7.pl</a>
-          </div>
-          <div style="flex: 1; background: #2c3e50 !important; color: white !important; display: flex; align-items: center; justify-content: center; font-weight: bold; height: 40px;">
-            <a href="https://www.centrummedyczne7.pl" style="color: white !important; text-decoration: none; font-weight: bold;">www.centrummedyczne7.pl</a>
-          </div>
+        <div style="width: 100%; height: 7px; display: flex; margin: 0; padding: 0;">
+          <div style="width: 72.33%; height: 100%; background: #008C8C;"></div>
+          <div style="width: 27.67%; height: 100%; background: #2c3e50;"></div>
         </div>
       `,
-      headerTemplate: '<div></div>'
+      headerTemplate: "<div></div>",
     });
 
     await browser.close();
@@ -540,7 +639,10 @@ exports.generateVisitCard = async (req, res) => {
         use_filename: true,
         unique_filename: true,
         access_mode: "public",
-        public_id: `karta_wizyty_${patientName.replace(/\s+/g, '_')}_${visitDate.replace(/\./g, '_')}_CM7`,
+        public_id: `karta_wizyty_${patientName.replace(
+          /\s+/g,
+          "_"
+        )}_${visitDate.replace(/\./g, "_")}_CM7`,
         format: "pdf",
       });
 
@@ -554,12 +656,15 @@ exports.generateVisitCard = async (req, res) => {
         path: result.secure_url,
         mimetype: "application/pdf",
         size: result.bytes || null,
-        public_id: result.public_id
+        public_id: result.public_id,
       };
 
       // Create standardized document for the visit card
-      const standardizedDocument = createStandardizedDocument(mockFileData, "report");
-      
+      const standardizedDocument = createStandardizedDocument(
+        mockFileData,
+        "report"
+      );
+
       // Create a report for the appointment using standardized structure
       const newReport = {
         ...standardizedDocument,
@@ -573,8 +678,8 @@ exports.generateVisitCard = async (req, res) => {
           originalName: filename,
           cloudinaryId: result.public_id,
           appointmentId: appointmentId,
-          patientId: patient._id.toString()
-        }
+          patientId: patient._id.toString(),
+        },
       };
 
       // Add report to appointment
@@ -592,10 +697,13 @@ exports.generateVisitCard = async (req, res) => {
         }
 
         // Create standardized document for patient's documents array
-        const patientDocument = createStandardizedDocument(mockFileData, "report");
+        const patientDocument = createStandardizedDocument(
+          mockFileData,
+          "report"
+        );
         patientDocument.documentType = "visit-card"; // Override document type for patient
         patientDocument.appointmentId = appointmentId; // Add appointment reference
-        
+
         patientDoc.documents.push(patientDocument);
         await patientDoc.save();
       }
@@ -607,26 +715,25 @@ exports.generateVisitCard = async (req, res) => {
         data: {
           url: result.secure_url,
           reportId: appointment.reports[appointment.reports.length - 1]._id,
-          appointmentId: appointmentId
+          appointmentId: appointmentId,
         },
       });
-
     } catch (uploadError) {
       console.error("Error uploading visit card to Cloudinary:", uploadError);
-      
+
       return res.status(200).json({
         success: true,
-        message: "Karta wizyty wygenerowana, ale nie udało się przesłać do chmury",
+        message:
+          "Karta wizyty wygenerowana, ale nie udało się przesłać do chmury",
         data: {
           url: `/temp/${filename}`,
-          appointmentId: appointmentId
+          appointmentId: appointmentId,
         },
       });
     }
-
   } catch (error) {
     console.error("Error generating visit card:", error);
-    
+
     // Ensure browser is closed even if there's an error
     if (browser) {
       try {
@@ -635,7 +742,7 @@ exports.generateVisitCard = async (req, res) => {
         console.error("Error closing browser:", closeError);
       }
     }
-    
+
     return res.status(500).json({
       success: false,
       message: "Nie udało się wygenerować karty wizyty",
@@ -673,9 +780,10 @@ exports.getVisitCardByAppointment = async (req, res) => {
     }
 
     // Find the visit cards in appointment reports
-    const visitCards = appointment.reports?.filter(report => 
-      report.type === "Visit Card" || report.type === "visit-card"
-    ) || [];
+    const visitCards =
+      appointment.reports?.filter(
+        (report) => report.type === "Visit Card" || report.type === "visit-card"
+      ) || [];
 
     if (visitCards.length === 0) {
       return res.status(404).json({
@@ -696,7 +804,7 @@ exports.getVisitCardByAppointment = async (req, res) => {
         reportId: latestVisitCard._id,
         createdAt: latestVisitCard.uploadedAt,
         type: latestVisitCard.type,
-        name: latestVisitCard.name
+        name: latestVisitCard.name,
       },
     });
   } catch (error) {
@@ -763,4 +871,4 @@ exports.getVisitCard = async (req, res) => {
       error: error.message,
     });
   }
-}; 
+};
