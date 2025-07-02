@@ -102,10 +102,10 @@ userSchema.methods.encryptPhone = function() {
   if (!this.phone) return;
   
   const algorithm = 'aes-256-cbc';
-  const key = Buffer.from(process.env.PHONE_ENCRYPTION_KEY || 'your-32-character-secret-key-here', 'hex');
+  const key = crypto.scryptSync(process.env.PHONE_ENCRYPTION_KEY || 'your-32-character-secret-key-here', 'salt', 32);
   const iv = crypto.randomBytes(16);
   
-  const cipher = crypto.createCipher(algorithm, key);
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
   let encrypted = cipher.update(this.phone, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   
@@ -116,13 +116,13 @@ userSchema.methods.decryptPhone = function() {
   if (!this.encryptedPhone) return this.phone;
   
   const algorithm = 'aes-256-cbc';
-  const key = Buffer.from(process.env.PHONE_ENCRYPTION_KEY || 'your-32-character-secret-key-here', 'hex');
+  const key = crypto.scryptSync(process.env.PHONE_ENCRYPTION_KEY || 'your-32-character-secret-key-here', 'salt', 32);
   
   const textParts = this.encryptedPhone.split(':');
   const iv = Buffer.from(textParts.shift(), 'hex');
   const encryptedText = textParts.join(':');
   
-  const decipher = crypto.createDecipher(algorithm, key);
+  const decipher = crypto.createDecipheriv(algorithm, key, iv);
   let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
   decrypted += decipher.final('utf8');
   
