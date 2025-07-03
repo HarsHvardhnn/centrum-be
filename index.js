@@ -102,7 +102,7 @@ app.use(cors({
     console.log("normalizedOrigin", normalizedOrigin);
     
     // In development, allow both localhost origins
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV !== 'production') {
       if (normalizedOrigin === 'http://localhost:3000' || 
           normalizedOrigin === 'https://centrum-pl.netlify.app' || 
           normalizedOrigin === 'http://localhost:5173' || 
