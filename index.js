@@ -102,7 +102,7 @@ app.use(cors({
     console.log("normalizedOrigin", normalizedOrigin);
     
     // In development, allow both localhost origins
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV === 'production') {
       if (normalizedOrigin === 'http://localhost:3000' || 
           normalizedOrigin === 'https://centrum-pl.netlify.app' || 
           normalizedOrigin === 'http://localhost:5173' || 
@@ -168,7 +168,7 @@ app.use("/api/ip-restrictions", ipRestrictionRoutes);
 app.use("/auth",generalIpRestriction, authRoutes);
 app.use("/docs", doctorRoutes);
 app.use("/patients", patientRoutes);
-app.use("/admin",generalIpRestriction, adminRoutes);
+app.use("/admin", adminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/appointments", appRoutes);
 app.use("/services", servicesRoutes);

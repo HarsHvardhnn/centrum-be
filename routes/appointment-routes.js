@@ -7,6 +7,7 @@ const appointmentController = require("../controllers/appointmentController");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const { bookAppointment } = require("../controllers/gmeetController");
 const { upload } = require("../middlewares/cloudinaryUpload");
+const {createRecaptchaMiddleware} = require("../middlewares/recaptchaVerification");
 
 
 // @route   POST /api/appointments
@@ -69,7 +70,13 @@ router.patch(
   appointmentController.completeCheckIn
 );
 
-router.post("/book", bookAppointment);
+// @route   POST /api/appointments/book
+// @desc    Book a new appointment with reCAPTCHA verification
+// @access  Public
+router.post("/book", 
+  createRecaptchaMiddleware.appointment(), 
+  bookAppointment
+);
 
 // Update appointment details (consultation, tests, medications)
 router.put(
