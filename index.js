@@ -64,6 +64,7 @@ console.log(
     ? process.env.FRONTEND_URL
     : "http://localhost:5173");
 const app = express();
+app.set('trust proxy', true);
 const server = http.createServer(app); // Create HTTP server with Express
 
 // Helper function to normalize origin URL
