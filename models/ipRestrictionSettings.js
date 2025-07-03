@@ -12,7 +12,7 @@ const ipRestrictionSettingsSchema = new mongoose.Schema(
     // Tryb działania
     mode: {
       type: String,
-      enum: ['strict', 'development', 'disabled'],
+      enum: ['strict', 'development', 'disabled','production'],
       default: 'strict',
       required: true
     },
