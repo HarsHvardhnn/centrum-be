@@ -7,6 +7,13 @@ const ipRestrictionController = require("../controllers/ipRestrictionController"
 // Import middlewares
 const authorizeRoles = require("../middlewares/authenticateRole");
 
+/**
+ * @route GET /api/ip-restrictions/check-public
+ * @desc Public endpoint to check if current IP is allowed (no auth required)
+ * @access Public
+ */
+router.get("/check-public", ipRestrictionController.checkIpPublic);
+
 // Routes for IP restriction management
 // All routes require admin authentication
 

@@ -168,7 +168,7 @@ app.use("/api/ip-restrictions", ipRestrictionRoutes);
 app.use("/auth",generalIpRestriction, authRoutes);
 app.use("/docs", doctorRoutes);
 app.use("/patients", patientRoutes);
-app.use("/admin", adminRoutes);
+app.use("/admin",generalIpRestriction, adminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/appointments", appRoutes);
 app.use("/services", servicesRoutes);

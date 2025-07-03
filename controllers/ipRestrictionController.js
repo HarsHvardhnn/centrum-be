@@ -551,4 +551,64 @@ exports.toggleIpRestrictions = async (req, res) => {
       error: error.message
     });
   }
+};
+
+/**
+ * Public endpoint to check if an IP is allowed without authentication
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+exports.checkIpPublic = async (req, res) => {
+  try {
+    const clientIp = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+    const settings = await IpRestrictionSettings.getInstance();
+
+    // If IP restrictions are disabled, all IPs are allowed
+    if (!settings.isEnabled) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          clientIp,
+          isAllowed: true,
+          reason: "IP restrictions are disabled"
+        }
+      });
+    }
+
+    // Check if it's localhost in development mode
+    const isLocalhostInDev = (settings.mode === 'development' || process.env.NODE_ENV === 'development') && 
+                            (clientIp === '127.0.0.1' || clientIp === '::1' || clientIp.startsWith('192.168.') || 
+                             clientIp.startsWith('10.') || clientIp === 'localhost' || clientIp === '0.0.0.0');
+
+    if (isLocalhostInDev) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          clientIp,
+          isAllowed: true,
+          reason: "Development mode allows localhost"
+        }
+      });
+    }
+    console.log(clientIp,"is localhost".isLocalhostInDev);
+
+    // Check if IP is in allowed list
+    const allowedIp = await AllowedIp.findMatchingIp(clientIp);
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        clientIp,
+        isAllowed: !!allowedIp,
+        reason: allowedIp ? "IP is in allowed list" : "IP is not in allowed list"
+      }
+    });
+  } catch (error) {
+    console.error("Error checking IP validity:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to check IP validity",
+      error: error.message
+    });
+  }
 }; 
