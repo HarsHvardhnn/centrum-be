@@ -410,7 +410,33 @@ const exportReportToPDF = async (req, res) => {
     // Instead of PDFKit, use Puppeteer to generate PDF from HTML
     const html = generateReportHTML({ summary, appointments, reportMetadata, user: req.user });
     const puppeteer = require('puppeteer-core');
-    const browser = await puppeteer.launch({ headless: true });
+
+    // Function to find Chrome executable (copied from visit-card.js)
+    const findChrome = () => {
+      const possiblePaths = [
+        process.env.CHROME_EXECUTABLE_PATH,
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      ];
+
+      for (const chromePath of possiblePaths) {
+        if (chromePath && fs.existsSync(chromePath)) {
+          return chromePath;
+        }
+      }
+
+      throw new Error(
+        "Chrome executable not found. Please install Chrome or set CHROME_EXECUTABLE_PATH environment variable."
+      );
+    };
+
+    const browser = await puppeteer.launch({ headless: true, executablePath: findChrome() });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
