@@ -282,7 +282,14 @@ const getDoctorById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const doctor = await Doctor.findOne({ d_id: id })
+    let query = {};
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query = { $or: [{ _id: id }, { d_id: id }] };
+    } else {
+      query = { d_id: id };
+    }
+
+    const doctor = await Doctor.findOne(query)
       .select("-password -refreshTokens -__v")
       .populate("hospital specialization");
     if (!doctor) {
