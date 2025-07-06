@@ -208,7 +208,10 @@ const getAllDoctors = async (req, res) => {
       .select('name specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating')
       .sort(sortConfig)
       .skip(skip)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
+
+      console.log("doctor",doctors[0].bio)
 
     const formattedDoctors = doctors.map((doc) => ({
       _id: doc._id,
@@ -233,7 +236,7 @@ const getAllDoctors = async (req, res) => {
       date: new Date().toISOString().split("T")[0],
       qualifications: doc.qualifications || [],
       specializations: doc.specialization || [],
-      bio: doc.bio || "",
+      bio: doc?.bio || "",
       consultationFee: doc.consultationFee || 0,
       offlineConsultationFee: doc.offlineConsultationFee || 0,
       onlineConsultationFee: doc.onlineConsultationFee || 0,

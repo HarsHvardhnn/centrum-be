@@ -339,209 +339,86 @@ const exportReportToPDF = async (req, res) => {
       dateRange: reportMetadata.dateRange
     });
 
-    // Create PDF with custom font
-    const doc = new PDFDocument({ 
-      margin: 50,
-      size: 'A4',
-      info: {
-        Title: 'Raport Centrum Medyczne 7',
-        Author: 'Centrum Medyczne 7',
-        Subject: 'Raport wizyt i rozliczeń',
-        Keywords: 'raport, wizyty, rozliczenia',
-        CreationDate: new Date()
-      }
-    });
+    // 1. Generate HTML for the report (replace PDFKit table with HTML table)
+    const statusMap = {
+      booked: 'Zarezerwowana',
+      checkedIn: 'Zameldowana',
+      completed: 'Zrealizowana',
+      cancelled: 'Anulowana'
+    };
 
-    // Register fonts
-    doc.registerFont('DejaVuSans', path.join(__dirname, '../fonts/DejaVuSans.ttf'));
-    doc.registerFont('DejaVuSans-Bold', path.join(__dirname, '../fonts/DejaVuSans-Bold.ttf'));
+    function generateReportHTML({ summary, appointments, reportMetadata, user }) {
+      return `
+      <!DOCTYPE html>
+      <html lang="pl">
+      <head>
+        <meta charset="UTF-8">
+        <title>Raport wizyt i rozliczeń</title>
+        <style>
+          body { font-family: 'DejaVu Sans', Arial, sans-serif; margin: 40px; }
+          h2 { text-align: center; }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 12px;
+          }
+          th, td {
+            border: 1px solid #ccc;
+            padding: 6px 8px;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+            white-space: normal;
+            max-width: 120px;
+          }
+          th { background: #f5f5f5; }
+        </style>
+      </head>
+      <body>
+        <h2>Szczegóły wizyt:</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Godz.</th>
+              <th>Pacjent</th>
+              <th>Lekarz</th>
+              <th>Typ</th>
+              <th>Status</th>
+              <th>Przychód</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${appointments.map(apt => `
+              <tr>
+                <td>${new Date(apt.appointmentDate).toLocaleDateString('pl-PL')}</td>
+                <td>${apt.appointmentTime}</td>
+                <td>${apt.patientName}</td>
+                <td>${apt.doctorName}</td>
+                <td>${apt.mode === 'online' ? 'Online' : 'W przychodni'}</td>
+                <td>${statusMap[apt.status] || apt.status}</td>
+                <td>${apt.totalEarnings.toLocaleString('pl-PL')} PLN</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+      `;
+    }
 
-    // Set response headers for PDF
+    // Instead of PDFKit, use Puppeteer to generate PDF from HTML
+    const html = generateReportHTML({ summary, appointments, reportMetadata, user: req.user });
+    const puppeteer = require('puppeteer-core');
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    await browser.close();
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="raport-${Date.now()}.pdf"`);
-    res.setHeader('Last-Modified', new Date().toUTCString());
-
-    // Add logging
-    console.log('PDF document created, adding content...');
-
-    // PDF Header with logo
-    doc.font('DejaVuSans-Bold').fontSize(24).text('Centrum Medyczne 7', { align: 'center' });
-    doc.font('DejaVuSans').fontSize(16).text('Raport wizyt i rozliczeń', { align: 'center' });
-    doc.moveDown(2);
-
-    // Report metadata
-    doc.font('DejaVuSans').fontSize(12);
-    doc.text(`Okres: ${new Date(reportMetadata.dateRange.startDate).toLocaleDateString('pl-PL')} - ${new Date(reportMetadata.dateRange.endDate).toLocaleDateString('pl-PL')}`);
-    doc.text(`Wygenerowano: ${new Date().toLocaleString('pl-PL')}`);
-    doc.text(`Przez: ${req.user.name?.first || ''} ${req.user.name?.last || ''}`);
-    doc.moveDown(2);
-
-    // Summary section with better formatting
-    doc.font('DejaVuSans-Bold').fontSize(14).text('Podsumowanie:', { underline: true });
-    doc.moveDown(0.5);
-
-    // Draw summary table
-    doc.font('DejaVuSans').fontSize(11);
-    const summaryData = [
-      ['Łączna liczba wizyt:', summary.totalAppointments],
-      ['Zrealizowane wizyty:', summary.completedAppointments],
-      ['Anulowane wizyty:', summary.cancelledAppointments],
-      ['Wizyty online:', summary.onlineAppointments],
-      ['Wizyty w przychodni:', summary.offlineAppointments],
-      ['Łączne przychody:', `${summary.totalEarnings.toLocaleString('pl-PL')} PLN`],
-      ['Przychody online:', `${summary.onlineEarnings.toLocaleString('pl-PL')} PLN`],
-      ['Przychody offline:', `${summary.offlineEarnings.toLocaleString('pl-PL')} PLN`],
-      ['Średnia wartość wizyty:', `${summary.averageAppointmentValue.toLocaleString('pl-PL')} PLN`],
-      ['Opłacone rachunki:', summary.paidBills],
-      ['Oczekujące płatności:', summary.pendingBills]
-    ];
-
-    let yPos = doc.y;
-    summaryData.forEach(([label, value]) => {
-      doc.text(label, 50, yPos);
-      doc.text(value.toString(), 250, yPos);
-      yPos += 20;
-    });
-    
-    doc.moveDown(2);
-
-    // Appointments table
-    doc.font('DejaVuSans-Bold').fontSize(14).text('Szczegóły wizyt:', { underline: true });
-    doc.moveDown(1);
-
-    // Table settings
-    const tableTop = doc.y;
-    const tableLeft = 50;
-    const colWidths = {
-      date: 70,
-      time: 50,
-      patient: 100,
-      doctor: 100,
-      type: 60,
-      status: 70,
-      earnings: 70
-    };
-
-    // Draw table headers
-    doc.font('DejaVuSans-Bold').fontSize(10);
-    let currentX = tableLeft;
-    const headers = {
-      date: 'Data',
-      time: 'Godz.',
-      patient: 'Pacjent',
-      doctor: 'Lekarz',
-      type: 'Typ',
-      status: 'Status',
-      earnings: 'Przychód'
-    };
-
-    // Draw header background
-    doc.rect(tableLeft, tableTop, 
-      Object.values(colWidths).reduce((a, b) => a + b, 0), 20)
-      .fillColor('#f5f5f5')
-      .fill();
-
-    // Draw headers with black text
-    doc.fillColor('#000000');
-    Object.entries(headers).forEach(([key, header]) => {
-      doc.text(header, currentX, tableTop + 5, {
-        width: colWidths[key],
-        align: key === 'earnings' ? 'right' : 'left'
-      });
-      currentX += colWidths[key];
-    });
-
-    // Draw rows
-    let currentY = tableTop + 25;
-    doc.font('DejaVuSans').fontSize(9);
-
-    console.log(`Drawing ${appointments.length} appointment rows...`);
-
-    appointments.forEach((apt, index) => {
-      // Add new page if needed
-      if (currentY > doc.page.height - 100) {
-        doc.addPage();
-        currentY = 50;
-        
-        // Redraw headers on new page
-        doc.font('DejaVuSans-Bold').fontSize(10);
-        currentX = tableLeft;
-        
-        // Draw header background
-        doc.rect(tableLeft, currentY, 
-          Object.values(colWidths).reduce((a, b) => a + b, 0), 20)
-          .fillColor('#f5f5f5')
-          .fill();
-
-        // Draw headers with black text
-        doc.fillColor('#000000');
-        Object.entries(headers).forEach(([key, header]) => {
-          doc.text(header, currentX, currentY + 5, {
-            width: colWidths[key],
-            align: key === 'earnings' ? 'right' : 'left'
-          });
-          currentX += colWidths[key];
-        });
-        
-        currentY += 25;
-        doc.font('DejaVuSans').fontSize(9);
-      }
-
-      // Draw row background for even rows
-      if (index % 2 === 0) {
-        doc.rect(tableLeft, currentY - 5, 
-          Object.values(colWidths).reduce((a, b) => a + b, 0), 20)
-          .fillColor('#fafafa')
-          .fillAndStroke('#fafafa', '#f0f0f0');
-      }
-
-      // Draw row data with black text
-      currentX = tableLeft;
-      const rowData = {
-        date: new Date(apt.appointmentDate).toLocaleDateString('pl-PL'),
-        time: apt.appointmentTime,
-        patient: apt.patientName,
-        doctor: apt.doctorName,
-        type: apt.mode === 'online' ? 'Online' : 'W przychodni',
-        status: apt.status === 'completed' ? 'Zrealizowana' :
-                apt.status === 'cancelled' ? 'Anulowana' :
-                apt.status === 'checkedIn' ? 'Zameldowana' : apt.status,
-        earnings: `${apt.totalEarnings.toLocaleString('pl-PL')} PLN`
-      };
-
-      doc.fillColor('#000000');
-      Object.entries(rowData).forEach(([key, value]) => {
-        doc.text(value || '', currentX, currentY, {
-          width: colWidths[key],
-          align: key === 'earnings' ? 'right' : 'left'
-        });
-        currentX += colWidths[key];
-      });
-
-      currentY += 20;
-    });
-
-    // Add footer with black text
-    doc.fillColor('#000000')
-       .font('DejaVuSans').fontSize(8)
-       .text(
-         'Centrum Medyczne 7 - Raport wygenerowany automatycznie',
-         50,
-         doc.page.height - 50,
-         { align: 'center' }
-       );
-
-    // Log before finalizing
-    console.log('Finalizing PDF generation...');
-
-    // Pipe the PDF directly to the response
-    doc.pipe(res);
-
-    // End the document
-    doc.end();
-
-    // Log after sending
-    console.log('PDF sent successfully');
+    res.send(pdfBuffer);
 
   } catch (error) {
     console.error('Error exporting PDF:', error);
