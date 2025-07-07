@@ -195,7 +195,7 @@ exports.generateVisitCard = async (req, res) => {
         <title>Karta Wizyty</title>
         <style>
             @page {
-                margin: 15px 15px 50px 15px;
+                margin: 15px 15px 25px 15px;
                 size: A4;
 
             }
@@ -359,7 +359,7 @@ exports.generateVisitCard = async (req, res) => {
             height: 25px;
             display: flex;
             align-items: center;
-            padding: 0 15px;
+            padding: 0;
             font-size: 8px;
             page-break-inside: avoid;
         }
@@ -424,12 +424,12 @@ exports.generateVisitCard = async (req, res) => {
         /* Print-specific adjustments */
         @media print {
             body {
-                padding-bottom: 20px;
+                padding-bottom: 0;
             }
             
             .footer {
                 position: fixed;
-                bottom: 15px;
+                bottom: 0;
             }
         }
         </style>

@@ -940,7 +940,7 @@ const send2FACode = async (user, method = 'sms') => {
         };
       } else {
         // In production, send actual SMS
-        const message = `CM7 Medical - Twój kod weryfikacyjny: ${code}. Kod jest ważny przez 5 minut. Nie udostępniaj go nikomu.`;
+        const message = `CM7Med- Twoj kod weryfikacyjny: ${code}. Kod jest wazny przez 5 minut. Nie udostepniaj go nikomu!`;
         const smsResult = await sendSMS(user.phone, message);
 
         if (smsResult.success) {
@@ -979,7 +979,7 @@ const sendBranded2FAEmail = async (email, code, userName) => {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Kod weryfikacyjny - CM7 Medical</title>
+      <title>Kod weryfikacyjny - CM7Med</title>
       <style>
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
