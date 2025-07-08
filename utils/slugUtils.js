@@ -74,9 +74,28 @@ function isValidSlug(slug) {
   return slugRegex.test(slug) && slug.length >= 2 && slug.length <= 100;
 }
 
+
+const ensureUniqueSlug = async (Model, baseSlug, excludeId = null) => {
+  let slug = baseSlug;
+  let counter = 1;
+  
+  const query = { slug };
+  if (excludeId) {
+    query._id = { $ne: excludeId };
+  }
+  
+  while (await Model.findOne(query)) {
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+    query.slug = slug;
+  }
+  
+  return slug;
+};
+
 module.exports = {
   generateSlug,
   generateDoctorSlug,
-  generateUniqueSlug,
+  generateUniqueSlug,ensureUniqueSlug,
   isValidSlug
 }; 
