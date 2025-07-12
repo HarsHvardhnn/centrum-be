@@ -6,6 +6,7 @@ const appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const mongoose = require("mongoose");
 const { generateUniqueSlug } = require("../utils/slugUtils");
+const UserService = require("../models/userServices");
 
 // Helper function to generate default shifts
 const generateDefaultShifts = () => {
@@ -1181,6 +1182,16 @@ const getDoctorBySlug = async (req, res) => {
         message: 'Lekarz nie znaleziony'
       });
     }
+
+    // Fetch doctor's services
+    const doctorServices = await UserService.findOne({
+      user: doctor._id,
+      userType: 'doctor',
+      isDeleted: false
+    }).populate({
+      path: 'services.service',
+      select: 'name description price'
+    });
     
     // Format response for SEO optimization
     const response = {
@@ -1207,6 +1218,16 @@ const getDoctorBySlug = async (req, res) => {
         count: doctor.reviews?.length || 0,
         total: doctor.ratings || 0
       },
+      services: doctorServices ? doctorServices.services.map(service => ({
+        id: service.service._id,
+        name: service.service.name,
+        description: service.service.description,
+        price: service.isCustomPrice ? service.price : service.service.price,
+        status: service.status,
+        assignedDate: service.assignedDate,
+        completedDate: service.completedDate,
+        notes: service.notes
+      })) : [],
       createdAt: doctor.createdAt,
       updatedAt: doctor.updatedAt
     };
