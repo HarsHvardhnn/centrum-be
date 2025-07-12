@@ -941,7 +941,7 @@ const send2FACode = async (user, method = 'sms') => {
       } else {
         // In production, send actual SMS
         const message = `CM7Med- Twoj kod weryfikacyjny: ${code}. Kod jest wazny przez 5 minut. Nie udostepniaj go nikomu!`;
-        const smsResult = await sendSMS(user.phone, message);
+        const smsResult = await sendSMS(user.phone, message,"CM7Med");
 
         if (smsResult.success) {
           console.log(`SMS 2FA code sent to user ${user._id}`);

@@ -58,7 +58,7 @@ async function checkSMSStatus(messageId) {
   }
 }
 // Function to send SMS
-async function sendSMS(phoneNumber, message) {
+async function sendSMS(phoneNumber, message,sender="CM7") {
   try {
     const formattedPhone = formatPhoneNumber(phoneNumber);
 
@@ -68,7 +68,7 @@ async function sendSMS(phoneNumber, message) {
         access_token: SMSAPI_TOKEN,
         to: formattedPhone,
         message: message,
-        from: "Przychodnia",
+        from: sender,
       },
     });
 
