@@ -212,7 +212,6 @@ const getAllDoctors = async (req, res) => {
       .limit(limitNum)
       .lean();
 
-      console.log("doctor",doctors[0].bio)
 
     const formattedDoctors = doctors.map((doc) => ({
       _id: doc._id,
