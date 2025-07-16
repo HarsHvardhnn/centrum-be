@@ -13,10 +13,7 @@ const createStorage = (folderName, fileType) => {
     resource_type: fileType === "document" ? "raw" : "image",
   };
 
-  // Only apply transformations to images
-  if (fileType === "image") {
-    params.transformation = [{ width: 500, height: 500, crop: "limit" }];
-  }
+  // No transformations applied to preserve original image quality
 
   return new CloudinaryStorage({
     cloudinary: cloudinary,
@@ -68,10 +65,7 @@ const upload = multer({
         params.unique_filename = false;
       }
 
-      // Only apply transformations to images
-      if (!isDocument) {
-        params.transformation = [{ width: 500, height: 500, crop: "limit" }];
-      }
+      // No transformations applied to preserve original image quality
 
       return params;
     },
