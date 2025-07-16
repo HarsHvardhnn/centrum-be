@@ -1190,7 +1190,7 @@ const getDoctorBySlug = async (req, res) => {
       isDeleted: false
     }).populate({
       path: 'services.service',
-      select: 'name description price'
+      select: 'title shortDescription description price'
     });
     
     // Format response for SEO optimization
@@ -1218,16 +1218,7 @@ const getDoctorBySlug = async (req, res) => {
         count: doctor.reviews?.length || 0,
         total: doctor.ratings || 0
       },
-      services: doctorServices ? doctorServices.services.map(service => ({
-        id: service.service._id,
-        name: service.service.name,
-        description: service.service.description,
-        price: service.isCustomPrice ? service.price : service.service.price,
-        status: service.status,
-        assignedDate: service.assignedDate,
-        completedDate: service.completedDate,
-        notes: service.notes
-      })) : [],
+      doctorServices: doctorServices ?? [],
       createdAt: doctor.createdAt,
       updatedAt: doctor.updatedAt
     };

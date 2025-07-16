@@ -89,7 +89,7 @@ exports.getServiceById = async (req, res) => {
 
 exports.updateService = async (req, res) => {
   try {
-    const { title, icon, shortDescription, description, bulletPoints } =
+    const { title, icon, shortDescription, description, bulletPoints,price } =
       req.body;
     const updateData = {
       title,
@@ -99,6 +99,7 @@ exports.updateService = async (req, res) => {
       bulletPoints: JSON.parse(bulletPoints),
       updatedBy: req.user.id,
       updatedAt: new Date(),
+      price,
     };
 
     // If title is being updated, regenerate slug
