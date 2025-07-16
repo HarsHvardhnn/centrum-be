@@ -79,7 +79,9 @@ const frontendOrigins = process.env.NODE_ENV === 'production'
   ? [
       normalizeOrigin(process.env.FRONTEND_URL),
       normalizeOrigin(process.env.FRONTEND_URL_ADMIN),
-      normalizeOrigin(process.env.FROTEND_ADMIN_1)
+      normalizeOrigin(process.env.FROTEND_ADMIN_1),
+      normalizeOrigin(process.env.FRONTEND_URL_WWW),
+      normalizeOrigin(process.env.FRONTEND_ADMIN_2),
     ].filter(Boolean) // Remove any undefined/null values
   : ["http://localhost:5173"];
 
