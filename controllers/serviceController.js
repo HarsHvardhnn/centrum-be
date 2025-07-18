@@ -1,5 +1,6 @@
 const Service = require("../models/services");
 const { generateSlug, ensureUniqueSlug } = require("../utils/slugUtils");
+const { updateServicePricesInRelatedModels } = require("../utils/updateServicePrices");
 
 exports.createService = async (req, res) => {
   try {
@@ -89,8 +90,15 @@ exports.getServiceById = async (req, res) => {
 
 exports.updateService = async (req, res) => {
   try {
-    const { title, icon, shortDescription, description, bulletPoints,price } =
+    const { title, icon, shortDescription, description, bulletPoints, price } =
       req.body;
+    
+    // Get the current service to check if price is being updated
+    const currentService = await Service.findById(req.params.id);
+    if (!currentService) {
+      return res.status(404).json({ message: "Service not found" });
+    }
+
     const updateData = {
       title,
       icon,
@@ -115,6 +123,17 @@ exports.updateService = async (req, res) => {
     const service = await Service.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
     });
+
+    // If price is being updated, update prices in related models
+    if (price && currentService.price !== price) {
+      try {
+        await updateServicePricesInRelatedModels(req.params.id, parseFloat(price));
+      } catch (priceUpdateError) {
+        console.error('Error updating prices in related models:', priceUpdateError);
+        // Don't fail the main update, just log the error
+      }
+    }
+
     res.json(service);
   } catch (error) {
     console.error('Error updating service:', error);
