@@ -237,13 +237,13 @@ exports.bookAppointment = async (req, res) => {
     // Create consent objects
     const smsConsent = {
       id: Date.now(),
-      text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
+      text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
       agreed: smsConsentAgreed,
     };
 
     const privacyPolicyConsent = {
       id: Date.now() + 1,
-      text: "Pacjent wyraża zgodę na politykę prywatności",
+      text: "Zapoznałem(-am) się z Regulaminem i Polityką Prywatności i akceptuję ich postanowienia.",
       agreed: privacyPolicyAgreed,
     };
 
@@ -253,17 +253,17 @@ exports.bookAppointment = async (req, res) => {
       additionalConsents.push(
         {
           id: Date.now() + 2,
-          text: "Pacjent wyraża zgodę na przetwarzanie danych medycznych",
+          text: "Potwierdzam, że konsultacja medyczna odbędzie się w formie zdalnej (online) i jestem świadomy(-a) tej formy świadczenia zdrowotnego",
           agreed: medicalDataProcessingAgreed,
         },
         {
           id: Date.now() + 3,
-          text: "Pacjent potwierdza teleportację",
+          text: "Wyrażam zgodę na kontakt telefoniczny lub e-mailowy w celu realizacji konsultacji online, w tym przesłania linku do spotkania.",
           agreed: teleportationConfirmed,
         },
         {
           id: Date.now() + 4,
-          text: "Pacjent wyraża zgodę na kontakt",
+          text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
           agreed: contactConsentAgreed,
         }
       );
