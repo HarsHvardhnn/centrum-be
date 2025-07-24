@@ -993,7 +993,8 @@ exports.rescheduleAppointment = async (req, res) => {
 
     // Send email notification if patient has email
     let emailSent = false;
-    if (patientDetails.email) {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (emailRegex.test(patientDetails.email) && patientDetails.email && patientDetails.smsConsentAgreed) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
         const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
@@ -1023,17 +1024,31 @@ exports.rescheduleAppointment = async (req, res) => {
       }
     }
 
-    // Send SMS notification
+    // Send SMS notification if patient has consented
     let smsResult = null;
-    try {
-      smsResult = await sendAppointmentStatusSMS(
-        appointment,
-        patientDetails,
-        doctorDetails,
-        "rescheduled"
-      );
-    } catch (smsError) {
-      console.error("Error sending reschedule SMS:", smsError);
+    if (patientDetails.smsConsentAgreed) {
+      try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz ${newStartTime}. Prosimy o kontakt telefoniczny w przypadku potrzeby zmiany terminu.`;
+
+        const batchId = uuidv4();
+        await MessageReceipt.create({
+          content: message,
+          batchId,
+          recipient: {
+            userId: patientDetails._id.toString(),
+            phone: patientDetails.phone,
+          },
+          status: "PENDING",
+        });
+
+        smsResult = await sendSMS(patientDetails.phone, message);
+      } catch (smsError) {
+        console.error(
+          "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
+          smsError
+        );
+      }
     }
 
     res.status(200).json({
@@ -1047,20 +1062,7 @@ exports.rescheduleAppointment = async (req, res) => {
         newDate: appointmentDate,
         newStartTime: newStartTime,
         newEndTime: newEndTime,
-      },
-      notifications: {
-        email: {
-          sent: emailSent,
-        },
-        sms: smsResult
-          ? {
-              sent: smsResult.success,
-              error: smsResult.error,
-            }
-          : {
-              sent: false,
-              error: "Powiadomienie SMS nie zostało wysłane - pacjent nie wyraził zgody",
-            },
+        emailSent,
       },
     });
   } catch (error) {
