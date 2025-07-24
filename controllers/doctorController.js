@@ -609,7 +609,7 @@ const getAvailableSlots = async (req, res) => {
       .sort({ startTime: 1 });
 
     // Generate all slots based on shift time (using 30-minute intervals as default)
-    const slotDuration = 30; // in minutes
+    const slotDuration =15; // in minutes
     const slots = [];
 
     // Parse shift times

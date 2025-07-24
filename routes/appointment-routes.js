@@ -53,6 +53,13 @@ router.patch(
   appointmentController.updateAppointmentStatus
 );
 
+// Reschedule appointment
+router.patch(
+  "/:appointmentId/reschedule",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.rescheduleAppointment
+);
+
 router.get(
   "/dashboard/",
   authorizeRoles(["doctor", "receptionist", "admin"]),

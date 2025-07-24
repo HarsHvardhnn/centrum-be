@@ -603,12 +603,86 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
           meetingLink
             ? `
           <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
+            <p style="margin: 0;">Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
           </div>
         `
             : `
         `
         }
+      `
+          : `
+      `
+      }
+      
+
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+        <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>
+        <p style="color: #666; margin-bottom: 10px;">Dziękujemy za zaufanie!</p>
+        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - Wszelkie prawa zastrzeżone</p>
+      </div>
+    </div>
+  `;
+};
+
+// Function to create HTML email for appointment reschedule
+const createRescheduleEmailHtml = (rescheduleDetails) => {
+  const {
+    patientName,
+    doctorName,
+    oldDate,
+    oldTime,
+    newDate,
+    newTime,
+    department,
+    mode,
+  } = rescheduleDetails;
+
+  const logoPath = path.join(__dirname, "../public", "logo_new.png");
+  console.log(logoPath, "logoPath");
+
+  // Read and convert logo to base64
+  const logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: left; margin-bottom: 20px;">
+        <img src="data:image/png;base64,${logoBase64}" alt="Centrum Medyczne 7" style="height: 50px;" />
+      </div>
+      
+      <div style="margin-bottom: 30px;">
+        <h2 style="color: #333; margin-bottom: 5px;">Zmiana Terminu Wizyty</h2>
+        <p style="color: #666; font-size: 16px; margin-top: 0;">Twoja wizyta została przełożona.</p>
+      </div>
+      
+      <div style="background-color: #fff3cd; padding: 20px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+        <h3 style="color: #856404; margin-top: 0;">Stary Termin:</h3>
+        <div style="margin-bottom: 15px;">
+          <p style="margin: 5px 0;"><strong>Pacjent:</strong> ${patientName}</p>
+          <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
+          <p style="margin: 5px 0;"><strong>Data:</strong> ${oldDate}</p>
+          <p style="margin: 5px 0;"><strong>Godzina:</strong> ${oldTime}</p>
+        </div>
+      </div>
+      
+      <div style="background-color: #d4edda; padding: 20px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #28a745;">
+        <h3 style="color: #155724; margin-top: 0;">Nowy Termin:</h3>
+        <div style="margin-bottom: 15px;">
+          <p style="margin: 5px 0;"><strong>Pacjent:</strong> ${patientName}</p>
+          <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
+          <p style="margin: 5px 0;"><strong>Data:</strong> ${newDate}</p>
+          <p style="margin: 5px 0;"><strong>Godzina:</strong> ${newTime}</p>
+          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${
+            mode === "online" ? "Online" : "Stacjonarna"
+          }</p>
+        </div>
+      </div>
+      
+      ${
+        mode === "online"
+          ? `
+        <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+          <p style="margin: 0;">Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
+        </div>
       `
           : `
       `
@@ -804,6 +878,196 @@ exports.updateAppointmentStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update appointment status",
+      error: error.message,
+    });
+  }
+};
+
+// Reschedule appointment
+exports.rescheduleAppointment = async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+    const { newDate, newStartTime, consultationType } = req.body;
+
+    // Validate required fields
+    if (!newDate || !newStartTime) {
+      return res.status(400).json({
+        success: false,
+        message: "New date and start time are required",
+      });
+    }
+
+    // Validate date format
+    const appointmentDate = new Date(`${newDate}T${newStartTime}:00`);
+    if (isNaN(appointmentDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date or time format",
+      });
+    }
+
+    // Check if the new date is in the past
+    const now = new Date();
+    if (appointmentDate <= now) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot reschedule to a past date/time",
+      });
+    }
+
+    // Find the appointment and populate doctor/patient details
+    const appointment = await Appointment.findById(appointmentId).populate(
+      "doctor patient",
+      "name email phone"
+    );
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    // Check if appointment is already cancelled or completed
+    if (appointment.status === "cancelled" || appointment.status === "completed") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot reschedule a cancelled or completed appointment",
+      });
+    }
+
+    // Get doctor and patient details
+    const doctorDetails = await doctor.findById(appointment.doctor._id);
+    const patientDetails = await user.findById(appointment.patient._id);
+
+    if (!doctorDetails || !patientDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor or patient details not found",
+      });
+    }
+
+    // Calculate new end time (30 minutes duration by default)
+    const duration = 30; // Default duration in minutes
+    const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
+    const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
+    const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
+    const newEndTime = `${endTimeHour}:${endTimeMinute}`;
+
+    // Check for existing appointments at the new time
+    const startOfDay = new Date(appointmentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(appointmentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingAppointment = await Appointment.findOne({
+      doctor: appointment.doctor._id,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      startTime: newStartTime,
+      status: "booked",
+      _id: { $ne: appointmentId }, // Exclude current appointment
+    });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        message: "Jest już umówiona wizyta u tego lekarza w tym czasie.",
+        conflict: true,
+      });
+    }
+
+    // Store old appointment details for notification
+    const oldDate = appointment.date;
+    const oldStartTime = appointment.startTime;
+    const oldEndTime = appointment.endTime;
+
+    // Update appointment with new details
+    appointment.date = appointmentDate;
+    appointment.startTime = newStartTime;
+    appointment.endTime = newEndTime;
+    appointment.mode = consultationType || appointment.mode;
+    appointment.status = "booked"; // Ensure status is booked after rescheduling
+
+    await appointment.save();
+
+    // Send email notification if patient has email
+    let emailSent = false;
+    if (patientDetails.email) {
+      try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
+
+        const emailData = {
+          patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
+          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+          oldDate: oldFormattedDate,
+          oldTime: `${oldStartTime} - ${oldEndTime}`,
+          newDate: formattedDate,
+          newTime: `${newStartTime} - ${newEndTime}`,
+          department: doctorDetails.specialization || "General",
+          mode: appointment.mode,
+        };
+
+        await sendEmail({
+          to: patientDetails.email,
+          subject: "Zmiana Terminu Wizyty",
+          html: createRescheduleEmailHtml(emailData),
+          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została przełożona z ${oldFormattedDate} o godz ${oldStartTime} na ${formattedDate} o godz ${newStartTime}.`,
+        });
+
+        console.log(`Reschedule confirmation email sent to ${patientDetails.email}`);
+        emailSent = true;
+      } catch (emailError) {
+        console.error("Failed to send reschedule email:", emailError);
+      }
+    }
+
+    // Send SMS notification
+    let smsResult = null;
+    try {
+      smsResult = await sendAppointmentStatusSMS(
+        appointment,
+        patientDetails,
+        doctorDetails,
+        "rescheduled"
+      );
+    } catch (smsError) {
+      console.error("Error sending reschedule SMS:", smsError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Appointment rescheduled successfully",
+      data: {
+        appointment,
+        oldDate: oldDate,
+        oldStartTime: oldStartTime,
+        oldEndTime: oldEndTime,
+        newDate: appointmentDate,
+        newStartTime: newStartTime,
+        newEndTime: newEndTime,
+      },
+      notifications: {
+        email: {
+          sent: emailSent,
+        },
+        sms: smsResult
+          ? {
+              sent: smsResult.success,
+              error: smsResult.error,
+            }
+          : {
+              sent: false,
+              error: "SMS notification not sent - patient consent not given",
+            },
+      },
+    });
+  } catch (error) {
+    console.error("Error rescheduling appointment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to reschedule appointment",
       error: error.message,
     });
   }
