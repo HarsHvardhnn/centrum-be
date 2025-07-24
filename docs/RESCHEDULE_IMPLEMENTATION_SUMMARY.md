@@ -115,7 +115,7 @@ Authorization: Bearer <token>
 ```json
 {
   "success": true,
-  "message": "Appointment rescheduled successfully",
+  "message": "Wizyta została pomyślnie przełożona",
   "data": {
     "appointment": {
       "_id": "507f1f77bcf86cd799439011",

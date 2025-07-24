@@ -72,7 +72,7 @@ GET /api/doctors/schedule/available-slots/507f1f77bcf86cd799439011?date=2024-01-
 ```json
 {
   "success": true,
-  "message": "Appointment rescheduled successfully",
+  "message": "Wizyta została pomyślnie przełożona",
   "data": {
     "appointment": {
       "_id": "507f1f77bcf86cd799439011",
@@ -109,7 +109,7 @@ GET /api/doctors/schedule/available-slots/507f1f77bcf86cd799439011?date=2024-01-
 ```json
 {
   "success": false,
-  "message": "New date and start time are required"
+  "message": "Nowa data i godzina rozpoczęcia są wymagane"
 }
 ```
 
@@ -117,7 +117,7 @@ GET /api/doctors/schedule/available-slots/507f1f77bcf86cd799439011?date=2024-01-
 ```json
 {
   "success": false,
-  "message": "Invalid date or time format"
+  "message": "Nieprawidłowy format daty lub godziny"
 }
 ```
 
@@ -125,7 +125,7 @@ GET /api/doctors/schedule/available-slots/507f1f77bcf86cd799439011?date=2024-01-
 ```json
 {
   "success": false,
-  "message": "Cannot reschedule to a past date/time"
+  "message": "Nie można przełożyć wizyty na przeszłą datę/godzinę"
 }
 ```
 
@@ -133,7 +133,7 @@ GET /api/doctors/schedule/available-slots/507f1f77bcf86cd799439011?date=2024-01-
 ```json
 {
   "success": false,
-  "message": "Appointment not found"
+  "message": "Nie znaleziono wizyty"
 }
 ```
 
@@ -141,7 +141,7 @@ GET /api/doctors/schedule/available-slots/507f1f77bcf86cd799439011?date=2024-01-
 ```json
 {
   "success": false,
-  "message": "Cannot reschedule a cancelled or completed appointment"
+  "message": "Nie można przełożyć anulowanej lub zakończonej wizyty"
 }
 ```
 
@@ -225,7 +225,7 @@ const rescheduleAppointment = async (appointmentId, newDate, newStartTime, consu
     
     if (data.success) {
       // Handle success - update UI, show confirmation
-      console.log('Appointment rescheduled successfully');
+      console.log('Wizyta została pomyślnie przełożona');
       return data;
     } else {
       // Handle error

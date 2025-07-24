@@ -893,7 +893,7 @@ exports.rescheduleAppointment = async (req, res) => {
     if (!newDate || !newStartTime) {
       return res.status(400).json({
         success: false,
-        message: "New date and start time are required",
+        message: "Nowa data i godzina rozpoczęcia są wymagane",
       });
     }
 
@@ -902,7 +902,7 @@ exports.rescheduleAppointment = async (req, res) => {
     if (isNaN(appointmentDate.getTime())) {
       return res.status(400).json({
         success: false,
-        message: "Invalid date or time format",
+        message: "Nieprawidłowy format daty lub godziny",
       });
     }
 
@@ -911,7 +911,7 @@ exports.rescheduleAppointment = async (req, res) => {
     if (appointmentDate <= now) {
       return res.status(400).json({
         success: false,
-        message: "Cannot reschedule to a past date/time",
+        message: "Nie można przełożyć wizyty na przeszłą datę/godzinę",
       });
     }
 
@@ -924,7 +924,7 @@ exports.rescheduleAppointment = async (req, res) => {
     if (!appointment) {
       return res.status(404).json({
         success: false,
-        message: "Appointment not found",
+        message: "Nie znaleziono wizyty",
       });
     }
 
@@ -932,7 +932,7 @@ exports.rescheduleAppointment = async (req, res) => {
     if (appointment.status === "cancelled" || appointment.status === "completed") {
       return res.status(400).json({
         success: false,
-        message: "Cannot reschedule a cancelled or completed appointment",
+        message: "Nie można przełożyć anulowanej lub zakończonej wizyty",
       });
     }
 
@@ -943,7 +943,7 @@ exports.rescheduleAppointment = async (req, res) => {
     if (!doctorDetails || !patientDetails) {
       return res.status(404).json({
         success: false,
-        message: "Doctor or patient details not found",
+        message: "Nie znaleziono szczegółów lekarza lub pacjenta",
       });
     }
 
@@ -1038,7 +1038,7 @@ exports.rescheduleAppointment = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Appointment rescheduled successfully",
+      message: "Wizyta została pomyślnie przełożona",
       data: {
         appointment,
         oldDate: oldDate,
@@ -1059,7 +1059,7 @@ exports.rescheduleAppointment = async (req, res) => {
             }
           : {
               sent: false,
-              error: "SMS notification not sent - patient consent not given",
+              error: "Powiadomienie SMS nie zostało wysłane - pacjent nie wyraził zgody",
             },
       },
     });
@@ -1067,7 +1067,7 @@ exports.rescheduleAppointment = async (req, res) => {
     console.error("Error rescheduling appointment:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to reschedule appointment",
+      message: "Nie udało się przełożyć wizyty",
       error: error.message,
     });
   }
