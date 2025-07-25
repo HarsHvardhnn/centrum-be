@@ -828,7 +828,7 @@ const getNextAvailableDate = async (req, res) => {
     currentDate.setDate(currentDate.getDate() + 1);
     
     // Maximum number of days to check (e.g., 30 days)
-    const maxDaysToCheck = 30;
+    const maxDaysToCheck = 15;
     let daysChecked = 0;
 
     while (daysChecked < maxDaysToCheck) {
