@@ -436,7 +436,17 @@ const exportReportToPDF = async (req, res) => {
       );
     };
 
-    const browser = await puppeteer.launch({ headless: true, executablePath: findChrome() });
+    const browser = await puppeteer.launch({ headless: true,args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+    ], executablePath: findChrome() });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
