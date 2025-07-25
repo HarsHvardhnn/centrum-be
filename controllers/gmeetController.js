@@ -471,7 +471,7 @@ exports.bookAppointment = async (req, res) => {
 
     // Send email to patient only if email is valid
     let emailSent = false;
-    if (isValidEmail && patient.email) {
+    if (isValidEmail && patient.email && smsConsentAgreed) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
 
