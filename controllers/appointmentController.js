@@ -1000,7 +1000,7 @@ exports.rescheduleAppointment = async (req, res) => {
     // Send email notification if patient has email
     let emailSent = false;
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (emailRegex.test(patientDetails.email) && patientDetails.email && patientDetails.smsConsentAgreed) {
+    if (false) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
         const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
@@ -1032,7 +1032,7 @@ exports.rescheduleAppointment = async (req, res) => {
 
     // Send SMS notification if patient has consented
     let smsResult = null;
-    if (patientDetails.smsConsentAgreed) {
+    if (false) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
         const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz ${newStartTime}. Prosimy o kontakt telefoniczny w przypadku potrzeby zmiany terminu.`;
