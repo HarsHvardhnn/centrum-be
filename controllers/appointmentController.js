@@ -728,12 +728,18 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       // status: { $nin: ["cancelled"] },
     };
 
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      query.date = { $gte: start, $lte: end };
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.date.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.date.$lte = end;
+      }
     }
 
     if (status !== "all") {
@@ -1797,11 +1803,14 @@ exports.getPatientAppointments = async (req, res) => {
       query.status = status;
     }
 
-    if (startDate && endDate) {
-      query.date = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        query.date.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.date.$lte = new Date(endDate);
+      }
     }
 
     const appointments = await Appointment.find(query)
@@ -1853,12 +1862,15 @@ exports.getAppointments = async (req, res) => {
 
 
 
-    // Date range filter
-    if (startDate && endDate) {
-      query.date = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
+    // Date range filter - support single dates and date ranges
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        query.date.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.date.$lte = new Date(endDate);
+      }
     }
 
     // Doctor filter
@@ -1868,9 +1880,9 @@ exports.getAppointments = async (req, res) => {
 
     // Note: Search logic is handled separately in clinic vs non-clinic branches
 
-    // Build sort object
+    // Build sort object - always sort by date in ascending order for appointments
     const sortObject = {};
-    sortObject[sortBy] = sortOrder === "desc" ? -1 : 1;
+    sortObject.date = 1; // Always ascending order for dates
 
     let responseData;
     let uniqueAppointments = []; // Define it here so it's always available
@@ -1924,11 +1936,14 @@ exports.getAppointments = async (req, res) => {
         }
       }
 
-      if (startDate && endDate) {
-        matchConditions.date = {
-          $gte: new Date(startDate),
-          $lte: new Date(endDate),
-        };
+      if (startDate || endDate) {
+        matchConditions.date = {};
+        if (startDate) {
+          matchConditions.date.$gte = new Date(startDate);
+        }
+        if (endDate) {
+          matchConditions.date.$lte = new Date(endDate);
+        }
       }
 
       if (doctorId) {
@@ -2082,10 +2097,9 @@ exports.getAppointments = async (req, res) => {
         groupedByDate[dateKey].push(appointment);
       });
 
+      // Sort appointments by date - from today onwards (ascending order)
       const sortedAppointments = Object.keys(groupedByDate)
-        .sort((a, b) =>
-          sortOrder === "desc" ? b.localeCompare(a) : a.localeCompare(b)
-        )
+        .sort((a, b) => a.localeCompare(b)) // Always ascending order for dates
         .flatMap((date) => groupedByDate[date]);
 
       const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -2153,11 +2167,11 @@ exports.getAppointments = async (req, res) => {
         ...(status && status !== "all" && status !== "no_appointment" ? 
           status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
         : {}),
-        ...(startDate && endDate
+        ...(startDate || endDate
           ? {
               date: {
-                $gte: new Date(startDate),
-                $lte: new Date(endDate),
+                ...(startDate ? { $gte: new Date(startDate) } : {}),
+                ...(endDate ? { $lte: new Date(endDate) } : {}),
               },
             }
           : {}),
@@ -2172,7 +2186,7 @@ exports.getAppointments = async (req, res) => {
       })
         .populate("doctor", "name email")
         .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture")
-        .sort({ date: -1 })
+        .sort({ date: 1 }) // Sort by date in ascending order
         .lean();
 
       console.log("allAppointments", allAppointments);
@@ -2285,7 +2299,7 @@ exports.getAppointments = async (req, res) => {
         }
        }
 
-      // Sort by date (newest to oldest) but put no_appointment cases at the end
+      // Sort by date - appointments from today onwards (ascending), no_appointment cases at the end
       filteredPatients.sort((a, b) => {
         if (a.status === "no_appointment" && b.status !== "no_appointment") {
           return 1; // a comes after b
@@ -2293,7 +2307,8 @@ exports.getAppointments = async (req, res) => {
         if (a.status !== "no_appointment" && b.status === "no_appointment") {
           return -1; // a comes before b
         }
-        return new Date(b.date) - new Date(a.date);
+        // For appointments, sort by date in ascending order (today onwards)
+        return new Date(a.date) - new Date(b.date);
       });
 
       // Calculate skip for pagination
@@ -2536,12 +2551,18 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
       doctor: doctorId,
     };
 
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      query.date = { $gte: start, $lte: end };
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.date.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.date.$lte = end;
+      }
     }
 
     if (status !== "all") {

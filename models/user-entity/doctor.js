@@ -83,6 +83,7 @@ const doctorSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  shortDescription: String,
   onlineConsultationFee: {
     type: Number,
     default: 0

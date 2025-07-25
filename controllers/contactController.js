@@ -4,7 +4,7 @@ const { authorizeRoles } = require("../middlewares/authenticateRole");
 // Create a new contact message (public access)
 exports.createContact = async (req, res) => {
   try {
-    const { name, email, subject, message ,privacyPolicyAccepted} = req.body;
+    const { name, email, subject, message ,consent} = req.body;
 
     // Validate required fields
     if (!name || !email || !subject || !message) {
@@ -19,7 +19,8 @@ exports.createContact = async (req, res) => {
       email,
       subject,
       message,
-      privacyPolicyAccepted
+
+      privacyPolicyAccepted:consent
     });
 
     res.status(201).json({

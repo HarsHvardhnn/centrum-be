@@ -91,6 +91,7 @@ const addDoctor = async (req, res) => {
       },
       email: emailToSave,
       phone: phoneNumber,
+      shortDescription: doctorData.shortDescription || "",
       specializations: doctorData.specializations,
       password: doctorData.password, // In production, this should be hashed
       role: "doctor", // This triggers the discriminator
@@ -114,6 +115,7 @@ const addDoctor = async (req, res) => {
       qualifications: doctorData.qualifications || [],
       experience: doctorData.experience || 0,
       bio: doctorData.bio || "",
+      shortDescription: doctorData.shortDescription || "",
       onlineConsultationFee: doctorData.onlineConsultationFee || 0,
       offlineConsultationFee: doctorData.offlineConsultationFee || 0,
       weeklyShifts: doctorData.weeklyShifts || defaultShifts, // Use provided shifts or default ones
@@ -138,6 +140,7 @@ const addDoctor = async (req, res) => {
       visitType: "Consultation",
       date: new Date().toISOString().split("T")[0],
       email: newDoctor.email,
+      shortDescription: newDoctor?.shortDescription || "",
       phone: newDoctor.phone,
       qualifications: newDoctor.qualifications,
       specializations: newDoctor.specialization,
@@ -237,6 +240,7 @@ const getAllDoctors = async (req, res) => {
       qualifications: doc.qualifications || [],
       specializations: doc.specialization || [],
       bio: doc?.bio || "",
+      shortDescription: doc?.shortDescription || "",
       consultationFee: doc.consultationFee || 0,
       offlineConsultationFee: doc.offlineConsultationFee || 0,
       onlineConsultationFee: doc.onlineConsultationFee || 0,
@@ -970,6 +974,8 @@ const getDoctorDetails = async (req, res) => {
       });
     }
 
+    console.log("doctor",doctor.shortDescription,doctor)
+
     // Format response object
     const responseDoctor = {
       id: doctor._id,
@@ -982,6 +988,7 @@ const getDoctorDetails = async (req, res) => {
       specializations: doctor.specialization,
       qualifications: doctor.qualifications,
       experience: doctor.experience,
+      shortDescription: doctor?.shortDescription || "",
       bio: doctor.bio,
       onlineConsultationFee: doctor.onlineConsultationFee,
       offlineConsultationFee: doctor.offlineConsultationFee,
@@ -1092,7 +1099,8 @@ const updateDoctor = async (req, res) => {
       'offlineConsultationFee',
       'weeklyShifts',
       'offSchedule',
-      'singleSessionMode'
+      'singleSessionMode',
+      'shortDescription'
     ];
 
     // Filter out fields that are not allowed to be updated
@@ -1133,6 +1141,7 @@ const updateDoctor = async (req, res) => {
       weeklyShifts: updatedDoctor.weeklyShifts,
       offSchedule: updatedDoctor.offSchedule,
       profilePicture: updatedDoctor.profilePicture,
+      shortDescription: updatedDoctor.shortDescription,
       singleSessionMode: updatedDoctor.singleSessionMode,
       signupMethod: updatedDoctor.signupMethod,
       isAvailable: updatedDoctor.isAvailable
@@ -1173,7 +1182,7 @@ const getDoctorBySlug = async (req, res) => {
     // Find doctor by slug
     const doctor = await Doctor.findOne({ slug: slug.toLowerCase() })
       .populate('specialization', 'name description')
-      .select('name specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug createdAt updatedAt ratings averageRating reviews d_id');
+      .select('name specialization shortDescription experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug createdAt updatedAt ratings averageRating reviews d_id');
     
     if (!doctor) {
       return res.status(404).json({
@@ -1217,6 +1226,7 @@ const getDoctorBySlug = async (req, res) => {
         count: doctor.reviews?.length || 0,
         total: doctor.ratings || 0
       },
+      shortDescription: doctor.shortDescription || '',
       doctorServices: doctorServices ?? [],
       createdAt: doctor.createdAt,
       updatedAt: doctor.updatedAt

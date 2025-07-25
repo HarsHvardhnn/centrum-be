@@ -164,20 +164,28 @@ exports.getAllBills = async (req, res) => {
       query.patient = patientId;
     }
 
-    if (startDate && endDate) {
-      query.billedAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
-    } else if (startDate) {
-      query.billedAt = { $gte: new Date(startDate) };
-    } else if (endDate) {
-      query.billedAt = { $lte: new Date(endDate) };
+    // Date filtering - support single dates and date ranges
+    if (startDate || endDate) {
+      query.billedAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        query.billedAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.billedAt.$lte = end;
+      }
     }
 
     if (paymentStatus) {
       query.paymentStatus = paymentStatus;
     }
+
+    // Debug logging (can be removed after testing)
+    console.log("Date filters:", { startDate, endDate });
+    console.log("Final query:", JSON.stringify(query, null, 2));
 
     // Handle search parameter for both patient name and invoiceId
     if (search) {
@@ -225,14 +233,29 @@ exports.getAllBills = async (req, res) => {
         }).select('_id');
 
         // Combine patient search and invoiceId search in the main query
-        query.$or = [
+        // Use $and to combine search with other filters
+        const searchConditions = [
           { patient: { $in: matchingPatients.map(p => p._id) } },
           { invoiceId: { $regex: searchRegex } }
         ];
+        
+        // If we already have other conditions, use $and to combine them
+        if (Object.keys(query).length > 1) {
+          const existingConditions = { ...query };
+          delete existingConditions.$or; // Remove any existing $or
+          query.$and = [
+            existingConditions,
+            { $or: searchConditions }
+          ];
+        } else {
+          query.$or = searchConditions;
+        }
       }
     }
 
     // Get bills with search and filters
+    console.log("Executing query with:", JSON.stringify(query, null, 2));
+    
     let bills = await PatientBill.find(query)
       .populate({
         path: "patient",
@@ -249,6 +272,8 @@ exports.getAllBills = async (req, res) => {
       .sort(sortObject)
       .skip(skip)
       .limit(limit);
+
+    console.log(`Found ${bills.length} bills`);
 
     if (req.user.role == "doctor") {
       bills = bills.filter((bill) => bill.appointment.doctor == req.user.id);
@@ -494,17 +519,22 @@ exports.getBillStatistics = async (req, res) => {
     let { startDate, endDate } = req.query;
 
     const dateFilter = {};
-    if (startDate && endDate) {
-      dateFilter.billedAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
-    } else if (startDate) {
-      dateFilter.billedAt = { $gte: new Date(startDate) };
-    } else if (endDate) {
-      dateFilter.billedAt = { $lte: new Date(endDate) };
+    if (startDate || endDate) {
+      dateFilter.billedAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.billedAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.billedAt.$lte = end;
+      }
     }
 
+    console.log("Statistics date filter:", dateFilter);
+    
     // Get total revenue
     const totalRevenue = await PatientBill.aggregate([
       { $match: { ...dateFilter, isDeleted: false } },
