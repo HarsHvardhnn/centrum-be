@@ -869,7 +869,7 @@ const getNextAvailableDate = async (req, res) => {
           }).sort({ startTime: 1 });
 
           // Generate slots for this day
-          const slotDuration = 30;
+          const slotDuration = 15;
           const slots = [];
           const [shiftStartHour, shiftStartMinute] = shift.startTime.split(":").map(Number);
           const [shiftEndHour, shiftEndMinute] = shift.endTime.split(":").map(Number);
