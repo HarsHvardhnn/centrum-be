@@ -8,6 +8,9 @@ const mongoose = require("mongoose");
 const { generateUniqueSlug } = require("../utils/slugUtils");
 const UserService = require("../models/userServices");
 
+// Import centralized appointment configuration
+const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
+
 // Helper function to generate default shifts
 const generateDefaultShifts = () => {
   const defaultStartTime = "09:00";
@@ -612,8 +615,8 @@ const getAvailableSlots = async (req, res) => {
       })
       .sort({ startTime: 1 });
 
-    // Generate all slots based on shift time (using 30-minute intervals as default)
-    const slotDuration =15; // in minutes
+    // Generate all slots based on shift time (using 15-minute intervals as default)
+    const slotDuration = APPOINTMENT_CONFIG.DEFAULT_SLOT_DURATION; // in minutes
     const slots = [];
 
     // Parse shift times
@@ -869,7 +872,7 @@ const getNextAvailableDate = async (req, res) => {
           }).sort({ startTime: 1 });
 
           // Generate slots for this day
-          const slotDuration = 15;
+          const slotDuration = APPOINTMENT_CONFIG.DEFAULT_SLOT_DURATION;
           const slots = [];
           const [shiftStartHour, shiftStartMinute] = shift.startTime.split(":").map(Number);
           const [shiftEndHour, shiftEndMinute] = shift.endTime.split(":").map(Number);

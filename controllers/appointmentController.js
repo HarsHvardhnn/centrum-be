@@ -22,6 +22,9 @@ const fs = require("fs");
 // Import the standardized document helper from patient controller
 const { createStandardizedDocument } = require("./patientController");
 
+// Import centralized appointment configuration
+const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
+
 // Helper function to check if patient has consented to SMS notifications
 const hasPatientConsentedToSMS = (patientDetails) => {
   if (!patientDetails.consents || patientDetails.consents.length === 0) {
@@ -262,7 +265,7 @@ exports.createAppointment = async (req, res) => {
       lastName,
       phone,
       startTime,
-      consultationType = "offline",
+      consultationType = APPOINTMENT_CONFIG.DEFAULT_CONSULTATION_TYPE,
       message,
       smsConsentAgreed,
       patient: patientId,
@@ -290,7 +293,7 @@ exports.createAppointment = async (req, res) => {
 
     // Calculate appointment dates and times
     const appointmentDate = new Date(`${date}T${time}:00`);
-    const duration = 30; // Default duration in minutes
+    const duration = APPOINTMENT_CONFIG.DEFAULT_DURATION; // Default duration in minutes
     const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
     const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
     const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
@@ -320,7 +323,7 @@ exports.createAppointment = async (req, res) => {
 
     let patient;
     let isNewUser = false;
-    const temporaryPassword = "centrum123";
+    const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
 
     // If patient ID is provided, use that
     if (patientId) {
@@ -953,8 +956,8 @@ exports.rescheduleAppointment = async (req, res) => {
       });
     }
 
-    // Calculate new end time (30 minutes duration by default)
-    const duration = 30; // Default duration in minutes
+    // Calculate new end time (15 minutes duration by default)
+    const duration = APPOINTMENT_CONFIG.DEFAULT_DURATION; // Default duration in minutes
     const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
     const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
     const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");

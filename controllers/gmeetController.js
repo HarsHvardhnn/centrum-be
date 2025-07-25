@@ -10,6 +10,9 @@ const { getCalendarClient } = require("../config/googleCalendar");
 const path = require("path");
 const fs = require("fs");
 const { getMeetingsClient } = require("../utils/zohoMeetings");
+
+// Import centralized appointment configuration
+const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 // const doctor = require("../models/user-entity/doctor");
 // const Service = require("../models/service");
 // const PatientService = require("../models/patientService");
@@ -186,7 +189,7 @@ exports.bookAppointment = async (req, res) => {
 
     // Calculate appointment dates and times
     const appointmentDate = new Date(`${date}T${time}:00`);
-    const duration = 30; // Default duration in minutes
+    const duration = APPOINTMENT_CONFIG.DEFAULT_DURATION; // Default duration in minutes
     const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
     const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
     const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
@@ -230,7 +233,7 @@ exports.bookAppointment = async (req, res) => {
     }
 
     let isNewUser = false;
-    const temporaryPassword = "centrum123";
+    const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
 
     console.log("smsConsentAgreed", smsConsentAgreed);
 
