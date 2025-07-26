@@ -396,7 +396,7 @@ exports.createAppointment = async (req, res) => {
           consents: [
             {
               id: Date.now(),
-              text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
+              text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
               agreed: smsConsentAgreed || false,
             },
           ],
@@ -419,7 +419,7 @@ exports.createAppointment = async (req, res) => {
 
         const smsConsent = {
           id: Date.now(),
-          text: "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS",
+          text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
           agreed: smsConsentAgreed,
         };
 

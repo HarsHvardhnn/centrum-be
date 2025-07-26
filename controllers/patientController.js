@@ -201,7 +201,7 @@ exports.createPatient = async (req, res) => {
       }
     }
 
-    const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
+    const TARGET_TEXT = "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).";
 
     // Initialize consent variables
     let parsedConsents = [];
@@ -1218,13 +1218,15 @@ exports.updatePatient = async (req, res) => {
     }
 
     // Handle consents validation
-    const TARGET_TEXT = "Pacjent wyraża zgodę na otrzymywanie powiadomień SMS";
+    const TARGET_TEXT = "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).";
     let parsedConsents = [];
     let smsConsentAgreed = existingPatient.smsConsentAgreed; // Keep existing value by default
 
     if (consents && consents.length > 0 && consents !== "undefined") {
+      console.log("consents",consents)
       try {
         const parsed = JSON.parse(consents);
+        console.log("parsed",parsed)
         // Validate that parsed result is an array and not empty
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Additional validation to ensure each consent has required properties
@@ -1236,13 +1238,15 @@ exports.updatePatient = async (req, res) => {
             typeof consent.text === 'string' &&
             typeof consent.agreed === 'boolean'
           );
-          
+          console.log("isValidConsent",isValidConsent)
           if (isValidConsent) {
             parsedConsents = parsed;
             // Check for SMS consent
+            console.log("parsedConsents",parsedConsents)
             smsConsentAgreed = parsedConsents.some(
               (consent) => consent.text === TARGET_TEXT && consent.agreed === true
             );
+            console.log("smsConsentAgreed",smsConsentAgreed)
           } else {
             console.warn("Invalid consent format detected");
             parsedConsents = existingPatient.consents || []; // Keep existing consents if invalid
