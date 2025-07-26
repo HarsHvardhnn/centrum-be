@@ -731,6 +731,36 @@ const getAvailableSlots = async (req, res) => {
       });
     }
 
+    // Filter out past slots based on current time
+    const currentTime = new Date();
+    const requestedDateOnly = new Date(requestedDate);
+    
+    // Check if the requested date is today
+    const isToday = currentTime.toDateString() === requestedDateOnly.toDateString();
+    
+    if (isToday) {
+      // Get current time in minutes since midnight
+      const currentHour = currentTime.getHours();
+      const currentMinute = currentTime.getMinutes();
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      
+      // Add buffer time from configuration to allow for booking
+      const bufferMinutes = APPOINTMENT_CONFIG.BOOKING_BUFFER_MINUTES;
+      const minimumBookingTime = currentTimeInMinutes + bufferMinutes;
+      
+      // Filter out slots that are in the past or too close to current time
+      slots.forEach((slot) => {
+        const [slotStartHour, slotStartMinute] = slot.startTime
+          .split(":")
+          .map(Number);
+        const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
+        
+        if (slotStartMinutes < minimumBookingTime) {
+          slot.available = false;
+        }
+      });
+    }
+
     return res.status(200).json({
       success: true,
       data: slots,
@@ -919,6 +949,34 @@ const getNextAvailableDate = async (req, res) => {
               }
             });
           });
+
+          // Filter out past slots if checking today's date
+          const currentTime = new Date();
+          const currentDateOnly = new Date(currentDate);
+          const isToday = currentTime.toDateString() === currentDateOnly.toDateString();
+          
+          if (isToday) {
+            // Get current time in minutes since midnight
+            const currentHour = currentTime.getHours();
+            const currentMinute = currentTime.getMinutes();
+            const currentTimeInMinutes = currentHour * 60 + currentMinute;
+            
+            // Add buffer time from configuration to allow for booking
+            const bufferMinutes = APPOINTMENT_CONFIG.BOOKING_BUFFER_MINUTES;
+            const minimumBookingTime = currentTimeInMinutes + bufferMinutes;
+            
+            // Filter out slots that are in the past or too close to current time
+            slots.forEach((slot) => {
+              const [slotStartHour, slotStartMinute] = slot.startTime
+                .split(":")
+                .map(Number);
+              const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
+              
+              if (slotStartMinutes < minimumBookingTime) {
+                slot.available = false;
+              }
+            });
+          }
 
           // Check if there's at least one available slot
           const hasAvailableSlot = slots.some(slot => slot.available);

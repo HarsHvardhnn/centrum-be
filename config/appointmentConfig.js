@@ -8,6 +8,9 @@ const APPOINTMENT_CONFIG = {
   // Default slot duration in minutes (for available slots generation)
   DEFAULT_SLOT_DURATION: 15,
   
+  // Buffer time in minutes for booking (prevents booking slots too close to current time)
+  BOOKING_BUFFER_MINUTES: 15,
+  
   // Default temporary password for new patients
   DEFAULT_TEMPORARY_PASSWORD: "centrum123",
   
