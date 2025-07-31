@@ -2,6 +2,7 @@
 const User = require("../models/user-entity/user");
 const Doctor = require("../models/user-entity/doctor"); // This is the discriminator model
 const { format, startOfDay, endOfDay } = require("date-fns");
+const { zonedTimeToUtc, toZonedTime } = require("date-fns-tz");
 const appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const mongoose = require("mongoose");
@@ -10,6 +11,9 @@ const UserService = require("../models/userServices");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
+
+// Poland timezone
+const POLAND_TIMEZONE = "Europe/Warsaw";
 
 // Helper function to generate default shifts
 const generateDefaultShifts = () => {
@@ -731,17 +735,18 @@ const getAvailableSlots = async (req, res) => {
       });
     }
 
-    // Filter out past slots based on current time
-    const currentTime = new Date();
+    // Filter out past slots based on current time in Poland timezone
+    const currentTimeUTC = new Date();
+    const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
     const requestedDateOnly = new Date(requestedDate);
     
-    // Check if the requested date is today
-    const isToday = currentTime.toDateString() === requestedDateOnly.toDateString();
+    // Check if the requested date is today (in Poland timezone)
+    const isToday = currentTimeInPoland.toDateString() === requestedDateOnly.toDateString();
     
     if (isToday) {
-      // Get current time in minutes since midnight
-      const currentHour = currentTime.getHours();
-      const currentMinute = currentTime.getMinutes();
+      // Get current time in minutes since midnight (Poland timezone)
+      const currentHour = currentTimeInPoland.getHours();
+      const currentMinute = currentTimeInPoland.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
       
       // Add buffer time from configuration to allow for booking
@@ -950,15 +955,16 @@ const getNextAvailableDate = async (req, res) => {
             });
           });
 
-          // Filter out past slots if checking today's date
-          const currentTime = new Date();
+          // Filter out past slots if checking today's date (in Poland timezone)
+          const currentTimeUTC = new Date();
+          const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
           const currentDateOnly = new Date(currentDate);
-          const isToday = currentTime.toDateString() === currentDateOnly.toDateString();
+          const isToday = currentTimeInPoland.toDateString() === currentDateOnly.toDateString();
           
           if (isToday) {
-            // Get current time in minutes since midnight
-            const currentHour = currentTime.getHours();
-            const currentMinute = currentTime.getMinutes();
+            // Get current time in minutes since midnight (Poland timezone)
+            const currentHour = currentTimeInPoland.getHours();
+            const currentMinute = currentTimeInPoland.getMinutes();
             const currentTimeInMinutes = currentHour * 60 + currentMinute;
             
             // Add buffer time from configuration to allow for booking

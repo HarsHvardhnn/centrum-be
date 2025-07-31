@@ -15,6 +15,7 @@ const Service = require("../models/services");
 const bcrypt = require("bcrypt");
 const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
+const { toZonedTime } = require("date-fns-tz");
 const patient = require("../models/user-entity/patient");
 const path = require("path");
 const fs = require("fs");
@@ -1093,8 +1094,10 @@ exports.getAppointmentsDashboard = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    // Get today's date at 00:00:00
-    const today = new Date();
+    // Get today's date at 00:00:00 in Poland timezone
+    const todayUTC = new Date();
+    const todayInPoland = toZonedTime(todayUTC, "Europe/Warsaw");
+    const today = new Date(todayInPoland);
     today.setHours(0, 0, 0, 0);
 
     // Query only upcoming appointments
@@ -2208,7 +2211,8 @@ exports.getAppointments = async (req, res) => {
       // Helper function to calculate age
       const calculatePatientAge = (dateOfBirth) => {
         if (!dateOfBirth) return null;
-        const today = new Date();
+        const todayUTC = new Date();
+        const today = toZonedTime(todayUTC, "Europe/Warsaw");
         const birthDate = new Date(dateOfBirth);
         let age = today.getFullYear() - birthDate.getFullYear();
         const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -2588,7 +2592,8 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
       // Calculate age
       let age = null;
       if (appointment.patient?.dateOfBirth) {
-        const today = new Date();
+        const todayUTC = new Date();
+        const today = toZonedTime(todayUTC, "Europe/Warsaw");
         const birthDate = new Date(appointment.patient.dateOfBirth);
         age = today.getFullYear() - birthDate.getFullYear();
         const monthDiff = today.getMonth() - birthDate.getMonth();

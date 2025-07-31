@@ -27,32 +27,32 @@ const validateSmsTemplate = [
 // Create SMS Template (Admin only)
 router.post(
   "/",
-  authenticateRole(["admin"]),
+  authenticateRole(["admin","receptionist"]),
   validateSmsTemplate,
   createSmsTemplate
 );
 
 // Get All SMS Templates (Admin only)
-router.get("/", authenticateRole(["admin"]), getAllSmsTemplates);
+router.get("/", authenticateRole(["admin","receptionist"]), getAllSmsTemplates);
 
 // Get Active SMS Templates (Available to all authenticated users)
 router.get("/active", authenticateRole(["admin", "doctor", "receptionist"]), getActiveSmsTemplates);
 
 // Get SMS Template by ID (Admin only)
-router.get("/:id", authenticateRole(["admin"]), getSmsTemplateById);
+router.get("/:id", authenticateRole(["admin","receptionist"]), getSmsTemplateById);
 
 // Update SMS Template (Admin only)
 router.put(
   "/:id",
-  authenticateRole(["admin"]),
+  authenticateRole(["admin","receptionist"]),
   validateSmsTemplate,
   updateSmsTemplate
 );
 
 // Delete SMS Template (Admin only)
-router.delete("/:id", authenticateRole(["admin"]), deleteSmsTemplate);
+router.delete("/:id", authenticateRole(["admin","receptionist"]), deleteSmsTemplate);
 
 // Toggle SMS Template Status (Admin only)
-router.patch("/:id/toggle", authenticateRole(["admin"]), toggleSmsTemplateStatus);
+router.patch("/:id/toggle", authenticateRole(["admin","receptionist"]), toggleSmsTemplateStatus);
 
 module.exports = router; 
