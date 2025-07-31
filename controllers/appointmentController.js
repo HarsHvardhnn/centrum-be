@@ -1087,6 +1087,12 @@ exports.rescheduleAppointment = async (req, res) => {
 
 exports.getAppointmentsDashboard = async (req, res) => {
   try {
+    // Authorization check for doctors - they can only see their own appointments
+    if (req.user && req.user.role === "doctor") {
+      // Add doctor filter to only show appointments for the authenticated doctor
+      req.query.doctor = req.user.id || req.user.d_id;
+    }
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const sortBy = req.query.sortBy || "date";
@@ -1105,6 +1111,11 @@ exports.getAppointmentsDashboard = async (req, res) => {
       status: { $nin: ["cancelled"] },
       date: { $gte: today },
     };
+
+    // Add doctor filter if provided (for doctor authorization)
+    if (req.query.doctor) {
+      filter.doctor = req.query.doctor;
+    }
 
     const appointments = await Appointment.find(filter)
       .sort({ [sortBy]: order })
