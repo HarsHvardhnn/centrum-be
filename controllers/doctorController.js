@@ -852,24 +852,39 @@ const getDoctorProfile = async (req, res) => {
 const getNextAvailableDate = async (req, res) => {
   try {
     const doctorId = req.params.id;
+    console.log(`[DEBUG] Searching for doctor with ID: ${doctorId}`);
+    
     const doctor = await user.findById(doctorId);
     
     if (!doctor) {
+      console.log(`[DEBUG] Doctor not found with ID: ${doctorId}`);
       return res.status(404).json({ 
         success: false, 
         message: "Lekarz nie znaleziony" 
       });
     }
 
-    // Start checking from tomorrow
+    console.log(`[DEBUG] Doctor found:`, {
+      name: doctor.name,
+      weeklyShifts: doctor.weeklyShifts,
+      offSchedule: doctor.offSchedule
+    });
+
+    // Start checking from today
     let currentDate = new Date();
-    currentDate.setDate(currentDate.getDate() + 1);
+    // currentDate.setDate(currentDate.getDate() + 1); // Commented out to start from today
     
     // Maximum number of days to check (e.g., 30 days)
     const maxDaysToCheck = 15;
     let daysChecked = 0;
 
+    console.log(`[DEBUG] Starting search from: ${currentDate.toISOString().split('T')[0]}`);
+    console.log(`[DEBUG] Will check up to ${maxDaysToCheck} days`);
+
     while (daysChecked < maxDaysToCheck) {
+      console.log(`\n[DEBUG] === Day ${daysChecked + 1} ===`);
+      console.log(`[DEBUG] Checking date: ${currentDate.toISOString().split('T')[0]}`);
+      
       // Get English and Polish day names
       const englishDayOfWeek = format(currentDate, "EEEE");
       const dayNameMap = {
@@ -882,20 +897,68 @@ const getNextAvailableDate = async (req, res) => {
         'Sunday': 'Niedziela'
       };
       const polishDayOfWeek = dayNameMap[englishDayOfWeek];
+      
+      console.log(`[DEBUG] Day of week - English: ${englishDayOfWeek}, Polish: ${polishDayOfWeek}`);
 
       // Check if doctor works on this day
       const shift = doctor.weeklyShifts.find(
-        (s) => s.dayOfWeek === englishDayOfWeek || s.dayOfWeek === polishDayOfWeek
+        (s) => (s.dayOfWeek === englishDayOfWeek || s.dayOfWeek === polishDayOfWeek) && (s.status === 'approved' || s.status === 'pending')
       );
 
+      // Also check for pending shifts for debugging
+      const pendingShift = doctor.weeklyShifts.find(
+        (s) => (s.dayOfWeek === englishDayOfWeek || s.dayOfWeek === polishDayOfWeek) && s.status === 'pending'
+      );
+      
+      if (pendingShift && !shift) {
+        console.log(`[DEBUG] Found pending shift but no approved shift for this day:`, pendingShift);
+      }
+
+      console.log(`[DEBUG] Found approved shift:`, shift);
+
       if (shift) {
+        console.log(`[DEBUG] Doctor works on this day. Shift: ${shift.startTime} - ${shift.endTime}`);
+        
         // Check if doctor has any off time on this day
         const offDay = doctor.offSchedule.find(
           (off) => off.date.toISOString().slice(0, 10) === currentDate.toISOString().slice(0, 10)
         );
 
-        // If no off time or off time doesn't cover entire day
-        if (!offDay || offDay.timeRanges.length === 0) {
+        console.log(`[DEBUG] Off day found:`, offDay);
+
+        // Check if off time completely covers the shift
+        let shiftCompletelyCovered = false;
+        if (offDay && offDay.timeRanges.length > 0) {
+          const [shiftStartHour, shiftStartMinute] = shift.startTime.split(":").map(Number);
+          const [shiftEndHour, shiftEndMinute] = shift.endTime.split(":").map(Number);
+          const shiftStartMinutes = shiftStartHour * 60 + shiftStartMinute;
+          const shiftEndMinutes = shiftEndHour * 60 + shiftEndMinute;
+          
+          console.log(`[DEBUG] Shift time in minutes: ${shiftStartMinutes} - ${shiftEndMinutes}`);
+          
+          // Check if any off time range completely covers the shift
+          shiftCompletelyCovered = offDay.timeRanges.some(timeRange => {
+            const [offStartHour, offStartMinute] = timeRange.startTime.split(":").map(Number);
+            const [offEndHour, offEndMinute] = timeRange.endTime.split(":").map(Number);
+            const offStartMinutes = offStartHour * 60 + offStartMinute;
+            const offEndMinutes = offEndHour * 60 + offEndMinute;
+            
+            console.log(`[DEBUG] Off time range: ${offStartMinutes} - ${offEndMinutes}`);
+            
+            // Check if this off time range completely covers the shift
+            const coversShift = offStartMinutes <= shiftStartMinutes && offEndMinutes >= shiftEndMinutes;
+            console.log(`[DEBUG] This off time range covers shift: ${coversShift}`);
+            
+            return coversShift;
+          });
+          
+          console.log(`[DEBUG] Shift completely covered by off time: ${shiftCompletelyCovered}`);
+        }
+
+        // If no off time or off time doesn't completely cover the shift
+        if (!offDay || offDay.timeRanges.length === 0 || !shiftCompletelyCovered) {
+          console.log(`[DEBUG] No off time or off time doesn't completely cover the shift`);
+          
           // Get available slots for this date
           const appointments = await appointment.find({
             doctor: doctorId,
@@ -906,6 +969,11 @@ const getNextAvailableDate = async (req, res) => {
             status: "booked",
           }).sort({ startTime: 1 });
 
+          console.log(`[DEBUG] Found ${appointments.length} existing appointments for this date`);
+          appointments.forEach(app => {
+            console.log(`[DEBUG] Appointment: ${app.startTime} - ${app.endTime}`);
+          });
+
           // Generate slots for this day
           const slotDuration = APPOINTMENT_CONFIG.DEFAULT_SLOT_DURATION;
           const slots = [];
@@ -913,6 +981,9 @@ const getNextAvailableDate = async (req, res) => {
           const [shiftEndHour, shiftEndMinute] = shift.endTime.split(":").map(Number);
           const shiftStartMinutes = shiftStartHour * 60 + shiftStartMinute;
           const shiftEndMinutes = shiftEndHour * 60 + shiftEndMinute;
+
+          console.log(`[DEBUG] Shift time in minutes: ${shiftStartMinutes} - ${shiftEndMinutes}`);
+          console.log(`[DEBUG] Slot duration: ${slotDuration} minutes`);
 
           // Generate all possible slots
           for (let time = shiftStartMinutes; time < shiftEndMinutes; time += slotDuration) {
@@ -933,12 +1004,16 @@ const getNextAvailableDate = async (req, res) => {
             }
           }
 
+          console.log(`[DEBUG] Generated ${slots.length} initial slots`);
+
           // Mark slots as unavailable if they overlap with appointments
           appointments.forEach((appointment) => {
             const [appStartHour, appStartMinute] = appointment.startTime.split(":").map(Number);
             const [appEndHour, appEndMinute] = appointment.endTime.split(":").map(Number);
             const appStartMinutes = appStartHour * 60 + appStartMinute;
             const appEndMinutes = appEndHour * 60 + appEndMinute;
+
+            console.log(`[DEBUG] Checking appointment: ${appStartMinutes} - ${appEndMinutes} minutes`);
 
             slots.forEach((slot) => {
               const [slotStartHour, slotStartMinute] = slot.startTime.split(":").map(Number);
@@ -951,15 +1026,48 @@ const getNextAvailableDate = async (req, res) => {
                 (slotStartMinutes === appStartMinutes && slotEndMinutes === appEndMinutes)
               ) {
                 slot.available = false;
+                console.log(`[DEBUG] Marked slot ${slot.startTime}-${slot.endTime} as unavailable due to appointment overlap`);
               }
             });
           });
+
+          // Mark slots as unavailable if they overlap with off time periods
+          if (offDay && offDay.timeRanges.length > 0) {
+            console.log(`[DEBUG] Checking off time periods against slots`);
+            offDay.timeRanges.forEach((timeRange) => {
+              const [offStartHour, offStartMinute] = timeRange.startTime.split(":").map(Number);
+              const [offEndHour, offEndMinute] = timeRange.endTime.split(":").map(Number);
+              const offStartMinutes = offStartHour * 60 + offStartMinute;
+              const offEndMinutes = offEndHour * 60 + offEndMinute;
+              
+              console.log(`[DEBUG] Off time period: ${timeRange.startTime} - ${timeRange.endTime} (${offStartMinutes} - ${offEndMinutes} minutes)`);
+              
+              slots.forEach((slot) => {
+                const [slotStartHour, slotStartMinute] = slot.startTime.split(":").map(Number);
+                const [slotEndHour, slotEndMinute] = slot.endTime.split(":").map(Number);
+                const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
+                const slotEndMinutes = slotEndHour * 60 + slotEndMinute;
+
+                // Check if slot overlaps with off time period
+                if (
+                  (slotStartMinutes < offEndMinutes && slotEndMinutes > offStartMinutes) ||
+                  (slotStartMinutes === offStartMinutes && slotEndMinutes === offEndMinutes)
+                ) {
+                  slot.available = false;
+                  console.log(`[DEBUG] Marked slot ${slot.startTime}-${slot.endTime} as unavailable due to off time overlap`);
+                }
+              });
+            });
+          }
 
           // Filter out past slots if checking today's date (in Poland timezone)
           const currentTimeUTC = new Date();
           const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
           const currentDateOnly = new Date(currentDate);
           const isToday = currentTimeInPoland.toDateString() === currentDateOnly.toDateString();
+          
+          console.log(`[DEBUG] Is today: ${isToday}`);
+          console.log(`[DEBUG] Current time in Poland: ${currentTimeInPoland.toISOString()}`);
           
           if (isToday) {
             // Get current time in minutes since midnight (Poland timezone)
@@ -971,6 +1079,10 @@ const getNextAvailableDate = async (req, res) => {
             const bufferMinutes = APPOINTMENT_CONFIG.BOOKING_BUFFER_MINUTES;
             const minimumBookingTime = currentTimeInMinutes + bufferMinutes;
             
+            console.log(`[DEBUG] Current time in minutes: ${currentTimeInMinutes}`);
+            console.log(`[DEBUG] Buffer minutes: ${bufferMinutes}`);
+            console.log(`[DEBUG] Minimum booking time: ${minimumBookingTime}`);
+            
             // Filter out slots that are in the past or too close to current time
             slots.forEach((slot) => {
               const [slotStartHour, slotStartMinute] = slot.startTime
@@ -980,22 +1092,36 @@ const getNextAvailableDate = async (req, res) => {
               
               if (slotStartMinutes < minimumBookingTime) {
                 slot.available = false;
+                console.log(`[DEBUG] Marked slot ${slot.startTime}-${slot.endTime} as unavailable (past time)`);
               }
             });
           }
 
           // Check if there's at least one available slot
-          const hasAvailableSlot = slots.some(slot => slot.available);
+          const availableSlots = slots.filter(slot => slot.available);
+          console.log(`[DEBUG] Available slots after all checks: ${availableSlots.length}`);
+          availableSlots.forEach(slot => {
+            console.log(`[DEBUG] Available slot: ${slot.startTime} - ${slot.endTime}`);
+          });
+
+          const hasAvailableSlot = availableSlots.length > 0;
           if (hasAvailableSlot) {
+            console.log(`[DEBUG] Found available date: ${currentDate.toISOString().split('T')[0]}`);
             return res.status(200).json({
               success: true,
               data: {
                 nextAvailableDate: currentDate.toISOString().split('T')[0],
-                availableSlots: slots.filter(slot => slot.available)
+                availableSlots: availableSlots
               }
             });
+          } else {
+            console.log(`[DEBUG] No available slots for this date`);
           }
+        } else {
+          console.log(`[DEBUG] Doctor has off time on this date`);
         }
+      } else {
+        console.log(`[DEBUG] Doctor doesn't work on this day`);
       }
 
       // Move to next day
@@ -1004,6 +1130,7 @@ const getNextAvailableDate = async (req, res) => {
     }
 
     // If no available date found within the search period
+    console.log(`[DEBUG] No available date found within ${maxDaysToCheck} days`);
     return res.status(200).json({
       success: true,
       message: "Nie znaleziono dostępnych dat w ciągu 30 dni",

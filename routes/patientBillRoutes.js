@@ -41,7 +41,7 @@ router.get(
 // Update bill payment status
 router.patch(
   "/:billId/payment-status",
-  authorizeRoles(["admin", "receptionist"]),
+  authorizeRoles(["admin", "receptionist","doctor"]),
   patientBillController.updateBillPaymentStatus
 );
 
@@ -62,7 +62,7 @@ router.get(
 // Update bill details
 router.put(
   "/:billId",
-  authorizeRoles(["admin", "receptionist"]),
+  authorizeRoles(["admin", "receptionist","doctor"]),
   patientBillController.updateBillDetails
 );
 
