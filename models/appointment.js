@@ -150,6 +150,19 @@ const appointmentSchema = new mongoose.Schema(
       type: Number, 
       required: true,
     },
+    customDuration: {
+      type: Number,
+      default: null
+    },
+    isBackdated: {
+      type: Boolean,
+      default: false
+    },
+    createdBy: {
+      type: String,
+      enum: ["receptionist", "online", "doctor"],
+      default: "online"
+    },
     checkedIn:{
       type:Boolean,
       default:false

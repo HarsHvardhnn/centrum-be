@@ -26,6 +26,23 @@ router.post(
   appointmentController.createAppointment
 );
 
+// @route   POST /api/appointments/reception
+// @desc    Create a new appointment with reception override
+// @access  Private (receptionist, admin)
+router.post(
+  "/reception",
+  authorizeRoles(["receptionist", "admin"]),
+  [
+    [
+      check("doctorId", "Doctor ID is required").notEmpty(),
+      check("patientId", "Patient ID is required").notEmpty(),
+      check("date", "Valid date is required").isDate(),
+      check("startTime", "Start time is required").notEmpty(),
+    ],
+  ],
+  appointmentController.createReceptionAppointment
+);
+
 // @route   GET /api/appointments/doctor/:doctorId
 // @desc    Get all appointments for a doctor
 // @access  Private

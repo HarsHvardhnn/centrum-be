@@ -254,7 +254,7 @@ Thank you for choosing our services - Regards,Centrum Medyczne.
   }
 };
 
-// Create appointment
+// Create appointment with reception override capability
 exports.createAppointment = async (req, res) => {
   try {
     const {
@@ -540,6 +540,193 @@ exports.createAppointment = async (req, res) => {
     });
   } catch (error) {
     console.error("Wystąpił błąd podczas tworzenia wizyty:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się utworzyć wizyty",
+      error: error.message,
+    });
+  }
+};
+
+// Create appointment with reception override (for receptionists and admins)
+exports.createReceptionAppointment = async (req, res) => {
+  try {
+    const {
+      date,
+      doctorId,
+      patientId,
+      startTime,
+      endTime,
+      duration,
+      consultationType = "offline",
+      notes,
+      isBackdated = false,
+      customDuration = null
+    } = req.body;
+
+    // Validate required fields
+    if (!date || !doctorId || !patientId || !startTime) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: date, doctorId, patientId, startTime"
+      });
+    }
+
+    // Check if user has permission to create reception appointments
+    if (!["receptionist", "admin"].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only receptionists and admins can create reception appointments"
+      });
+    }
+
+    // Find the doctor
+    const doctorDetails = await user.findById(doctorId);
+    if (!doctorDetails || doctorDetails.role !== "doctor") {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found"
+      });
+    }
+
+    // Find the patient
+    const patient = await user.findById(patientId);
+    if (!patient || patient.role !== "patient") {
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found"
+      });
+    }
+
+    // Calculate appointment dates and times
+    const appointmentDate = new Date(`${date}T${startTime}:00`);
+    
+    // Use custom duration if provided, otherwise use default
+    const appointmentDuration = customDuration || APPOINTMENT_CONFIG.DEFAULT_DURATION;
+    
+    // Calculate end time
+    let calculatedEndTime = endTime;
+    if (!endTime) {
+      const endTimeDate = new Date(appointmentDate.getTime() + appointmentDuration * 60000);
+      const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
+      const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
+      calculatedEndTime = `${endTimeHour}:${endTimeMinute}`;
+    }
+
+    // For backdated appointments, skip time validation
+    if (!isBackdated) {
+      // Check for existing appointments only for future appointments
+      const startOfDay = new Date(appointmentDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(appointmentDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const existingAppointment = await Appointment.findOne({
+        doctor: doctorId,
+        date: { $gte: startOfDay, $lte: endOfDay },
+        startTime: startTime,
+        status: "booked",
+      });
+
+      if (existingAppointment) {
+        return res.status(409).json({
+          success: false,
+          message: "Jest już umówiona wizyta u tego lekarza w tym czasie.",
+          conflict: true,
+        });
+      }
+    }
+
+    // Create appointment
+    const appointment = new Appointment({
+      doctor: doctorId,
+      patient: patient._id,
+      bookedBy: req.user.id, // Receptionist/admin who created the appointment
+      date: appointmentDate,
+      startTime: startTime,
+      endTime: calculatedEndTime,
+      duration: appointmentDuration,
+      customDuration: customDuration,
+      isBackdated: isBackdated,
+      createdBy: "receptionist",
+      mode: consultationType.toLowerCase(),
+      notes: notes || "",
+    });
+
+    await appointment.save();
+
+    // Send email notification if patient has email
+    let emailSent = false;
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    
+    if (emailRegex.test(patient.email) && patient.email && !isBackdated) {
+      try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+
+        const emailData = {
+          patientName: `${patient.name.first} ${patient.name.last}`,
+          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+          date: formattedDate,
+          time: `${startTime} - ${calculatedEndTime}`,
+          department: doctorDetails.specialization || "General",
+          notes: notes || "",
+          mode: consultationType.toLowerCase(),
+          isNewUser: false,
+          temporaryPassword: null,
+        };
+
+        await sendEmail({
+          to: patient.email,
+          subject: "Potwierdzenie Wizyty",
+          html: createAppointmentEmailHtml(emailData),
+          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została zaplanowana na ${formattedDate} o godz ${startTime}.`,
+        });
+
+        console.log(`Reception appointment confirmation email sent to ${patient.email}`);
+        emailSent = true;
+      } catch (emailError) {
+        console.error("Failed to send reception appointment email:", emailError);
+      }
+    }
+
+    // Send SMS notification if patient has consented
+    if (patient.smsConsentAgreed && !isBackdated) {
+      try {
+        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const message = appointment.mode === "online"
+          ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+          : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+
+        const batchId = uuidv4();
+        await MessageReceipt.create({
+          content: message,
+          batchId,
+          recipient: {
+            userId: patient._id.toString(),
+            phone: patient.phone,
+          },
+          status: "PENDING",
+        });
+
+        await sendSMS(patient.phone, message);
+      } catch (smsError) {
+        console.error("Wystąpił błąd podczas wysyłania powiadomienia SMS:", smsError);
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Wizyta została umówiona pomyślnie przez recepcję",
+      data: {
+        appointment,
+        emailSent,
+        isBackdated,
+        createdBy: "receptionist"
+      },
+    });
+  } catch (error) {
+    console.error("Wystąpił błąd podczas tworzenia wizyty przez recepcję:", error);
     res.status(500).json({
       success: false,
       message: "Nie udało się utworzyć wizyty",

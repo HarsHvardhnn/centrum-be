@@ -1,0 +1,550 @@
+{
+	"info": {
+		"_postman_id": "doctor-schedule-management",
+		"name": "Doctor Schedule Management",
+		"description": "Complete Postman collection for managing doctor schedules, exceptions, and appointments with reception override capabilities",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login (Get Token)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"your_password\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Schedule Management",
+			"item": [
+				{
+					"name": "Create/Update Daily Schedule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"date\": \"2024-01-15\",\n  \"timeBlocks\": [\n    {\n      \"startTime\": \"09:00\",\n      \"endTime\": \"12:00\",\n      \"isActive\": true\n    },\n    {\n      \"startTime\": \"14:00\",\n      \"endTime\": \"18:00\",\n      \"isActive\": true\n    }\n  ],\n  \"isActive\": true,\n  \"notes\": \"Regular Monday schedule\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/schedule",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"schedule"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Doctor Schedule",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/schedule/schedule/{{doctor_id}}?startDate=2024-01-01&endDate=2024-01-31",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"schedule",
+								"{{doctor_id}}"
+							],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "endDate",
+									"value": "2024-01-31"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Daily Schedule",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/schedule/schedule/{{doctor_id}}/2024-01-15",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"schedule",
+								"{{doctor_id}}",
+								"2024-01-15"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Schedule Exceptions",
+			"item": [
+				{
+					"name": "Create Full Day Exception",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"date\": \"2024-01-20\",\n  \"type\": \"holiday\",\n  \"title\": \"New Year Holiday\",\n  \"description\": \"Clinic closed for New Year\",\n  \"isFullDay\": true,\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/exception",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"exception"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Partial Day Exception",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"date\": \"2024-01-22\",\n  \"type\": \"meeting\",\n  \"title\": \"Staff Meeting\",\n  \"description\": \"Monthly staff meeting\",\n  \"isFullDay\": false,\n  \"timeRanges\": [\n    {\n      \"startTime\": \"14:00\",\n      \"endTime\": \"16:00\"\n    }\n  ],\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/exception",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"exception"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Doctor Exceptions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/schedule/exception/{{doctor_id}}?startDate=2024-01-01&endDate=2024-01-31",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"exception",
+								"{{doctor_id}}"
+							],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "endDate",
+									"value": "2024-01-31"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Exception",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/schedule/exception/{{exception_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"exception",
+								"{{exception_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Appointment Management",
+			"item": [
+				{
+					"name": "Create Reception Appointment (Override)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"patientId\": \"{{patient_id}}\",\n  \"startTime\": \"2024-01-15T10:30:00.000Z\",\n  \"endTime\": \"2024-01-15T11:00:00.000Z\",\n  \"duration\": 30,\n  \"consultationType\": \"consultation\",\n  \"notes\": \"Urgent consultation\",\n  \"isBackdated\": false,\n  \"customDuration\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments/reception",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments",
+								"reception"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Backdated Appointment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"patientId\": \"{{patient_id}}\",\n  \"startTime\": \"2024-01-10T09:00:00.000Z\",\n  \"endTime\": \"2024-01-10T09:30:00.000Z\",\n  \"duration\": 30,\n  \"consultationType\": \"consultation\",\n  \"notes\": \"Backdated appointment for records\",\n  \"isBackdated\": true,\n  \"customDuration\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments/reception",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments",
+								"reception"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Appointments Dashboard",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/appointments/dashboard?page=1&limit=10&status=confirmed&date=2024-01-15",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments",
+								"dashboard"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "status",
+									"value": "confirmed"
+								},
+								{
+									"key": "date",
+									"value": "2024-01-15"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Available Slots",
+			"item": [
+				{
+					"name": "Get Available Slots",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/available-slots/{{doctor_id}}?date=2024-01-15",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"available-slots",
+								"{{doctor_id}}"
+							],
+							"query": [
+								{
+									"key": "date",
+									"value": "2024-01-15"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Next Available Date",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/next-available/{{doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"next-available",
+								"{{doctor_id}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Bulk Operations",
+			"item": [
+				{
+					"name": "Create Weekly Schedule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"startDate\": \"2024-01-15\",\n  \"endDate\": \"2024-01-21\",\n  \"weeklyPattern\": {\n    \"monday\": {\n      \"timeBlocks\": [\n        {\"startTime\": \"09:00\", \"endTime\": \"12:00\", \"isActive\": true},\n        {\"startTime\": \"14:00\", \"endTime\": \"18:00\", \"isActive\": true}\n      ]\n    },\n    \"tuesday\": {\n      \"timeBlocks\": [\n        {\"startTime\": \"09:00\", \"endTime\": \"12:00\", \"isActive\": true},\n        {\"startTime\": \"14:00\", \"endTime\": \"18:00\", \"isActive\": true}\n      ]\n    },\n    \"wednesday\": {\n      \"timeBlocks\": [\n        {\"startTime\": \"09:00\", \"endTime\": \"12:00\", \"isActive\": true}\n      ]\n    },\n    \"thursday\": {\n      \"timeBlocks\": [\n        {\"startTime\": \"09:00\", \"endTime\": \"12:00\", \"isActive\": true},\n        {\"startTime\": \"14:00\", \"endTime\": \"18:00\", \"isActive\": true}\n      ]\n    },\n    \"friday\": {\n      \"timeBlocks\": [\n        {\"startTime\": \"09:00\", \"endTime\": \"12:00\", \"isActive\": true}\n      ]\n    },\n    \"saturday\": {\n      \"timeBlocks\": []\n    },\n    \"sunday\": {\n      \"timeBlocks\": []\n    }\n  },\n  \"notes\": \"Weekly schedule for January 15-21, 2024\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/bulk-schedule",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"bulk-schedule"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Holiday Exception",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"startDate\": \"2024-01-20\",\n  \"endDate\": \"2024-01-22\",\n  \"type\": \"holiday\",\n  \"title\": \"New Year Holiday\",\n  \"description\": \"Clinic closed for New Year celebrations\",\n  \"isFullDay\": true,\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/bulk-exception",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"bulk-exception"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "doctor_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "patient_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "exception_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+} 
