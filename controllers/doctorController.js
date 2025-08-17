@@ -1047,7 +1047,7 @@ const getNextAvailableDate = async (req, res) => {
     let currentDate = new Date();
     
     // Maximum number of days to check
-    const maxDaysToCheck = 15;
+    const maxDaysToCheck = 30;
     let daysChecked = 0;
 
     console.log(`[DEBUG] Starting search from: ${currentDate.toISOString().split('T')[0]}`);

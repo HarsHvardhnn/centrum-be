@@ -42,6 +42,18 @@ const patientSchema = new mongoose.Schema({
   allergies: String,
   nationality: String,
   preferredLanguage: String,
+  
+  // Additional contact person fields
+  contactPerson1Name: String,
+  contactPerson1PhonePrefix: String,
+  contactPerson1Phone: String,
+  contactPerson1Address: String,
+  contactPerson1Pesel: String,
+  contactPerson2Name: String,
+  contactPerson2PhonePrefix: String,
+  contactPerson2Phone: String,
+  contactPerson2Address: String,
+  contactPerson2Pesel: String,
 
   // Contact and address
   address: String,

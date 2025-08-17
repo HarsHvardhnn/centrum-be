@@ -156,6 +156,17 @@ exports.createPatient = async (req, res) => {
       allergies,
       nationality,
       preferredLanguage,
+      // Additional contact person fields
+      contactPerson1Name,
+      contactPerson1PhonePrefix,
+      contactPerson1Phone,
+      contactPerson1Address,
+      contactPerson1Pesel,
+      contactPerson2Name,
+      contactPerson2PhonePrefix,
+      contactPerson2Phone,
+      contactPerson2Address,
+      contactPerson2Pesel,
     } = req.body;
 
     // console.log("req.body is ",dateOfBirth)
@@ -317,6 +328,17 @@ exports.createPatient = async (req, res) => {
       allergies,
       nationality,
       preferredLanguage,
+      // Additional contact person fields
+      contactPerson1Name,
+      contactPerson1PhonePrefix,
+      contactPerson1Phone,
+      contactPerson1Address,
+      contactPerson1Pesel,
+      contactPerson2Name,
+      contactPerson2PhonePrefix,
+      contactPerson2Phone,
+      contactPerson2Address,
+      contactPerson2Pesel,
     });
 
     console.log("Before saving - consents:", newPatient.consents);
@@ -849,6 +871,18 @@ exports.getPatientDetails = async (req, res) => {
       allergies: patient.allergies|| "",
       nationality: patient.nationality || "",
       preferredLanguage: patient.preferredLanguage || "",
+      govtId: patient?.govtId || "",
+      // Additional contact person fields
+      contactPerson1Name: patient?.contactPerson1Name || "",
+      contactPerson1PhonePrefix: patient?.contactPerson1PhonePrefix || "",
+      contactPerson1Phone: patient?.contactPerson1Phone || "",
+      contactPerson1Address: patient?.contactPerson1Address || "",
+      contactPerson1Pesel: patient?.contactPerson1Pesel || "",
+      contactPerson2Name: patient?.contactPerson2Name || "",
+      contactPerson2PhonePrefix: patient?.contactPerson2PhonePrefix || "",
+      contactPerson2Phone: patient?.contactPerson2Phone || "",
+      contactPerson2Address: patient?.contactPerson2Address || "",
+      contactPerson2Pesel: patient?.contactPerson2Pesel || "",
     };
 
     // Get latest consultation if exists
@@ -1167,6 +1201,17 @@ exports.updatePatient = async (req, res) => {
       allergies,
       nationality,
       preferredLanguage,
+      // Additional contact person fields
+      contactPerson1Name,
+      contactPerson1PhonePrefix,
+      contactPerson1Phone,
+      contactPerson1Address,
+      contactPerson1Pesel,
+      contactPerson2Name,
+      contactPerson2PhonePrefix,
+      contactPerson2Phone,
+      contactPerson2Address,
+      contactPerson2Pesel,
     } = req.body;
 
     // Remove leading zeros from phone number if provided
@@ -1332,6 +1377,17 @@ exports.updatePatient = async (req, res) => {
       ...(allergies !== undefined && allergies !== "undefined" && { allergies }),
       ...(nationality !== undefined && nationality !== "undefined" && { nationality }),
       ...(preferredLanguage !== undefined && preferredLanguage !== "undefined" && { preferredLanguage }),
+      // Additional contact person fields
+      ...(contactPerson1Name !== undefined && contactPerson1Name !== "undefined" && { contactPerson1Name }),
+      ...(contactPerson1PhonePrefix !== undefined && contactPerson1PhonePrefix !== "undefined" && { contactPerson1PhonePrefix }),
+      ...(contactPerson1Phone !== undefined && contactPerson1Phone !== "undefined" && { contactPerson1Phone }),
+      ...(contactPerson1Address !== undefined && contactPerson1Address !== "undefined" && { contactPerson1Address }),
+      ...(contactPerson1Pesel !== undefined && contactPerson1Pesel !== "undefined" && { contactPerson1Pesel }),
+      ...(contactPerson2Name !== undefined && contactPerson2Name !== "undefined" && { contactPerson2Name }),
+      ...(contactPerson2PhonePrefix !== undefined && contactPerson2PhonePrefix !== "undefined" && { contactPerson2PhonePrefix }),
+      ...(contactPerson2Phone !== undefined && contactPerson2Phone !== "undefined" && { contactPerson2Phone }),
+      ...(contactPerson2Address !== undefined && contactPerson2Address !== "undefined" && { contactPerson2Address }),
+      ...(contactPerson2Pesel !== undefined && contactPerson2Pesel !== "undefined" && { contactPerson2Pesel }),
     };
 
     // Handle consents update - only if we have valid parsed consents

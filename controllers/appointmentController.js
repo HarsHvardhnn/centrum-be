@@ -986,7 +986,16 @@ exports.getAppointmentsByPatient = async (req, res) => {
 
     const appointments = await Appointment.find({ patient: patientId })
       .populate("doctor", "name email")
-      .sort({ date: -1, startTime: 1 });
+      .sort({ date: -1, startTime: 1 })
+      .lean();
+
+    // Manually fetch patient data to get govtId
+    const patientData = await patient.findById(patientId).lean();
+
+    // Add govtId to each appointment without changing the structure
+    appointments.forEach(appointment => {
+      appointment.govtId = patientData?.govtId || null;
+    });
 
     res.status(200).json({
       success: true,
@@ -1912,7 +1921,7 @@ exports.deleteReport = async (req, res) => {
 exports.getAppointmentDetails = async (req, res) => {
   try {
     const { id } = req.params;
-
+   console.log("hit")
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -1920,12 +1929,10 @@ exports.getAppointmentDetails = async (req, res) => {
       });
     }
 
+    // Get appointment with basic population
     const appointment = await Appointment.findById(id)
       .populate("doctor", "name.first name.last")
-      .populate(
-        "patient",
-        "name.first name.last patientId age dateOfBirth height weight bloodPressure temperature riskStatus treatmentStatus roomNumber"
-      )
+      .populate("patient", "name.first name.last")
       .lean();
 
     if (!appointment) {
@@ -1935,42 +1942,68 @@ exports.getAppointmentDetails = async (req, res) => {
       });
     }
 
+    // Manually fetch patient data to get govtId and other fields
+    const patientData = await patient.findById(appointment.patient._id).lean();
+    
+    // Create appointmentData object with all required fields
+    const appointmentData = {
+      ...appointment,
+      patient: {
+        _id: appointment.patient._id,
+        name: appointment.patient.name,
+        patientId: patientData?.patientId || null,
+        age: patientData?.age || null,
+        dateOfBirth: patientData?.dateOfBirth || null,
+        height: patientData?.height || null,
+        weight: patientData?.weight || null,
+        bloodPressure: patientData?.bloodPressure || null,
+        temperature: patientData?.temperature || null,
+        riskStatus: patientData?.riskStatus || null,
+        treatmentStatus: patientData?.treatmentStatus || null,
+        roomNumber: patientData?.roomNumber || null,
+        govtId: patientData?.govtId || null
+      }
+    };
+
+    // appointmentData is already defined above, no need to redeclare
+
+    console.log(appointmentData);
     // Add doctor name to consultation
-    if (appointment.consultation) {
-      appointment.consultation.consultationDoctor = `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
+    if (appointmentData.consultation) {
+      appointmentData.consultation.consultationDoctor = `${appointmentData.doctor.name.first} ${appointmentData.doctor.name.last}`;
 
       // Ensure consultation fields exist
-      appointment.consultation.interview =
-        appointment.consultation.interview || "";
-      appointment.consultation.physicalExamination =
-        appointment.consultation.physicalExamination || "";
-      appointment.consultation.treatment =
-        appointment.consultation.treatment || "";
-      appointment.consultation.recommendations =
-        appointment.consultation.recommendations || "";
+      appointmentData.consultation.interview =
+        appointmentData.consultation.interview || "";
+      appointmentData.consultation.physicalExamination =
+        appointmentData.consultation.physicalExamination || "";
+      appointmentData.consultation.treatment =
+        appointmentData.consultation.treatment || "";
+      appointmentData.consultation.recommendations =
+        appointmentData.consultation.recommendations || "";
 
       // Add appointment start time to consultation data
-      appointment.consultation.time = appointment.startTime || "";
+      appointmentData.consultation.time = appointmentData.startTime || "";
 
       // Use appointment.date as fallback for consultationDate if it doesn't exist or is null
-      if (!appointment.consultation.consultationDate) {
-        appointment.consultation.consultationDate = appointment.date;
+      if (!appointmentData.consultation.consultationDate) {
+        appointmentData.consultation.consultationDate = appointmentData.date;
       }
     } else {
-      appointment.consultation = {
-        consultationDoctor: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
+      appointmentData.consultation = {
+        consultationDoctor: `${appointmentData.doctor.name.first} ${appointmentData.doctor.name.last}`,
         interview: "",
         physicalExamination: "",
         treatment: "",
         recommendations: "",
-        time: appointment.startTime || "",
-        consultationDate: appointment.date,
+        time: appointmentData.startTime || "",
+        consultationDate: appointmentData.date,
       };
     }
 
     // Format reports if they exist
-    if (appointment.reports && appointment.reports.length > 0) {
-      appointment.reports = appointment.reports.map((report) => ({
+    if (appointmentData.reports && appointmentData.reports.length > 0) {
+      appointmentData.reports = appointmentData.reports.map((report) => ({
         ...report,
         uploadedAt: report.uploadedAt || new Date(),
         displayName: report.name || "Unnamed Report",
@@ -1978,12 +2011,12 @@ exports.getAppointmentDetails = async (req, res) => {
         type: report.fileType || "pdf",
       }));
     } else {
-      appointment.reports = [];
+      appointmentData.reports = [];
     }
 
     res.status(200).json({
       success: true,
-      data: appointment,
+      data: appointmentData,
     });
   } catch (error) {
     console.error("Error fetching appointment:", error);
