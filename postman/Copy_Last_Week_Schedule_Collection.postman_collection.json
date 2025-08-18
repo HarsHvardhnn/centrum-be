@@ -1,0 +1,503 @@
+{
+	"info": {
+		"_postman_id": "copy-last-week-schedule-collection",
+		"name": "Copy Last Week Schedule API",
+		"description": "Comprehensive collection for testing the Copy Last Week Schedule functionality. This collection includes all endpoints for copying doctor schedules from the previous week to the current week.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "copy-last-week-schedule"
+	},
+	"item": [
+		{
+			"name": "Doctor Convenience Endpoint",
+			"item": [
+				{
+					"name": "Copy My Schedule (Doctor)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-last-week",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-last-week"
+							]
+						},
+						"description": "Simple endpoint for doctors to copy their own schedule from last week to current week. No request body needed - uses authenticated user's ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy Specific Doctor Schedule (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-last-week?doctorId={{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-last-week"
+							],
+							"query": [
+								{
+									"key": "doctorId",
+									"value": "{{test_doctor_id}}",
+									"description": "ID of the doctor whose schedule to copy"
+								}
+							]
+						},
+						"description": "Admin can copy any doctor's schedule by specifying the doctorId query parameter."
+					},
+					"response": []
+				}
+			],
+			"description": "Simple endpoints for doctors to copy their own schedules. These endpoints automatically use the authenticated user's ID."
+		},
+		{
+			"name": "Schedule Advanced Endpoint",
+			"item": [
+				{
+					"name": "Copy to Current Week",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-last-week/{{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-last-week",
+								"{{test_doctor_id}}"
+							]
+						},
+						"description": "Advanced endpoint to copy a doctor's schedule from last week to current week. Uses path parameter for doctor ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy to Specific Target Week",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"targetWeekStart\": \"{{next_week_monday}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-last-week/{{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-last-week",
+								"{{test_doctor_id}}"
+							]
+						},
+						"description": "Copy schedule to a specific target week instead of current week. The targetWeekStart should be a Monday date."
+					},
+					"response": []
+				}
+			],
+			"description": "Advanced endpoints with more options for copying schedules, including target week specification."
+		},
+		{
+			"name": "Permission Tests",
+			"item": [
+				{
+					"name": "Doctor Copying Another Doctor's Schedule (Should Fail)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-last-week/{{other_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-last-week",
+								"{{other_doctor_id}}"
+							]
+						},
+						"description": "Test that a doctor cannot copy another doctor's schedule. This should return a 403 Forbidden error."
+					},
+					"response": []
+				},
+				{
+					"name": "Receptionist Copying Doctor Schedule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-last-week/{{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-last-week",
+								"{{test_doctor_id}}"
+							]
+						},
+						"description": "Test that a receptionist can copy any doctor's schedule. This should succeed."
+					},
+					"response": []
+				}
+			],
+			"description": "Tests for various permission scenarios to ensure proper access control."
+		},
+		{
+			"name": "Error Scenarios",
+			"item": [
+				{
+					"name": "Copy Schedule for Non-Existent Doctor",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-last-week/{{invalid_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-last-week",
+								"{{invalid_doctor_id}}"
+							]
+						},
+						"description": "Test copying schedule for a non-existent doctor. This should return a 404 Not Found error."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy Schedule Without Authentication",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-last-week",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-last-week"
+							]
+						},
+						"description": "Test copying schedule without authentication. This should return a 401 Unauthorized error."
+					},
+					"response": []
+				}
+			],
+			"description": "Tests for various error scenarios to ensure proper error handling."
+		},
+		{
+			"name": "Supporting Endpoints",
+			"item": [
+				{
+					"name": "Get Doctor Schedule",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/schedule/schedule/{{test_doctor_id}}?startDate={{current_week_start}}&endDate={{current_week_end}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"schedule",
+								"{{test_doctor_id}}"
+							],
+							"query": [
+								{
+									"key": "startDate",
+									"value": "{{current_week_start}}",
+									"description": "Start date of the week to view"
+								},
+								{
+									"key": "endDate",
+									"value": "{{current_week_end}}",
+									"description": "End date of the week to view"
+								}
+							]
+						},
+						"description": "Get a doctor's schedule for a specific date range to verify the copied schedules."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Weekly Shifts (Legacy)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/shifts/?doctorId={{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"shifts",
+								""
+							],
+							"query": [
+								{
+									"key": "doctorId",
+									"value": "{{test_doctor_id}}",
+									"description": "ID of the doctor"
+								}
+							]
+						},
+						"description": "Get weekly shifts in legacy format to verify backward compatibility."
+					},
+					"response": []
+				}
+			],
+			"description": "Supporting endpoints to verify the copied schedules and test backward compatibility."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Auto-calculate dates for testing",
+					"const now = new Date();",
+					"",
+					"// Current week (Monday to Sunday)",
+					"const currentWeekStart = new Date(now);",
+					"currentWeekStart.setDate(now.getDate() - now.getDay() + 1); // Monday",
+					"const currentWeekEnd = new Date(currentWeekStart);",
+					"currentWeekEnd.setDate(currentWeekStart.getDate() + 6); // Sunday",
+					"",
+					"// Next week Monday",
+					"const nextWeekMonday = new Date(currentWeekStart);",
+					"nextWeekMonday.setDate(currentWeekStart.getDate() + 7);",
+					"",
+					"// Format dates as YYYY-MM-DD",
+					"pm.environment.set('current_week_start', currentWeekStart.toISOString().split('T')[0]);",
+					"pm.environment.set('current_week_end', currentWeekEnd.toISOString().split('T')[0]);",
+					"pm.environment.set('next_week_monday', nextWeekMonday.toISOString().split('T')[0]);",
+					"",
+					"console.log('Current week start:', pm.environment.get('current_week_start'));",
+					"console.log('Current week end:', pm.environment.get('current_week_end'));",
+					"console.log('Next week Monday:', pm.environment.get('next_week_monday'));"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string",
+			"description": "Base URL of your API server"
+		},
+		{
+			"key": "doctor_token",
+			"value": "your_doctor_jwt_token_here",
+			"type": "string",
+			"description": "JWT token for a doctor user"
+		},
+		{
+			"key": "admin_token",
+			"value": "your_admin_jwt_token_here",
+			"type": "string",
+			"description": "JWT token for an admin user"
+		},
+		{
+			"key": "receptionist_token",
+			"value": "your_receptionist_jwt_token_here",
+			"type": "string",
+			"description": "JWT token for a receptionist user"
+		},
+		{
+			"key": "test_doctor_id",
+			"value": "your_test_doctor_id_here",
+			"type": "string",
+			"description": "ID of a test doctor for testing"
+		},
+		{
+			"key": "other_doctor_id",
+			"value": "another_doctor_id_here",
+			"type": "string",
+			"description": "ID of another doctor for permission testing"
+		},
+		{
+			"key": "invalid_doctor_id",
+			"value": "507f1f77bcf86cd799439011",
+			"type": "string",
+			"description": "Invalid MongoDB ObjectId for error testing"
+		},
+		{
+			"key": "current_week_start",
+			"value": "",
+			"type": "string",
+			"description": "Auto-calculated current week start (Monday)"
+		},
+		{
+			"key": "current_week_end",
+			"value": "",
+			"type": "string",
+			"description": "Auto-calculated current week end (Sunday)"
+		},
+		{
+			"key": "next_week_monday",
+			"value": "",
+			"type": "string",
+			"description": "Auto-calculated next week Monday"
+		}
+	]
+}

@@ -1542,6 +1542,139 @@ const getDoctorBySlug = async (req, res) => {
   }
 };
 
+// Copy last week's schedule to current week (convenience function)
+const copyLastWeekSchedule = async (req, res) => {
+  try {
+    const doctorId = req.query.doctorId || req.user.id;
+
+    // Check if user has permission
+    if (req.user.role === "doctor" && req.user.id !== doctorId) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only copy your own schedule"
+      });
+    }
+
+    const doctor = await Doctor.findById(doctorId);
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Lekarz nie znaleziony"
+      });
+    }
+
+    // Calculate date ranges
+    const currentDate = new Date();
+    const currentWeekStart = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday start
+    const lastWeekStart = addDays(currentWeekStart, -7);
+    const lastWeekEnd = addDays(lastWeekStart, 6);
+
+    // Get last week's schedules
+    const lastWeekSchedules = await DoctorSchedule.find({
+      doctorId: doctor._id,
+      date: {
+        $gte: lastWeekStart,
+        $lte: lastWeekEnd
+      }
+    }).sort({ date: 1 });
+
+    if (lastWeekSchedules.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Brak harmonogramów z poprzedniego tygodnia do skopiowania"
+      });
+    }
+
+    // Copy schedules to current week
+    const copiedSchedules = [];
+    const errors = [];
+
+    for (let i = 0; i < 7; i++) {
+      const sourceDate = addDays(lastWeekStart, i);
+      const targetDate = addDays(currentWeekStart, i);
+      
+      // Find the corresponding schedule for this day of the week
+      const sourceSchedule = lastWeekSchedules.find(schedule => {
+        const scheduleDate = new Date(schedule.date);
+        return scheduleDate.getDay() === sourceDate.getDay();
+      });
+
+      if (sourceSchedule && sourceSchedule.timeBlocks && sourceSchedule.timeBlocks.length > 0) {
+        try {
+          // Create new schedule for current week
+          const newScheduleData = {
+            doctorId: doctor._id,
+            date: targetDate,
+            timeBlocks: sourceSchedule.timeBlocks.map(block => ({
+              startTime: block.startTime,
+              endTime: block.endTime,
+              isActive: block.isActive
+            })),
+            notes: `Skopiowano z ${format(sourceDate, 'yyyy-MM-dd')} - ${sourceSchedule.notes || 'Harmonogram z poprzedniego tygodnia'}`,
+            createdBy: req.user?.id || 'system',
+            updatedBy: req.user?.id || 'system'
+          };
+
+          // Upsert the schedule
+          const newSchedule = await DoctorSchedule.findOneAndUpdate(
+            { doctorId: doctor._id, date: targetDate },
+            newScheduleData,
+            { new: true, upsert: true, runValidators: true }
+          );
+
+          copiedSchedules.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            dayOfWeek: format(targetDate, 'EEEE'),
+            timeBlocks: newSchedule.timeBlocks
+          });
+        } catch (error) {
+          errors.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            error: error.message
+          });
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(207).json({
+        success: false,
+        message: "Kopiowanie harmonogramu zakończone z błędami",
+        data: {
+          copiedSchedules,
+          errors,
+          summary: {
+            totalDays: 7,
+            successfullyCopied: copiedSchedules.length,
+            failedDays: errors.length
+          }
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Harmonogram z poprzedniego tygodnia został pomyślnie skopiowany na bieżący tydzień",
+      data: {
+        copiedSchedules,
+        summary: {
+          totalDays: 7,
+          successfullyCopied: copiedSchedules.length,
+          failedDays: 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Error copying last week's schedule:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Błąd podczas kopiowania harmonogramu z poprzedniego tygodnia",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   addDoctor,
   getAllDoctors,
@@ -1557,4 +1690,5 @@ module.exports = {
   getDoctorDetails,
   updateDoctor,
   getDoctorBySlug,
+  copyLastWeekSchedule
 };

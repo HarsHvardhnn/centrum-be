@@ -41,4 +41,11 @@ router.delete(
   scheduleController.deleteException
 );
 
+// Copy last week's schedule to current week
+router.post(
+  "/copy-last-week/:doctorId",
+  authorizeRoles(["doctor", "admin", "receptionist"]),
+  scheduleController.copyLastWeekSchedule
+);
+
 module.exports = router; 

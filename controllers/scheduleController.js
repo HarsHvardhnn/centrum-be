@@ -1,7 +1,7 @@
 const DoctorSchedule = require("../models/doctorSchedule");
 const ScheduleException = require("../models/scheduleException");
 const User = require("../models/user-entity/user");
-const { startOfDay, endOfDay, format, addDays } = require("date-fns");
+const { startOfDay, endOfDay, format, addDays, startOfWeek } = require("date-fns");
 const { toZonedTime } = require("date-fns-tz");
 
 // Poland timezone
@@ -361,6 +361,158 @@ const deleteException = async (req, res) => {
   }
 };
 
+// Copy last week's schedule to current week
+const copyLastWeekSchedule = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const { targetWeekStart } = req.body; // Optional: specific week to copy to
+
+    if (!doctorId) {
+      return res.status(400).json({
+        success: false,
+        message: "doctorId is required"
+      });
+    }
+
+    // Check if user has permission to modify this doctor's schedule
+    if (req.user.role === "doctor" && req.user.id !== doctorId) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only modify your own schedule"
+      });
+    }
+
+    // Validate doctor exists
+    const doctor = await User.findById(doctorId);
+    if (!doctor || doctor.role !== "doctor") {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found"
+      });
+    }
+
+    // Calculate date ranges
+    const now = new Date();
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday start
+    const lastWeekStart = addDays(currentWeekStart, -7);
+    const lastWeekEnd = addDays(lastWeekStart, 6);
+    
+    // If target week is specified, use it instead of current week
+    let targetWeekStartDate = currentWeekStart;
+    if (targetWeekStart) {
+      targetWeekStartDate = new Date(targetWeekStart);
+      // Ensure it's a Monday
+      const dayOfWeek = targetWeekStartDate.getDay();
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      targetWeekStartDate = addDays(targetWeekStartDate, -daysToMonday);
+    }
+
+    // Get last week's schedules
+    const lastWeekSchedules = await DoctorSchedule.find({
+      doctorId,
+      date: {
+        $gte: lastWeekStart,
+        $lte: lastWeekEnd
+      }
+    }).sort({ date: 1 });
+
+    if (lastWeekSchedules.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No schedules found for last week to copy"
+      });
+    }
+
+    // Copy schedules to current week
+    const copiedSchedules = [];
+    const errors = [];
+
+    for (let i = 0; i < 7; i++) {
+      const sourceDate = addDays(lastWeekStart, i);
+      const targetDate = addDays(targetWeekStartDate, i);
+      
+      // Find the corresponding schedule for this day of the week
+      const sourceSchedule = lastWeekSchedules.find(schedule => {
+        const scheduleDate = new Date(schedule.date);
+        return scheduleDate.getDay() === sourceDate.getDay();
+      });
+
+      if (sourceSchedule && sourceSchedule.timeBlocks && sourceSchedule.timeBlocks.length > 0) {
+        try {
+          // Create new schedule for target week
+          const newScheduleData = {
+            doctorId,
+            date: targetDate,
+            timeBlocks: sourceSchedule.timeBlocks.map(block => ({
+              startTime: block.startTime,
+              endTime: block.endTime,
+              isActive: block.isActive
+            })),
+            notes: `Copied from ${format(sourceDate, 'yyyy-MM-dd')} - ${sourceSchedule.notes || 'Previous week schedule'}`,
+            createdBy: req.user.id,
+            updatedBy: req.user.id
+          };
+
+          // Upsert the schedule
+          const newSchedule = await DoctorSchedule.findOneAndUpdate(
+            { doctorId, date: targetDate },
+            newScheduleData,
+            { new: true, upsert: true, runValidators: true }
+          );
+
+          copiedSchedules.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            dayOfWeek: format(targetDate, 'EEEE'),
+            timeBlocks: newSchedule.timeBlocks
+          });
+        } catch (error) {
+          errors.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            error: error.message
+          });
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(207).json({
+        success: false,
+        message: "Schedule copy completed with some errors",
+        data: {
+          copiedSchedules,
+          errors,
+          summary: {
+            totalDays: 7,
+            successfullyCopied: copiedSchedules.length,
+            failedDays: errors.length
+          }
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Last week's schedule copied successfully to current week",
+      data: {
+        copiedSchedules,
+        summary: {
+          totalDays: 7,
+          successfullyCopied: copiedSchedules.length,
+          failedDays: 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Error copying last week's schedule:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
 // Helper function to convert time string to minutes
 const timeToMinutes = (timeStr) => {
   const [hours, minutes] = timeStr.split(':').map(Number);
@@ -373,5 +525,6 @@ module.exports = {
   deleteSchedule,
   createException,
   getExceptions,
-  deleteException
+  deleteException,
+  copyLastWeekSchedule
 }; 

@@ -15,6 +15,7 @@ const {
   getDoctorDetails,
   updateDoctor,
   getDoctorBySlug,
+  copyLastWeekSchedule,
 } = require("../controllers/doctorController");
 const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
@@ -56,9 +57,16 @@ router.post(
   addOffTime
 );
 router.delete(
-  "/schedule/off-time/",
+  "/schedule/off-time/:id",
   authorizeRoles(["doctor"]),
   removeOffTime
+);
+
+// Copy last week's schedule to current week (convenience function)
+router.post(
+  "/schedule/copy-last-week",
+  authorizeRoles(["doctor", "admin"]),
+  copyLastWeekSchedule
 );
 
 // Get available slots
