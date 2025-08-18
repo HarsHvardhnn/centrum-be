@@ -167,11 +167,17 @@ exports.createPatient = async (req, res) => {
       contactPerson2Phone,
       contactPerson2Address,
       contactPerson2Pesel,
+      // Phone fields
+      phoneCode,
+      phone,
     } = req.body;
 
     // console.log("req.body is ",dateOfBirth)
+    // Handle phone number - use phone field if provided, otherwise fallback to mobileNumber
+    let phoneNumber = phone || req.body.mobileNumber || '';
+    
     // Remove leading zeros from phone number
-    const phoneNumber = req.body.mobileNumber?.replace(/^0+/, '') || '';
+    phoneNumber = phoneNumber.replace(/^0+/, '');
     
     if (!phoneNumber) {
       return res.status(400).json({
@@ -180,7 +186,6 @@ exports.createPatient = async (req, res) => {
     }
 
     // Check for existing patient with same phone number
-
     const existingPatientByPhone = await patient.findOne({ phone: phoneNumber });
     if (existingPatientByPhone) {
       return res.status(409).json({
@@ -279,6 +284,7 @@ exports.createPatient = async (req, res) => {
       email: emailToSave, // Use validated email
       patientId: `P-${new Date().getTime()}`,
       phone: phoneNumber, // Store phone number without leading zeros
+      phoneCode: phoneCode || "+48", // Store phone code, default to +48
       password: "defaultPassword123",
       role: "patient",
       signupMethod: "email",
@@ -559,6 +565,7 @@ exports.getPatientsList = async (req, res) => {
         date: patientDate,
         email: patient.email || "Nieokreślony",
         phone: patient.phone || "Nieokreślony",
+        phoneCode: patient.phoneCode || "+48",
         sex: patient.sex || "Nieokreślony",
         isCheckedIn:patient.checkedIn || false,
         dateOfBirth: patient.dateOfBirth || "Nieokreślony",
@@ -850,6 +857,7 @@ exports.getPatientDetails = async (req, res) => {
       gender: patient.sex,
       email: patient.email,
       phone: patient.phone,
+      phoneCode: patient.phoneCode || "+48",
       birthDate: patient.dateOfBirth,
       disease: patient.disease || "",
       avatar: patient.profilePicture || null,
@@ -1212,10 +1220,16 @@ exports.updatePatient = async (req, res) => {
       contactPerson2Phone,
       contactPerson2Address,
       contactPerson2Pesel,
+      // Phone fields
+      phoneCode,
+      phone,
     } = req.body;
 
+    // Handle phone number - use phone field if provided, otherwise fallback to mobileNumber
+    let phoneNumber = phone || mobileNumber || '';
+    
     // Remove leading zeros from phone number if provided
-    const phoneNumber = mobileNumber?.replace(/^0+/, '') || '';
+    phoneNumber = phoneNumber.replace(/^0+/, '');
 
     // Find the existing patient first
     const existingPatient = await patient.findOne({_id: patientId});
@@ -1388,6 +1402,9 @@ exports.updatePatient = async (req, res) => {
       ...(contactPerson2Phone !== undefined && contactPerson2Phone !== "undefined" && { contactPerson2Phone }),
       ...(contactPerson2Address !== undefined && contactPerson2Address !== "undefined" && { contactPerson2Address }),
       ...(contactPerson2Pesel !== undefined && contactPerson2Pesel !== "undefined" && { contactPerson2Pesel }),
+      // Phone fields
+      ...(phoneCode !== undefined && phoneCode !== "undefined" && { phoneCode }),
+      ...(phoneNumber && { phone: phoneNumber }),
     };
 
     // Handle consents update - only if we have valid parsed consents
@@ -1645,7 +1662,7 @@ exports.getAppointmentsList = async (req, res) => {
     // Execute the query with pagination and sorting
     const appointments = await Appointment
       .find(query)
-      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone")
+      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone phoneCode")
       .populate("doctor", "name")
       .sort(sort)
       .skip(skipAmount)
@@ -1688,6 +1705,7 @@ exports.getAppointmentsList = async (req, res) => {
         date: appointmentDate,
         email: appointment.patient?.email || "Nieokreślony",
         phone: appointment.patient?.phone || "Nieokreślony",
+        phoneCode: appointment.patient?.phoneCode || "+48",
         sex: appointment.patient?.sex || "Nieokreślony",
         isCheckedIn: appointment.checkedIn || false,
         dateOfBirth: appointment.patient?.dateOfBirth || "Nieokreślony",

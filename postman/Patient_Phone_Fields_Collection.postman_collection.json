@@ -1,0 +1,127 @@
+{
+  "info": {
+    "name": "Patient Phone Fields Collection",
+    "description": "Test collection for the new phoneCode and phone fields in patient APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Patient with Phone Fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Test Patient Phone\",\n  \"email\": \"testphone@example.com\",\n  \"mobileNumber\": \"800056148\",\n  \"phoneCode\": \"+48\",\n  \"phone\": \"800056148\",\n  \"fatherName\": \"Test Father\",\n  \"motherName\": \"Test Mother\",\n  \"sex\": \"Male\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"consultingSpecialization\": \"{{specializationId}}\",\n  \"consultingDoctor\": \"{{doctorId}}\",\n  \"consents\": \"[{\\\"text\\\":\\\"Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).\\\",\\\"agreed\\\":true}]\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/patients",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "patients"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Patient by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/patients/{{patientId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "patients", "{{patientId}}"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Update Patient Phone Fields",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phoneCode\": \"+49\",\n  \"phone\": \"123456789\",\n  \"fullName\": \"Updated Test Patient Phone\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/patients/{{patientId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "patients", "{{patientId}}"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Patients List",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/patients/list",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "patients", "list"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Patient Details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/patients/details/{{patientId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "patients", "details", "{{patientId}}"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Appointments List",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/patients/appointments",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "patients", "appointments"]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "patientId",
+      "value": "YOUR_PATIENT_ID_HERE",
+      "type": "string"
+    },
+    {
+      "key": "specializationId",
+      "value": "YOUR_SPECIALIZATION_ID_HERE",
+      "type": "string"
+    },
+    {
+      "key": "doctorId",
+      "value": "YOUR_DOCTOR_ID_HERE",
+      "type": "string"
+    }
+  ]
+}

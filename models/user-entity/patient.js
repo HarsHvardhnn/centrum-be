@@ -64,6 +64,7 @@ const patientSchema = new mongoose.Schema({
   pinCode: String,
   alternateContact: String,
   phoneFormatted: String,
+  phoneCode: String, // New field for phone country code (e.g., "+48")
   checkedIn: {
     type: Boolean,
     default: false,

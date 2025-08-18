@@ -270,11 +270,15 @@ exports.createAppointment = async (req, res) => {
       message,
       smsConsentAgreed,
       patient: patientId,
+      customDuration, // New field for custom appointment duration
+      isBackdated = false, // New field to indicate if appointment is for past date
+      overrideConflicts = false, // New field to allow overriding time conflicts
     } = req.body;
 
     let name = `${firstName} ${lastName}`;
     let time = startTime;
     console.log("whats missing", date, doctorId, time, consultationType);
+    
     // Validate required fields
     if (!date || !doctorId || !time || !consultationType) {
       return res.status(400).json({
@@ -294,32 +298,58 @@ exports.createAppointment = async (req, res) => {
 
     // Calculate appointment dates and times
     const appointmentDate = new Date(`${date}T${time}:00`);
-    const duration = APPOINTMENT_CONFIG.DEFAULT_DURATION; // Default duration in minutes
+    
+    // Use custom duration if provided, otherwise use default
+    const duration = customDuration || APPOINTMENT_CONFIG.DEFAULT_DURATION;
+    
+    // Validate custom duration (minimum 1 minute, maximum 480 minutes/8 hours)
+    if (customDuration && (customDuration < 1 || customDuration > 480)) {
+      return res.status(400).json({
+        success: false,
+        message: "Custom duration must be between 1 and 480 minutes",
+      });
+    }
+    
     const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
     const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
     const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
     const endTime = `${endTimeHour}:${endTimeMinute}`;
 
-    // Check for existing appointments
-    const startOfDay = new Date(appointmentDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(appointmentDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const existingAppointment = await Appointment.findOne({
-      doctor: doctorId,
-      date: { $gte: startOfDay, $lte: endOfDay },
-      startTime: time,
-      status: "booked",
-    });
-
-    if (existingAppointment) {
-      return res.status(409).json({
+    // Check if appointment is backdated (past date)
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    const appointmentDateOnly = new Date(appointmentDate);
+    appointmentDateOnly.setHours(0, 0, 0, 0);
+    
+    if (appointmentDateOnly < currentDate && !isBackdated) {
+      return res.status(400).json({
         success: false,
-        message: "Jest już umówiona wizyta u tego lekarza w tym czasie.",
-        conflict: true,
+        message: "Cannot book appointments for past dates. Set isBackdated to true to override this restriction.",
       });
+    }
+
+    // Check for existing appointments (only if not overriding conflicts)
+    if (!overrideConflicts) {
+      const startOfDay = new Date(appointmentDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(appointmentDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const existingAppointment = await Appointment.findOne({
+        doctor: doctorId,
+        date: { $gte: startOfDay, $lte: endOfDay },
+        startTime: time,
+        status: "booked",
+      });
+
+      if (existingAppointment) {
+        return res.status(409).json({
+          success: false,
+          message: "Jest już umówiona wizyta u tego lekarza w tym czasie. Set overrideConflicts to true to override this restriction.",
+          conflict: true,
+        });
+      }
     }
 
     let patient;
@@ -442,7 +472,15 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-    // Create appointment
+    // Determine who created the appointment
+    let createdBy = "online";
+    if (req.user && req.user.role === "receptionist") {
+      createdBy = "receptionist";
+    } else if (req.user && req.user.role === "doctor") {
+      createdBy = "doctor";
+    }
+
+    // Create appointment with new fields
     const appointment = new Appointment({
       doctor: doctorId,
       patient: patient._id,
@@ -451,8 +489,16 @@ exports.createAppointment = async (req, res) => {
       startTime: time,
       endTime: endTime,
       duration: duration,
+      customDuration: customDuration || null, // Set custom duration if provided
+      isBackdated: isBackdated, // Set backdated flag
+      createdBy: createdBy, // Set who created the appointment
       mode: consultationType.toLowerCase(),
       notes: message || "",
+      metadata: {
+        ...(req.body.metadata || {}),
+        overrideConflicts: overrideConflicts,
+        receptionistOverride: req.user && req.user.role === "receptionist",
+      }
     });
 
     await appointment.save();
@@ -528,15 +574,24 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
+    // Prepare response data
+    const responseData = {
+      appointment,
+      isNewUser,
+      temporaryPassword: isNewUser ? temporaryPassword : undefined,
+      emailSent,
+      overrideInfo: {
+        customDuration: customDuration ? `${customDuration} minutes` : null,
+        isBackdated: isBackdated,
+        overrideConflicts: overrideConflicts,
+        createdBy: createdBy,
+      }
+    };
+
     res.status(201).json({
       success: true,
       message: "Wizyta została umówiona pomyślnie",
-      data: {
-        appointment,
-        isNewUser,
-        temporaryPassword: isNewUser ? temporaryPassword : undefined,
-        emailSent,
-      },
+      data: responseData,
     });
   } catch (error) {
     console.error("Wystąpił błąd podczas tworzenia wizyty:", error);
@@ -548,74 +603,82 @@ exports.createAppointment = async (req, res) => {
   }
 };
 
-// Create appointment with reception override (for receptionists and admins)
+// Create appointment with reception override (for receptionists and admins) - Now has same logic as createAppointment
 exports.createReceptionAppointment = async (req, res) => {
   try {
     const {
       date,
+      dob,
       doctorId,
-      patientId,
+      email,
+      firstName,
+      lastName,
+      phone,
       startTime,
-      endTime,
-      duration,
-      consultationType = "offline",
-      notes,
-      isBackdated = false,
-      customDuration = null
+      consultationType = APPOINTMENT_CONFIG.DEFAULT_CONSULTATION_TYPE,
+      message,
+      smsConsentAgreed,
+      patient: patientId,
+      customDuration, // New field for custom appointment duration
+      isBackdated = false, // New field to indicate if appointment is for past date
+      overrideConflicts = false, // New field to allow overriding time conflicts
     } = req.body;
 
+    let name = `${firstName} ${lastName}`;
+    let time = startTime;
+    console.log("whats missing", date, doctorId, time, consultationType);
+    
     // Validate required fields
-    if (!date || !doctorId || !patientId || !startTime) {
+    if (!date || !doctorId || !time || !consultationType) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: date, doctorId, patientId, startTime"
-      });
-    }
-
-    // Check if user has permission to create reception appointments
-    if (!["receptionist", "admin"].includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Only receptionists and admins can create reception appointments"
+        message: "Missing required fields",
       });
     }
 
     // Find the doctor
-    const doctorDetails = await user.findById(doctorId);
+    const doctorDetails = await doctor.findById(doctorId);
     if (!doctorDetails || doctorDetails.role !== "doctor") {
       return res.status(404).json({
         success: false,
-        message: "Doctor not found"
-      });
-    }
-
-    // Find the patient
-    const patient = await user.findById(patientId);
-    if (!patient || patient.role !== "patient") {
-      return res.status(404).json({
-        success: false,
-        message: "Patient not found"
+        message: "Doctor not found",
       });
     }
 
     // Calculate appointment dates and times
-    const appointmentDate = new Date(`${date}T${startTime}:00`);
+    const appointmentDate = new Date(`${date}T${time}:00`);
     
     // Use custom duration if provided, otherwise use default
-    const appointmentDuration = customDuration || APPOINTMENT_CONFIG.DEFAULT_DURATION;
+    const duration = customDuration || APPOINTMENT_CONFIG.DEFAULT_DURATION;
     
-    // Calculate end time
-    let calculatedEndTime = endTime;
-    if (!endTime) {
-      const endTimeDate = new Date(appointmentDate.getTime() + appointmentDuration * 60000);
-      const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
-      const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
-      calculatedEndTime = `${endTimeHour}:${endTimeMinute}`;
+    // Validate custom duration (minimum 1 minute, maximum 480 minutes/8 hours)
+    if (customDuration && (customDuration < 1 || customDuration > 480)) {
+      return res.status(400).json({
+        success: false,
+        message: "Custom duration must be between 1 and 480 minutes",
+      });
+    }
+    
+    const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
+    const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
+    const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
+    const endTime = `${endTimeHour}:${endTimeMinute}`;
+
+    // Check if appointment is backdated (past date)
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    const appointmentDateOnly = new Date(appointmentDate);
+    appointmentDateOnly.setHours(0, 0, 0, 0);
+    
+    if (appointmentDateOnly < currentDate && !isBackdated) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot book appointments for past dates. Set isBackdated to true to override this restriction.",
+      });
     }
 
-    // For backdated appointments, skip time validation
-    if (!isBackdated) {
-      // Check for existing appointments only for future appointments
+    // Check for existing appointments (only if not overriding conflicts)
+    if (!overrideConflicts) {
       const startOfDay = new Date(appointmentDate);
       startOfDay.setHours(0, 0, 0, 0);
 
@@ -625,62 +688,204 @@ exports.createReceptionAppointment = async (req, res) => {
       const existingAppointment = await Appointment.findOne({
         doctor: doctorId,
         date: { $gte: startOfDay, $lte: endOfDay },
-        startTime: startTime,
+        startTime: time,
         status: "booked",
       });
 
       if (existingAppointment) {
         return res.status(409).json({
           success: false,
-          message: "Jest już umówiona wizyta u tego lekarza w tym czasie.",
+          message: "Jest już umówiona wizyta u tego lekarza w tym czasie. Set overrideConflicts to true to override this restriction.",
           conflict: true,
         });
       }
     }
 
-    // Create appointment
+    let patient;
+    let isNewUser = false;
+    const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
+
+    // If patient ID is provided, use that
+    if (patientId) {
+      patient = await user.findById(patientId);
+      if (!patient || patient.role !== "patient") {
+        return res.status(404).json({
+          success: false,
+          message: "Pacjent nie znaleziony",
+        });
+      }
+    } else {
+      // Handle new patient creation
+      if (!name || !phone) {
+        return res.status(400).json({
+          success: false,
+          message: "Wystąpił błąd",
+        });
+      }
+
+      // Remove leading zeros from phone number
+      const phoneNumber = phone.replace(/^0+/, "");
+
+      // Email validation regex
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+      // Handle email - check if it's actually provided and not "undefined"
+      const emailToSave = email && email !== "undefined" ? email.trim() : "";
+
+      // Validate email format if provided
+      if (emailToSave && !emailRegex.test(emailToSave)) {
+        return res.status(400).json({
+          success: false,
+          message: "Nieprawidłowy format adresu e-mail",
+        });
+      }
+
+      // Parse name into first and last
+      const nameParts = name.trim().split(" ");
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(" ");
+
+      // Look for existing patient by phone first
+      patient = await user.findOne({
+        phone: phoneNumber,
+        role: "patient",
+      });
+
+      // If not found by phone and email is provided, look by email
+      if (!patient && emailToSave) {
+        patient = await user.findOne({
+          email: emailToSave.toLowerCase(),
+          role: "patient",
+        });
+      }
+
+      // If patient not found, create new patient
+      if (!patient) {
+        const newPatient = new user({
+          name: {
+            first: firstName,
+            last: lastName,
+          },
+          email: emailToSave,
+          phone: phoneNumber,
+          password: temporaryPassword,
+          role: "patient",
+          signupMethod: "email",
+          dateOfBirth: dob,
+          smsConsentAgreed: smsConsentAgreed || false,
+          consents: [
+            {
+              id: Date.now(),
+              text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
+              agreed: smsConsentAgreed || false,
+            },
+          ],
+        });
+
+        patient = await newPatient.save();
+        isNewUser = true;
+      }
+
+      // Handle consents for existing user
+      if (!isNewUser) {
+        let existingConsents = [];
+        try {
+          existingConsents = patient.consents
+            ? JSON.parse(patient.consents)
+            : [];
+        } catch (e) {
+          existingConsents = [];
+        }
+
+        const smsConsent = {
+          id: Date.now(),
+          text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
+          agreed: smsConsentAgreed,
+        };
+
+        const consentIndex = existingConsents.findIndex(
+          (c) => c.text === smsConsent.text
+        );
+
+        if (consentIndex === -1) {
+          // Consent doesn't exist, add it
+          existingConsents.push(smsConsent);
+        } else {
+          // Update existing consent's agreed status
+          existingConsents[consentIndex].agreed = smsConsentAgreed;
+        }
+
+        patient.smsConsentAgreed = smsConsentAgreed;
+        patient.consents = JSON.stringify(existingConsents);
+        await patient.save();
+      }
+    }
+
+    // Determine who created the appointment
+    let createdBy = "receptionist";
+    if (req.user && req.user.role === "admin") {
+      createdBy = "admin";
+    } else if (req.user && req.user.role === "doctor") {
+      createdBy = "doctor";
+    }
+
+    // Create appointment with new fields
     const appointment = new Appointment({
       doctor: doctorId,
       patient: patient._id,
-      bookedBy: req.user.id, // Receptionist/admin who created the appointment
+      bookedBy: patient._id,
       date: appointmentDate,
-      startTime: startTime,
-      endTime: calculatedEndTime,
-      duration: appointmentDuration,
-      customDuration: customDuration,
-      isBackdated: isBackdated,
-      createdBy: "receptionist",
+      startTime: time,
+      endTime: endTime,
+      duration: duration,
+      customDuration: customDuration || null, // Set custom duration if provided
+      isBackdated: isBackdated, // Set backdated flag
+      createdBy: createdBy, // Set who created the appointment
       mode: consultationType.toLowerCase(),
-      notes: notes || "",
+      notes: message || "",
+      metadata: {
+        ...(req.body.metadata || {}),
+        overrideConflicts: overrideConflicts,
+        receptionistOverride: req.user && req.user.role === "receptionist",
+      }
     });
 
     await appointment.save();
 
-    // Send email notification if patient has email
-    let emailSent = false;
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    
-    if (emailRegex.test(patient.email) && patient.email && !isBackdated) {
+    // Send email only if valid email is provided
+    let emailSent = false;
+    if (emailRegex.test(patient.email) && patient.email) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
 
+        // Email data
         const emailData = {
           patientName: `${patient.name.first} ${patient.name.last}`,
           doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
           date: formattedDate,
-          time: `${startTime} - ${calculatedEndTime}`,
+          time: `${time} - ${endTime}`,
           department: doctorDetails.specialization || "General",
-          notes: notes || "",
+          meetingLink:
+            consultationType.toLowerCase() === "online" ? false : null,
+          notes: message || "",
           mode: consultationType.toLowerCase(),
-          isNewUser: false,
-          temporaryPassword: null,
+          isNewUser,
+          temporaryPassword: isNewUser ? temporaryPassword : null,
         };
 
+        // Send email
         await sendEmail({
           to: patient.email,
           subject: "Potwierdzenie Wizyty",
           html: createAppointmentEmailHtml(emailData),
-          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została zaplanowana na ${formattedDate} o godz ${startTime}.`,
+          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
+            doctorDetails.name.last
+          } została zaplanowana na ${formattedDate} o godz ${time}. ${
+            false
+              ? `Dołącz do spotkania pod adresem: ${false}`
+              : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
+          }`,
         });
 
         console.log(`Reception appointment confirmation email sent to ${patient.email}`);
@@ -690,13 +895,13 @@ exports.createReceptionAppointment = async (req, res) => {
       }
     }
 
-    // Send SMS notification if patient has consented
-    if (patient.smsConsentAgreed && !isBackdated) {
+    if (patient.smsConsentAgreed) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-        const message = appointment.mode === "online"
-          ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-          : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${startTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+        const message =
+          appointment.mode === "online"
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
@@ -711,19 +916,31 @@ exports.createReceptionAppointment = async (req, res) => {
 
         await sendSMS(patient.phone, message);
       } catch (smsError) {
-        console.error("Wystąpił błąd podczas wysyłania powiadomienia SMS:", smsError);
+        console.error(
+          "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
+          smsError
+        );
       }
     }
+
+    // Prepare response data
+    const responseData = {
+      appointment,
+      isNewUser,
+      temporaryPassword: isNewUser ? temporaryPassword : undefined,
+      emailSent,
+      overrideInfo: {
+        customDuration: customDuration ? `${customDuration} minutes` : null,
+        isBackdated: isBackdated,
+        overrideConflicts: overrideConflicts,
+        createdBy: createdBy,
+      }
+    };
 
     res.status(201).json({
       success: true,
       message: "Wizyta została umówiona pomyślnie przez recepcję",
-      data: {
-        appointment,
-        emailSent,
-        isBackdated,
-        createdBy: "receptionist"
-      },
+      data: responseData,
     });
   } catch (error) {
     console.error("Wystąpił błąd podczas tworzenia wizyty przez recepcję:", error);
@@ -2876,3 +3093,4 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
     });
   }
 };
+

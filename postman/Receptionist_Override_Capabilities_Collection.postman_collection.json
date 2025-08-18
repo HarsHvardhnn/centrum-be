@@ -1,0 +1,706 @@
+{
+	"info": {
+		"_postman_id": "receptionist-override-capabilities-collection",
+		"name": "Receptionist Override Capabilities API",
+		"description": "Comprehensive collection for testing the new Receptionist Override Capabilities for appointment management. This collection includes all the new features like custom duration, backdating, and conflict override.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "receptionist-override"
+	},
+	"item": [
+		{
+			"name": "Custom Duration Appointments",
+			"item": [
+				{
+					"name": "Quick 8-Minute Consultation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"14:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Jan\",\n  \"lastName\": \"Kowalski\",\n  \"phone\": \"123456789\",\n  \"email\": \"jan.kowalski@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 8,\n  \"message\": \"Quick prescription renewal consultation\",\n  \"metadata\": {\n    \"visitType\": \"quick_check\",\n    \"notes\": \"8-minute consultation for prescription renewal\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create a quick 8-minute consultation appointment. This demonstrates the custom duration capability for short consultations that don't fit standard time slots."
+					},
+					"response": []
+				},
+				{
+					"name": "Extended 2-Hour Consultation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"09:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Anna\",\n  \"lastName\": \"Nowak\",\n  \"phone\": \"987654321\",\n  \"email\": \"anna.nowak@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 120,\n  \"message\": \"Extended consultation for complex case\",\n  \"metadata\": {\n    \"visitType\": \"extended_consultation\",\n    \"needsAttention\": true,\n    \"notes\": \"Complex case requiring extended consultation time\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create an extended 2-hour consultation appointment. This demonstrates the ability to book longer consultations for complex cases."
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid Duration (0 minutes) - Should Fail",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"15:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Piotr\",\n  \"lastName\": \"Wiśniewski\",\n  \"phone\": \"555666777\",\n  \"email\": \"piotr.wisniewski@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 0,\n  \"message\": \"Test invalid duration\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Test validation for invalid duration (0 minutes). This should return a 400 error with appropriate validation message."
+					},
+					"response": []
+				}
+			],
+			"description": "Test appointments with custom durations ranging from quick consultations to extended sessions."
+		},
+		{
+			"name": "Backdated Appointments",
+			"item": [
+				{
+					"name": "Past Date Appointment (Yesterday)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{yesterday_date}}\",\n  \"startTime\": \"10:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Maria\",\n  \"lastName\": \"Dąbrowska\",\n  \"phone\": \"111222333\",\n  \"email\": \"maria.dabrowska@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 20,\n  \"isBackdated\": true,\n  \"message\": \"Appointment logged retrospectively\",\n  \"metadata\": {\n    \"visitType\": \"followup\",\n    \"notes\": \"Patient visited yesterday but appointment wasn't logged until today\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create a backdated appointment for yesterday. This demonstrates the ability to log appointments that happened on past dates for accurate record-keeping."
+					},
+					"response": []
+				},
+				{
+					"name": "Past Date Without Override - Should Fail",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{yesterday_date}}\",\n  \"startTime\": \"11:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Tomasz\",\n  \"lastName\": \"Lewandowski\",\n  \"phone\": \"444555666\",\n  \"email\": \"tomasz.lewandowski@example.com\",\n  \"consultationType\": \"offline\",\n  \"message\": \"Test past date without override\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Test creating a past date appointment without setting isBackdated to true. This should return a 400 error with appropriate message."
+					},
+					"response": []
+				},
+				{
+					"name": "Week Ago Appointment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{week_ago_date}}\",\n  \"startTime\": \"14:30\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Katarzyna\",\n  \"lastName\": \"Zielińska\",\n  \"phone\": \"777888999\",\n  \"email\": \"katarzyna.zielinska@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 45,\n  \"isBackdated\": true,\n  \"message\": \"Emergency visit from last week\",\n  \"metadata\": {\n    \"visitType\": \"emergency\",\n    \"notes\": \"Emergency visit that occurred last week but wasn't logged\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create a backdated appointment for a week ago. This demonstrates the ability to log appointments from further in the past."
+					},
+					"response": []
+				}
+			],
+			"description": "Test the ability to create appointments for past dates with proper override flags."
+		},
+		{
+			"name": "Conflict Override",
+			"item": [
+				{
+					"name": "Override Time Conflict",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"16:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Andrzej\",\n  \"lastName\": \"Wójcik\",\n  \"phone\": \"123123123\",\n  \"email\": \"andrzej.wojcik@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 30,\n  \"overrideConflicts\": true,\n  \"message\": \"Emergency appointment overriding existing slot\",\n  \"metadata\": {\n    \"visitType\": \"emergency\",\n    \"isWalkin\": true,\n    \"notes\": \"Emergency patient needs immediate attention\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create an appointment that overrides an existing time conflict. This demonstrates the ability to book overlapping appointments when necessary."
+					},
+					"response": []
+				},
+				{
+					"name": "Multiple Patients Same Time",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"17:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Ewa\",\n  \"lastName\": \"Kaczmarek\",\n  \"phone\": \"456456456\",\n  \"email\": \"ewa.kaczmarek@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 25,\n  \"overrideConflicts\": true,\n  \"message\": \"Second patient for same time slot\",\n  \"metadata\": {\n    \"visitType\": \"consultation\",\n    \"notes\": \"Doctor can handle multiple patients simultaneously\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create a second appointment for the same time slot. This demonstrates the ability to book multiple patients at the same time."
+					},
+					"response": []
+				},
+				{
+					"name": "Time Conflict Without Override - Should Fail",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"16:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Marek\",\n  \"lastName\": \"Kowalczyk\",\n  \"phone\": \"789789789\",\n  \"email\": \"marek.kowalczyk@example.com\",\n  \"consultationType\": \"offline\",\n  \"message\": \"Test conflict without override\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Test creating an appointment with a time conflict without setting overrideConflicts to true. This should return a 409 error."
+					},
+					"response": []
+				}
+			],
+			"description": "Test the ability to override time conflicts and book multiple patients at the same time."
+		},
+		{
+			"name": "Role-Based Access Tests",
+			"item": [
+				{
+					"name": "Doctor Using Override Capabilities",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"18:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Zofia\",\n  \"lastName\": \"Pawlak\",\n  \"phone\": \"111111111\",\n  \"email\": \"zofia.pawlak@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 60,\n  \"overrideConflicts\": true,\n  \"message\": \"Doctor creating appointment with override\",\n  \"metadata\": {\n    \"visitType\": \"consultation\",\n    \"notes\": \"Doctor using override capabilities\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Test that doctors can also use the override capabilities. This should succeed and show createdBy as 'doctor'."
+					},
+					"response": []
+				},
+				{
+					"name": "Admin Using Override Capabilities",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"19:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Robert\",\n  \"lastName\": \"Michalski\",\n  \"phone\": \"222222222\",\n  \"email\": \"robert.michalski@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 90,\n  \"isBackdated\": true,\n  \"overrideConflicts\": true,\n  \"message\": \"Admin creating appointment with all overrides\",\n  \"metadata\": {\n    \"visitType\": \"admin_override\",\n    \"notes\": \"Admin testing all override capabilities\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Test that admins can use all override capabilities. This should succeed and show createdBy as 'admin'."
+					},
+					"response": []
+				}
+			],
+			"description": "Test that different user roles can access the override capabilities appropriately."
+		},
+		{
+			"name": "Metadata and Advanced Features",
+			"item": [
+				{
+					"name": "Emergency Walk-in with Full Metadata",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"20:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Agnieszka\",\n  \"lastName\": \"Nowicka\",\n  \"phone\": \"333333333\",\n  \"email\": \"agnieszka.nowicka@example.com\",\n  \"consultationType\": \"offline\",\n  \"customDuration\": 45,\n  \"overrideConflicts\": true,\n  \"message\": \"Emergency walk-in patient\",\n  \"metadata\": {\n    \"visitType\": \"emergency\",\n    \"isWalkin\": true,\n    \"needsAttention\": true,\n    \"patientSource\": \"walk_in\",\n    \"isInternational\": false,\n    \"enableRepeats\": false,\n    \"isNewPatient\": true,\n    \"consultationFee\": 150,\n    \"notes\": \"Emergency walk-in requiring immediate attention\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create an emergency walk-in appointment with comprehensive metadata. This demonstrates the full range of metadata fields available."
+					},
+					"response": []
+				},
+				{
+					"name": "Online Consultation with Custom Duration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"{{current_date}}\",\n  \"startTime\": \"21:00\",\n  \"doctorId\": \"{{test_doctor_id}}\",\n  \"firstName\": \"Michał\",\n  \"lastName\": \"Zawadzki\",\n  \"phone\": \"444444444\",\n  \"email\": \"michal.zawadzki@example.com\",\n  \"consultationType\": \"online\",\n  \"customDuration\": 75,\n  \"overrideConflicts\": true,\n  \"message\": \"Extended online consultation\",\n  \"metadata\": {\n    \"visitType\": \"online_consultation\",\n    \"isInternational\": true,\n    \"notes\": \"International patient requiring extended online consultation\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/appointments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							]
+						},
+						"description": "Create an extended online consultation with custom duration. This demonstrates the ability to book online appointments with custom durations."
+					},
+					"response": []
+				}
+			],
+			"description": "Test advanced features and comprehensive metadata usage."
+		},
+		{
+			"name": "Verification and Validation",
+			"item": [
+				{
+					"name": "Get Created Appointment Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/appointments/{{appointment_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments",
+								"{{appointment_id}}"
+							]
+						},
+						"description": "Retrieve the details of a created appointment to verify that all override fields and metadata were saved correctly."
+					},
+					"response": []
+				},
+				{
+					"name": "List Appointments with Overrides",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/appointments?doctorId={{test_doctor_id}}&date={{current_date}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"appointments"
+							],
+							"query": [
+								{
+									"key": "doctorId",
+									"value": "{{appointment_id}}",
+									"description": "ID of the doctor"
+								},
+								{
+									"key": "date",
+									"value": "{{current_date}}",
+									"description": "Date to filter appointments"
+								}
+							]
+						},
+						"description": "List appointments for a specific doctor and date to verify that appointments with overrides are properly displayed."
+					},
+					"response": []
+				}
+			],
+			"description": "Verify that created appointments with overrides are properly saved and can be retrieved."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Auto-calculate dates for testing",
+					"const now = new Date();",
+					"",
+					"// Current date",
+					"const currentDate = new Date(now);",
+					"",
+					"// Yesterday",
+					"const yesterday = new Date(now);",
+					"yesterday.setDate(now.getDate() - 1);",
+					"",
+					"// Week ago",
+					"const weekAgo = new Date(now);",
+					"weekAgo.setDate(now.getDate() - 7);",
+					"",
+					"// Format dates as YYYY-MM-DD",
+					"pm.environment.set('current_date', currentDate.toISOString().split('T')[0]);",
+					"pm.environment.set('yesterday_date', yesterday.toISOString().split('T')[0]);",
+					"pm.environment.set('week_ago_date', weekAgo.toISOString().split('T')[0]);",
+					"",
+					"console.log('Current date:', pm.environment.get('current_date'));",
+					"console.log('Yesterday date:', pm.environment.get('yesterday_date'));",
+					"console.log('Week ago date:', pm.environment.get('week_ago_date'));"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string",
+			"description": "Base URL of your API server"
+		},
+		{
+			"key": "receptionist_token",
+			"value": "your_receptionist_jwt_token_here",
+			"type": "string",
+			"description": "JWT token for a receptionist user"
+		},
+		{
+			"key": "doctor_token",
+			"value": "your_doctor_jwt_token_here",
+			"type": "string",
+			"description": "JWT token for a doctor user"
+		},
+		{
+			"key": "admin_token",
+			"value": "your_admin_jwt_token_here",
+			"type": "string",
+			"description": "JWT token for an admin user"
+		},
+		{
+			"key": "test_doctor_id",
+			"value": "your_test_doctor_id_here",
+			"type": "string",
+			"description": "ID of a test doctor for testing"
+		},
+		{
+			"key": "appointment_id",
+			"value": "appointment_id_from_previous_request",
+			"type": "string",
+			"description": "ID of an appointment created in a previous request (for verification)"
+		},
+		{
+			"key": "current_date",
+			"value": "",
+			"type": "string",
+			"description": "Auto-calculated current date"
+		},
+		{
+			"key": "yesterday_date",
+			"value": "",
+			"type": "string",
+			"description": "Auto-calculated yesterday date"
+		},
+		{
+			"key": "week_ago_date",
+			"value": "",
+			"type": "string",
+			"description": "Auto-calculated week ago date"
+		}
+	]
+}
+

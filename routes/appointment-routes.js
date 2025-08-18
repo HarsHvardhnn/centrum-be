@@ -15,6 +15,7 @@ const {createRecaptchaMiddleware} = require("../middlewares/recaptchaVerificatio
 // @access  Private
 router.post(
   "/",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
   [
     [
       check("doctor", "Doctor ID is required").notEmpty(),
