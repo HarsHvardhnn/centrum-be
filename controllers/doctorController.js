@@ -571,6 +571,12 @@ const getAvailableSlots = async (req, res) => {
 
     const requestedDate = new Date(date);
     
+    console.log('=== DATE DEBUG ===');
+    console.log('Original date query:', date);
+    console.log('Parsed requestedDate:', requestedDate);
+    console.log('Requested date ISO string:', requestedDate.toISOString());
+    console.log('Requested date local string:', requestedDate.toString());
+    
     // Get both English and Polish day names
     const englishDayOfWeek = format(requestedDate, "EEEE"); // Monday, Tuesday, etc.
     
@@ -619,6 +625,12 @@ const getAvailableSlots = async (req, res) => {
       })
       .sort({ startTime: 1 });
 
+    console.log('=== APPOINTMENTS DEBUG ===');
+    console.log('Found appointments:', appointments.length);
+    appointments.forEach(apt => {
+      console.log(`Appointment: ${apt.startTime} - ${apt.endTime}`);
+    });
+
     // Generate all slots based on shift time (using 15-minute intervals as default)
     const slotDuration = APPOINTMENT_CONFIG.DEFAULT_SLOT_DURATION; // in minutes
     const slots = [];
@@ -632,6 +644,11 @@ const getAvailableSlots = async (req, res) => {
     // Convert to minutes since midnight
     const shiftStartMinutes = shiftStartHour * 60 + shiftStartMinute;
     const shiftEndMinutes = shiftEndHour * 60 + shiftEndMinute;
+
+    console.log('=== SHIFT DEBUG ===');
+    console.log('Shift start time:', shift.startTime, '(', shiftStartMinutes, 'minutes)');
+    console.log('Shift end time:', shift.endTime, '(', shiftEndMinutes, 'minutes)');
+    console.log('Slot duration:', slotDuration, 'minutes');
 
     // Generate all possible slots
     for (
@@ -662,6 +679,9 @@ const getAvailableSlots = async (req, res) => {
         });
       }
     }
+
+    console.log('Generated slots:', slots.length);
+    console.log('First few slots:', slots.slice(0, 5));
 
     // Mark slots as unavailable if they overlap with an appointment
     appointments.forEach((appointment) => {
@@ -738,10 +758,12 @@ const getAvailableSlots = async (req, res) => {
     // Filter out past slots based on current time in Poland timezone
     const currentTimeUTC = new Date();
     const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
-    const requestedDateOnly = new Date(requestedDate);
+    
+    // Convert requested date to Poland timezone for proper comparison
+    const requestedDateInPoland = toZonedTime(requestedDate, POLAND_TIMEZONE);
     
     // Check if the requested date is today (in Poland timezone)
-    const isToday = currentTimeInPoland.toDateString() === requestedDateOnly.toDateString();
+    const isToday = currentTimeInPoland.toDateString() === requestedDateInPoland.toDateString();
     
     if (isToday) {
       // Get current time in minutes since midnight (Poland timezone)
@@ -753,6 +775,15 @@ const getAvailableSlots = async (req, res) => {
       const bufferMinutes = APPOINTMENT_CONFIG.BOOKING_BUFFER_MINUTES;
       const minimumBookingTime = currentTimeInMinutes + bufferMinutes;
       
+      console.log('=== DEBUGGING TIMEZONE ISSUE ===');
+      console.log('Current time UTC:', currentTimeUTC);
+      console.log('Current time in Poland:', currentTimeInPoland);
+      console.log('Requested date:', requestedDate);
+      console.log('Requested date in Poland:', requestedDateInPoland);
+      console.log('Current time in minutes:', currentTimeInMinutes);
+      console.log('Buffer minutes:', bufferMinutes);
+      console.log('Minimum booking time:', minimumBookingTime);
+      
       // Filter out slots that are in the past or too close to current time
       slots.forEach((slot) => {
         const [slotStartHour, slotStartMinute] = slot.startTime
@@ -760,10 +791,18 @@ const getAvailableSlots = async (req, res) => {
           .map(Number);
         const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
         
+        console.log(`Slot ${slot.startTime}: ${slotStartMinutes} vs minimum ${minimumBookingTime}`);
+        
         if (slotStartMinutes < minimumBookingTime) {
+          console.log(`Marking ${slot.startTime} as unavailable (past time)`);
           slot.available = false;
         }
       });
+    } else {
+      console.log('=== DEBUGGING TIMEZONE ISSUE ===');
+      console.log('Requested date is NOT today');
+      console.log('Current time in Poland:', currentTimeInPoland.toDateString());
+      console.log('Requested date in Poland:', requestedDateInPoland.toDateString());
     }
 
     return res.status(200).json({
