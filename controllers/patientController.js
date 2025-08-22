@@ -1195,14 +1195,18 @@ exports.updatePatient = async (req, res) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
     // Handle email - check if it's actually provided and not "undefined"
-    const emailToSave = email && email !== "undefined" ? email.trim() : existingPatient.email;
+    const emailToSave = email && (email !== "undefined" || email !== "null") ? email.trim() : existingPatient.email;
+
+    console.log("emailToSave", email && (email !== "undefined" || email !== "null") ,email,(email !== "undefined" || email !== "null"))
     
     // If email is being updated, validate its format
+   if(emailToSave !== "null"){
     if (emailToSave !== existingPatient.email && !emailRegex.test(emailToSave)) {
       return res.status(400).json({
         message: "Nieprawidłowy format adresu email",
       });
     }
+   }
     
     // Check for email uniqueness if being updated
     if (emailToSave && emailToSave !== existingPatient.email) {
