@@ -48,4 +48,11 @@ router.post(
   scheduleController.copyLastWeekSchedule
 );
 
+// Copy schedule from custom date range to target date range
+router.post(
+  "/copy-date-range/:doctorId",
+  authorizeRoles(["doctor", "admin", "receptionist"]),
+  scheduleController.copyScheduleFromDateRange
+);
+
 module.exports = router; 

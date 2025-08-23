@@ -513,6 +513,164 @@ const copyLastWeekSchedule = async (req, res) => {
   }
 };
 
+// Copy schedule from custom date range to target date range
+const copyScheduleFromDateRange = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const { sourceStartDate, sourceEndDate, targetStartDate } = req.body;
+
+    if (!doctorId || !sourceStartDate || !sourceEndDate || !targetStartDate) {
+      return res.status(400).json({
+        success: false,
+        message: "doctorId, sourceStartDate, sourceEndDate, and targetStartDate are required"
+      });
+    }
+
+    // Check if user has permission to modify this doctor's schedule
+    if (req.user.role === "doctor" && req.user.id !== doctorId) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only modify your own schedule"
+      });
+    }
+
+    // Validate doctor exists
+    const doctor = await User.findById(doctorId);
+    if (!doctor || doctor.role !== "doctor") {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found"
+      });
+    }
+
+    // Parse and validate dates
+    const sourceStart = new Date(sourceStartDate);
+    const sourceEnd = new Date(sourceEndDate);
+    const targetStart = new Date(targetStartDate);
+
+    if (isNaN(sourceStart.getTime()) || isNaN(sourceEnd.getTime()) || isNaN(targetStart.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Use YYYY-MM-DD format"
+      });
+    }
+
+    if (sourceStart > sourceEnd) {
+      return res.status(400).json({
+        success: false,
+        message: "Source start date must be before or equal to source end date"
+      });
+    }
+
+    // Calculate the number of days to copy
+    const daysDiff = Math.ceil((sourceEnd - sourceStart) / (1000 * 60 * 60 * 24)) + 1;
+
+    // Get source schedules
+    const sourceSchedules = await DoctorSchedule.find({
+      doctorId,
+      date: {
+        $gte: sourceStart,
+        $lte: sourceEnd
+      }
+    }).sort({ date: 1 });
+
+    if (sourceSchedules.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No schedules found for the specified source date range"
+      });
+    }
+
+    // Copy schedules to target date range
+    const copiedSchedules = [];
+    const errors = [];
+
+    for (let i = 0; i < daysDiff; i++) {
+      const sourceDate = addDays(sourceStart, i);
+      const targetDate = addDays(targetStart, i);
+      
+      // Find the corresponding schedule for this day
+      const sourceSchedule = sourceSchedules.find(schedule => {
+        const scheduleDate = new Date(schedule.date);
+        return scheduleDate.getTime() === sourceDate.getTime();
+      });
+
+      if (sourceSchedule && sourceSchedule.timeBlocks && sourceSchedule.timeBlocks.length > 0) {
+        try {
+          // Create new schedule for target date
+          const newScheduleData = {
+            doctorId,
+            date: targetDate,
+            timeBlocks: sourceSchedule.timeBlocks.map(block => ({
+              startTime: block.startTime,
+              endTime: block.endTime,
+              isActive: block.isActive
+            })),
+            notes: `Copied from ${format(sourceDate, 'yyyy-MM-dd')} - ${sourceSchedule.notes || 'Schedule from date range'}`,
+            createdBy: req.user.id,
+            updatedBy: req.user.id
+          };
+
+          // Upsert the schedule
+          const newSchedule = await DoctorSchedule.findOneAndUpdate(
+            { doctorId, date: targetDate },
+            newScheduleData,
+            { new: true, upsert: true, runValidators: true }
+          );
+
+          copiedSchedules.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            dayOfWeek: format(targetDate, 'EEEE'),
+            timeBlocks: newSchedule.timeBlocks
+          });
+        } catch (error) {
+          errors.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            error: error.message
+          });
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(207).json({
+        success: false,
+        message: "Schedule copy completed with some errors",
+        data: {
+          copiedSchedules,
+          errors,
+          summary: {
+            totalDays: daysDiff,
+            successfullyCopied: copiedSchedules.length,
+            failedDays: errors.length
+          }
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Schedule copied successfully from ${format(sourceStart, 'yyyy-MM-dd')} to ${format(sourceEnd, 'yyyy-MM-dd')} to target range starting ${format(targetStart, 'yyyy-MM-dd')}`,
+      data: {
+        copiedSchedules,
+        summary: {
+          totalDays: daysDiff,
+          successfullyCopied: copiedSchedules.length,
+          failedDays: 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Error copying schedule from date range:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
 // Helper function to convert time string to minutes
 const timeToMinutes = (timeStr) => {
   const [hours, minutes] = timeStr.split(':').map(Number);
@@ -526,5 +684,6 @@ module.exports = {
   createException,
   getExceptions,
   deleteException,
-  copyLastWeekSchedule
+  copyLastWeekSchedule,
+  copyScheduleFromDateRange
 }; 

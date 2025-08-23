@@ -1,0 +1,539 @@
+{
+	"info": {
+		"_postman_id": "custom-date-range-schedule-copy-collection",
+		"name": "Custom Date Range Schedule Copy API",
+		"description": "Comprehensive collection for testing the Custom Date Range Schedule Copy functionality. This collection includes all endpoints for copying doctor schedules from custom date ranges to target date ranges.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "custom-date-range-schedule-copy"
+	},
+	"item": [
+		{
+			"name": "Doctor Convenience Endpoint",
+			"item": [
+				{
+					"name": "Copy My Schedule from Date Range (Doctor)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-27\",\n  \"targetStartDate\": \"2024-01-28\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							]
+						},
+						"description": "Simple endpoint for doctors to copy their own schedule from a custom date range to a target date range. Uses authenticated user's ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy Another Doctor's Schedule from Date Range (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-24\",\n  \"targetStartDate\": \"2024-01-27\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range?doctorId={{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							],
+							"query": [
+								{
+									"key": "doctorId",
+									"value": "{{test_doctor_id}}"
+								}
+							]
+						},
+						"description": "Admin can copy any doctor's schedule from a custom date range to a target date range. Uses query parameter for doctor ID."
+					},
+					"response": []
+				}
+			],
+			"description": "Simple convenience endpoints for doctors to copy their own schedules from custom date ranges. No path parameters needed - uses authenticated user's ID."
+		},
+		{
+			"name": "Schedule Advanced Endpoint",
+			"item": [
+				{
+					"name": "Copy Schedule from Date Range (Doctor)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-27\",\n  \"targetStartDate\": \"2024-01-28\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-date-range/{{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-date-range",
+								"{{test_doctor_id}}"
+							]
+						},
+						"description": "Advanced endpoint to copy a doctor's schedule from a custom date range to a target date range. Uses path parameter for doctor ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy Schedule from Date Range (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-24\",\n  \"targetStartDate\": \"2024-01-27\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-date-range/{{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-date-range",
+								"{{test_doctor_id}}"
+							]
+						},
+						"description": "Admin can copy any doctor's schedule from a custom date range to a target date range. Uses path parameter for doctor ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy Schedule from Date Range (Receptionist)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{receptionist_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-27\",\n  \"targetStartDate\": \"2024-01-28\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/schedule/copy-date-range/{{test_doctor_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"schedule",
+								"copy-date-range",
+								"{{test_doctor_id}}"
+							]
+						},
+						"description": "Receptionist can copy any doctor's schedule from a custom date range to a target date range. Uses path parameter for doctor ID."
+					},
+					"response": []
+				}
+			],
+			"description": "Advanced endpoints with more options for copying schedules from custom date ranges, including target week specification."
+		},
+		{
+			"name": "Test Scenarios",
+			"item": [
+				{
+					"name": "Copy 7 Days (Full Week)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-27\",\n  \"targetStartDate\": \"2024-01-28\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							]
+						},
+						"description": "Test copying a full week (7 days) from 2024-01-21 to 2024-01-27 to target starting 2024-01-28. This will fill 7 consecutive days starting from 2024-01-28."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy 3 Days (Partial Week)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-23\",\n  \"targetStartDate\": \"2024-01-27\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							]
+						},
+						"description": "Test copying 3 days from 2024-01-21 to 2024-01-23 to target starting 2024-01-27. This will fill 3 consecutive days starting from 2024-01-27."
+					},
+					"response": []
+				},
+				{
+					"name": "Copy 1 Day (Single Day)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\",\n  \"sourceEndDate\": \"2024-01-21\",\n  \"targetStartDate\": \"2024-01-25\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							]
+						},
+						"description": "Test copying a single day (2024-01-21) to target date 2024-01-25. This will fill only 1 day."
+					},
+					"response": []
+				}
+			],
+			"description": "Various test scenarios to demonstrate the flexibility of the custom date range copying functionality."
+		},
+		{
+			"name": "Error Testing",
+			"item": [
+				{
+					"name": "Missing Required Fields",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-21\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							]
+						},
+						"description": "Test error handling when required fields are missing. Should return 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid Date Format",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"21-01-2024\",\n  \"sourceEndDate\": \"27-01-2024\",\n  \"targetStartDate\": \"28-01-2024\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							]
+						},
+						"description": "Test error handling when date format is invalid. Should return 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid Date Range",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{doctor_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sourceStartDate\": \"2024-01-27\",\n  \"sourceEndDate\": \"2024-01-21\",\n  \"targetStartDate\": \"2024-01-28\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/doctors/schedule/copy-date-range",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"doctors",
+								"schedule",
+								"copy-date-range"
+							]
+						},
+						"description": "Test error handling when source start date is after source end date. Should return 400 Bad Request."
+					},
+					"response": []
+				}
+			],
+			"description": "Test various error scenarios to ensure proper error handling and validation."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "doctor_token",
+			"value": "your_doctor_jwt_token_here",
+			"type": "string"
+		},
+		{
+			"key": "admin_token",
+			"value": "your_admin_jwt_token_here",
+			"type": "string"
+		},
+		{
+			"key": "receptionist_token",
+			"value": "your_receptionist_jwt_token_here",
+			"type": "string"
+		},
+		{
+			"key": "test_doctor_id",
+			"value": "your_test_doctor_id_here",
+			"type": "string"
+		}
+	]
+}

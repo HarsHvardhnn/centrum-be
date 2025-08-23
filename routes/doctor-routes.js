@@ -16,6 +16,7 @@ const {
   updateDoctor,
   getDoctorBySlug,
   copyLastWeekSchedule,
+  copyScheduleFromDateRange,
 } = require("../controllers/doctorController");
 const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
@@ -67,6 +68,13 @@ router.post(
   "/schedule/copy-last-week",
   authorizeRoles(["doctor", "admin"]),
   copyLastWeekSchedule
+);
+
+// Copy schedule from custom date range to target date range (convenience function)
+router.post(
+  "/schedule/copy-date-range",
+  authorizeRoles(["doctor", "admin"]),
+  copyScheduleFromDateRange
 );
 
 // Get available slots

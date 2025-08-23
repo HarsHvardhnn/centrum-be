@@ -618,7 +618,7 @@ exports.createReceptionAppointment = async (req, res) => {
       consultationType = APPOINTMENT_CONFIG.DEFAULT_CONSULTATION_TYPE,
       message,
       smsConsentAgreed,
-      patient: patientId,
+      patientId,
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
@@ -705,6 +705,7 @@ exports.createReceptionAppointment = async (req, res) => {
     let isNewUser = false;
     const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
 
+    console.log("patientId", patientId);
     // If patient ID is provided, use that
     if (patientId) {
       patient = await user.findById(patientId);
@@ -717,6 +718,8 @@ exports.createReceptionAppointment = async (req, res) => {
     } else {
       // Handle new patient creation
       if (!name || !phone) {
+
+        console.log("whats missing", name, phone);
         return res.status(400).json({
           success: false,
           message: "Wystąpił błąd",
@@ -822,12 +825,6 @@ exports.createReceptionAppointment = async (req, res) => {
     }
 
     // Determine who created the appointment
-    let createdBy = "receptionist";
-    if (req.user && req.user.role === "admin") {
-      createdBy = "admin";
-    } else if (req.user && req.user.role === "doctor") {
-      createdBy = "doctor";
-    }
 
     // Create appointment with new fields
     const appointment = new Appointment({
@@ -840,7 +837,7 @@ exports.createReceptionAppointment = async (req, res) => {
       duration: duration,
       customDuration: customDuration || null, // Set custom duration if provided
       isBackdated: isBackdated, // Set backdated flag
-      createdBy: createdBy, // Set who created the appointment
+      createdBy: req.user._id, // Set who created the appointment
       mode: consultationType.toLowerCase(),
       notes: message || "",
       metadata: {
@@ -933,7 +930,7 @@ exports.createReceptionAppointment = async (req, res) => {
         customDuration: customDuration ? `${customDuration} minutes` : null,
         isBackdated: isBackdated,
         overrideConflicts: overrideConflicts,
-        createdBy: createdBy,
+        createdBy: req.user.role,
       }
     };
 

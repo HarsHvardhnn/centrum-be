@@ -943,7 +943,7 @@ const getAvailableSlots = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: slots,
+      data: slots?.filter(slot => slot.available),
     });
   } catch (error) {
     console.error("Error generating available slots:", error);
@@ -1224,7 +1224,7 @@ const getNextAvailableDate = async (req, res) => {
           success: true,
           data: {
             nextAvailableDate: currentDate.toISOString().split('T')[0],
-            availableSlots: availableSlots
+            availableSlots: availableSlots?.filter(slot => slot.available)
           }
         });
       }
@@ -1675,6 +1675,163 @@ const copyLastWeekSchedule = async (req, res) => {
   }
 };
 
+// Copy schedule from custom date range to target date range (convenience function)
+const copyScheduleFromDateRange = async (req, res) => {
+  try {
+    const { sourceStartDate, sourceEndDate, targetStartDate } = req.body;
+    const doctorId = req.query.doctorId || req.user.id;
+
+    if (!sourceStartDate || !sourceEndDate || !targetStartDate) {
+      return res.status(400).json({
+        success: false,
+        message: "sourceStartDate, sourceEndDate, and targetStartDate are required"
+      });
+    }
+
+    // Check if user has permission
+    if (req.user.role === "doctor" && req.user.id !== doctorId) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only copy your own schedule"
+      });
+    }
+
+    const doctor = await Doctor.findById(doctorId);
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Lekarz nie znaleziony"
+      });
+    }
+
+    // Parse and validate dates
+    const sourceStart = new Date(sourceStartDate);
+    const sourceEnd = new Date(sourceEndDate);
+    const targetStart = new Date(targetStartDate);
+
+    if (isNaN(sourceStart.getTime()) || isNaN(sourceEnd.getTime()) || isNaN(targetStart.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Use YYYY-MM-DD format"
+      });
+    }
+
+    if (sourceStart > sourceEnd) {
+      return res.status(400).json({
+        success: false,
+        message: "Source start date must be before or equal to source end date"
+      });
+    }
+
+    // Calculate the number of days to copy
+    const daysDiff = Math.ceil((sourceEnd - sourceStart) / (1000 * 60 * 60 * 24)) + 1;
+
+    // Get source schedules
+    const sourceSchedules = await DoctorSchedule.find({
+      doctorId: doctor._id,
+      date: {
+        $gte: sourceStart,
+        $lte: sourceEnd
+      }
+    }).sort({ date: 1 });
+
+    if (sourceSchedules.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Brak harmonogramów dla określonego zakresu dat źródłowych"
+      });
+    }
+
+    // Copy schedules to target date range
+    const copiedSchedules = [];
+    const errors = [];
+
+    for (let i = 0; i < daysDiff; i++) {
+      const sourceDate = addDays(sourceStart, i);
+      const targetDate = addDays(targetStart, i);
+      
+      // Find the corresponding schedule for this day
+      const sourceSchedule = sourceSchedules.find(schedule => {
+        const scheduleDate = new Date(schedule.date);
+        return scheduleDate.getTime() === sourceDate.getTime();
+      });
+
+      if (sourceSchedule && sourceSchedule.timeBlocks && sourceSchedule.timeBlocks.length > 0) {
+        try {
+          // Create new schedule for target date
+          const newScheduleData = {
+            doctorId: doctor._id,
+            date: targetDate,
+            timeBlocks: sourceSchedule.timeBlocks.map(block => ({
+              startTime: block.startTime,
+              endTime: block.endTime,
+              isActive: block.isActive
+            })),
+            notes: `Skopiowano z ${format(sourceDate, 'yyyy-MM-dd')} - ${sourceSchedule.notes || 'Harmonogram z zakresu dat'}`,
+            createdBy: req.user?.id || 'system',
+            updatedBy: req.user?.id || 'system'
+          };
+
+          // Upsert the schedule
+          const newSchedule = await DoctorSchedule.findOneAndUpdate(
+            { doctorId: doctor._id, date: targetDate },
+            newScheduleData,
+            { new: true, upsert: true, runValidators: true }
+          );
+
+          copiedSchedules.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            dayOfWeek: format(targetDate, 'EEEE'),
+            timeBlocks: newSchedule.timeBlocks
+          });
+        } catch (error) {
+          errors.push({
+            date: format(targetDate, 'yyyy-MM-dd'),
+            error: error.message
+          });
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(207).json({
+        success: false,
+        message: "Kopiowanie harmonogramu zakończone z błędami",
+        data: {
+          copiedSchedules,
+          errors,
+          summary: {
+            totalDays: daysDiff,
+            successfullyCopied: copiedSchedules.length,
+            failedDays: errors.length
+          }
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Harmonogram został pomyślnie skopiowany z ${format(sourceStart, 'yyyy-MM-dd')} do ${format(sourceEnd, 'yyyy-MM-dd')} do zakresu docelowego rozpoczynającego się ${format(targetStart, 'yyyy-MM-dd')}`,
+      data: {
+        copiedSchedules,
+        summary: {
+          totalDays: daysDiff,
+          successfullyCopied: copiedSchedules.length,
+          failedDays: 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Error copying schedule from date range:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Błąd podczas kopiowania harmonogramu z zakresu dat",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   addDoctor,
   getAllDoctors,
@@ -1690,5 +1847,6 @@ module.exports = {
   getDoctorDetails,
   updateDoctor,
   getDoctorBySlug,
-  copyLastWeekSchedule
+  copyLastWeekSchedule,
+  copyScheduleFromDateRange
 };
