@@ -49,11 +49,13 @@ const patientSchema = new mongoose.Schema({
   contactPerson1Phone: String,
   contactPerson1Address: String,
   contactPerson1Pesel: String,
+  contactPerson1Relationship: String,
   contactPerson2Name: String,
   contactPerson2PhonePrefix: String,
   contactPerson2Phone: String,
   contactPerson2Address: String,
   contactPerson2Pesel: String,
+  contactPerson2Relationship: String,
 
   // Contact and address
   address: String,
