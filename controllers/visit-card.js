@@ -492,7 +492,7 @@ exports.generateVisitCard = async (req, res) => {
                     </div>
                     <div class="info-row">
                         <span class="info-label">Adres E-mail:</span>
-                        <span>${patient.email || "jakub.busiek@o2.pl"}</span>
+                        <span>${patient.email || ""}</span>
                     </div>
                 </div>
                 
