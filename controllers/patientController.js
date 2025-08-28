@@ -381,7 +381,6 @@ exports.getPatientById = async (req, res) => {
     delete info.password;
 
     let parsedConsents = [];
-    console.log(info.consents);
     // Parse deeply stringified consent data
     if (info.consents.length >0 && info.consents && typeof info.consents[0]==='string') {
    parsedConsents= JSON.parse(info?.consents);
@@ -1169,6 +1168,8 @@ exports.updatePatient = async (req, res) => {
       preferredLanguage,
     } = req.body;
 
+    console.log("req.body",typeof email,email,email === "undefined",email === "null",email.length)
+
     // Remove leading zeros from phone number if provided
     const phoneNumber = mobileNumber?.replace(/^0+/, '') || '';
 
@@ -1195,18 +1196,24 @@ exports.updatePatient = async (req, res) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
     // Handle email - check if it's actually provided and not "undefined"
-    const emailToSave = email && (email !== "undefined" || email !== "null") ? email.trim() : existingPatient.email;
+    let emailToSave = email && (email !== "undefined" || email !== "null") ? email.trim() : existingPatient.email;
+
+    if(email === "undefined" || email === "null" || email.length === 0){
+      emailToSave = ""
+    }
 
     console.log("emailToSave", email && (email !== "undefined" || email !== "null") ,email,(email !== "undefined" || email !== "null"))
     
     // If email is being updated, validate its format
-   if(emailToSave !== "null"){
+   if(emailToSave !== "null" && !(email.length===0)){
     if (emailToSave !== existingPatient.email && !emailRegex.test(emailToSave)) {
       return res.status(400).json({
         message: "Nieprawidłowy format adresu email",
       });
     }
    }
+
+   console.log("emailToSave",emailToSave)
     
     // Check for email uniqueness if being updated
     if (emailToSave && emailToSave !== existingPatient.email) {
@@ -1288,7 +1295,7 @@ exports.updatePatient = async (req, res) => {
           last: fullName.split(" ").slice(1).join(" "),
         },
       }),
-      ...(emailToSave && { email: emailToSave }),
+      ...(true  && { email: emailToSave }),
       smsConsentAgreed,
       ...(phoneNumber && { phone: phoneNumber }),
       ...(fatherName !== undefined && fatherName !== "undefined" && { fatherName }),
@@ -1338,6 +1345,8 @@ exports.updatePatient = async (req, res) => {
       ...(preferredLanguage !== undefined && preferredLanguage !== "undefined" && { preferredLanguage }),
     };
 
+
+    console.log("updateData",updateData)
     // Handle consents update - only if we have valid parsed consents
     if (parsedConsents.length > 0) {
       updateData.consents = parsedConsents;
