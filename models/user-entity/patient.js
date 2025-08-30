@@ -45,14 +45,16 @@ const patientSchema = new mongoose.Schema({
   
   // Additional contact person fields
   contactPerson1Name: String,
-  contactPerson1PhonePrefix: String,
+  contactPerson1PhoneCode: String,
   contactPerson1Phone: String,
+  contactPerson1PhoneFull: String,
   contactPerson1Address: String,
   contactPerson1Pesel: String,
   contactPerson1Relationship: String,
   contactPerson2Name: String,
-  contactPerson2PhonePrefix: String,
+  contactPerson2PhoneCode: String,
   contactPerson2Phone: String,
+  contactPerson2PhoneFull: String,
   contactPerson2Address: String,
   contactPerson2Pesel: String,
   contactPerson2Relationship: String,
