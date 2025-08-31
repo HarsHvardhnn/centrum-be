@@ -112,3 +112,4 @@ function debugSignedUrl(publicId) {
 3. **Set Reasonable Expirations**: Use short expiration times for security, but not so short that users experience issues
 4. **Handle Errors Gracefully**: Provide meaningful error messages when URL generation fails
 
+

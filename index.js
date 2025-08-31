@@ -34,6 +34,7 @@ const captchaRoutes = require("./routes/captcha-routes");
 const reportsRoutes = require("./routes/reports-routes");
 const imageUploadRoutes = require("./routes/image-upload-routes");
 const scheduleRoutes = require("./routes/schedule-routes");
+const appointmentConfigRoutes = require("./routes/appointment-config-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -198,6 +199,7 @@ app.use("/api/captcha", captchaRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/images", imageUploadRoutes);
 app.use("/api/schedule", scheduleRoutes);
+app.use("/api/appointment-config", appointmentConfigRoutes);
 
 // Test route for SEO (can be removed later)
 app.get("/seo-test", (req, res) => {

@@ -791,6 +791,7 @@ const getAvailableSlots = async (req, res) => {
 
     // Generate slots based on time blocks
     const slotDuration = APPOINTMENT_CONFIG.DEFAULT_SLOT_DURATION; // in minutes
+    console.log("slotDuration", slotDuration);
     const slots = [];
 
     // Generate slots for each time block
