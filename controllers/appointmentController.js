@@ -2324,6 +2324,8 @@ exports.updateAppointmentTime = async (req, res) => {
         message: "Invalid date or time format",
       });
     }
+    
+    console.log("New appointment date:", appointmentDate);
 
     // If doctorId is provided, validate it
     let doctorToAssign = appointment.doctor;
@@ -2387,19 +2389,36 @@ exports.updateAppointmentTime = async (req, res) => {
       appointment.doctor = doctorToAssign;
     }
     
-    await appointment.save();
+    console.log("Before save - appointment date:", appointment.date);
+    
+    // Use updateOne instead of save() to ensure date is properly updated
+    await Appointment.updateOne(
+      { _id: id },
+      { 
+        $set: { 
+          date: appointmentDate,
+          startTime: startTime,
+          endTime: endTime,
+          ...(doctorId ? { doctor: doctorToAssign } : {})
+        } 
+      }
+    );
+    
+    // Fetch the updated appointment to return in response
+    const updatedAppointment = await Appointment.findById(id);
+    console.log("After save - appointment date:", updatedAppointment.date);
 
     // Get doctor details for response
-    const doctorDetails = await doctor.findById(appointment.doctor);
+    const doctorDetails = await doctor.findById(updatedAppointment.doctor);
 
     res.status(200).json({
       success: true,
       message: "Appointment updated successfully",
       data: {
-        id: appointment._id,
-        date: appointment.date,
-        startTime: appointment.startTime,
-        endTime: appointment.endTime,
+        id: updatedAppointment._id,
+        date: updatedAppointment.date,
+        startTime: updatedAppointment.startTime,
+        endTime: updatedAppointment.endTime,
         doctor: doctorDetails ? {
           id: doctorDetails._id,
           name: doctorDetails.name ? `${doctorDetails.name.first} ${doctorDetails.name.last}` : "Unknown"
