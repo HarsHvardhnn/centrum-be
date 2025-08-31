@@ -2283,6 +2283,139 @@ exports.getPatientAppointments = async (req, res) => {
   }
 };
 
+// Update appointment time, date and doctor
+exports.updateAppointmentTime = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date, startTime, doctorId } = req.body;
+
+    // Validate required fields
+    if (!date || !startTime) {
+      return res.status(400).json({
+        success: false,
+        message: "Date and start time are required",
+      });
+    }
+
+    // Validate ID format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    // Find the appointment
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    // Calculate new appointment date and time
+    const appointmentDate = new Date(`${date}T${startTime}:00`);
+    
+    // Validate date format
+    if (isNaN(appointmentDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date or time format",
+      });
+    }
+
+    // If doctorId is provided, validate it
+    let doctorToAssign = appointment.doctor;
+    if (doctorId) {
+      if (!mongoose.Types.ObjectId.isValid(doctorId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid doctor ID format",
+        });
+      }
+      
+      // Check if doctor exists
+      const doctorExists = await doctor.findById(doctorId);
+      if (!doctorExists || doctorExists.role !== "doctor") {
+        return res.status(404).json({
+          success: false,
+          message: "Doctor not found",
+        });
+      }
+      
+      doctorToAssign = doctorId;
+    }
+
+    // Calculate new end time based on existing duration
+    const duration = appointment.duration || APPOINTMENT_CONFIG.DEFAULT_DURATION;
+    const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
+    const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
+    const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
+    const endTime = `${endTimeHour}:${endTimeMinute}`;
+
+    // Check for existing appointments at the new time (avoid conflicts)
+    const startOfDay = new Date(appointmentDate);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(appointmentDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingAppointment = await Appointment.findOne({
+      doctor: doctorToAssign,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      startTime: startTime,
+      status: "booked",
+      _id: { $ne: id }, // Exclude current appointment
+    });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        message: "There is already a booked appointment at this time",
+        conflict: true,
+      });
+    }
+
+    // Update the appointment
+    appointment.date = appointmentDate;
+    appointment.startTime = startTime;
+    appointment.endTime = endTime;
+    
+    // Update doctor if provided
+    if (doctorId) {
+      appointment.doctor = doctorToAssign;
+    }
+    
+    await appointment.save();
+
+    // Get doctor details for response
+    const doctorDetails = await doctor.findById(appointment.doctor);
+
+    res.status(200).json({
+      success: true,
+      message: "Appointment updated successfully",
+      data: {
+        id: appointment._id,
+        date: appointment.date,
+        startTime: appointment.startTime,
+        endTime: appointment.endTime,
+        doctor: doctorDetails ? {
+          id: doctorDetails._id,
+          name: doctorDetails.name ? `${doctorDetails.name.first} ${doctorDetails.name.last}` : "Unknown"
+        } : null
+      },
+    });
+  } catch (error) {
+    console.error("Error updating appointment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update appointment",
+      error: error.message,
+    });
+  }
+};
+
 // Get appointments with pagination, sorting and filtering
 exports.getAppointments = async (req, res) => {
   try {

@@ -160,6 +160,15 @@ router.put(
   appointmentController.updateConsultation
 );
 
+// @route   PATCH /api/appointments/:id/time
+// @desc    Update the date, time and doctor of an appointment
+// @access  Private (doctor, receptionist, admin)
+router.patch(
+  "/:id/time",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.updateAppointmentTime
+);
+
 // @route   GET /api/appointments/doctor/:doctorId/by-date
 // @desc    Get appointments by doctor ID grouped by date
 // @access  Private
