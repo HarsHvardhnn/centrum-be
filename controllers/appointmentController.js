@@ -2356,28 +2356,7 @@ exports.updateAppointmentTime = async (req, res) => {
     const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
     const endTime = `${endTimeHour}:${endTimeMinute}`;
 
-    // Check for existing appointments at the new time (avoid conflicts)
-    const startOfDay = new Date(appointmentDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(appointmentDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const existingAppointment = await Appointment.findOne({
-      doctor: doctorToAssign,
-      date: { $gte: startOfDay, $lte: endOfDay },
-      startTime: startTime,
-      status: "booked",
-      _id: { $ne: id }, // Exclude current appointment
-    });
-
-    if (existingAppointment) {
-      return res.status(409).json({
-        success: false,
-        message: "There is already a booked appointment at this time",
-        conflict: true,
-      });
-    }
+    // Removed check for existing appointments at the new time to allow double-booking
 
     // Update the appointment
     appointment.date = appointmentDate;
