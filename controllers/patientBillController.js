@@ -142,6 +142,7 @@ exports.getAllBills = async (req, res) => {
       sortBy = "billedAt",
       sortOrder = -1,
       patientId,
+      appointmentId,
       startDate,
       endDate,
       paymentStatus,
@@ -161,7 +162,26 @@ exports.getAllBills = async (req, res) => {
 
     // Add filters if provided
     if (patientId) {
+      // Validate patientId is a valid MongoDB ObjectId
+      if (!mongoose.Types.ObjectId.isValid(patientId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid patient ID format"
+        });
+      }
       query.patient = patientId;
+    }
+    
+    // Add appointment filter if provided
+    if (appointmentId) {
+      // Validate appointmentId is a valid MongoDB ObjectId
+      if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid appointment ID format"
+        });
+      }
+      query.appointment = appointmentId;
     }
 
     // Date filtering - support single dates and date ranges

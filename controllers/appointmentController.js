@@ -626,7 +626,7 @@ exports.createReceptionAppointment = async (req, res) => {
 
     let name = `${firstName} ${lastName}`;
     let time = startTime;
-    console.log("whats missing", date, doctorId, time, consultationType);
+    console.log("whats missing", smsConsentAgreed);
     
     // Validate required fields
     if (!date || !doctorId || !time || !consultationType) {
@@ -715,6 +715,71 @@ exports.createReceptionAppointment = async (req, res) => {
           message: "Pacjent nie znaleziony",
         });
       }
+      
+      // Handle SMS consent for existing patient with patientId
+      console.log("Handling SMS consent for existing patient with patientId");
+      
+      // Only update SMS consent if smsConsentAgreed is provided
+      if (smsConsentAgreed !== undefined) {
+        const SMS_CONSENT_TEXT = "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).";
+        
+        let existingConsents = [];
+        try {
+          existingConsents = patient.consents
+            ? Array.isArray(patient.consents) ? patient.consents : JSON.parse(patient.consents)
+            : [];
+        } catch (e) {
+          console.log("Error parsing consents:", e);
+          existingConsents = [];
+        }
+
+        console.log("Current smsConsentAgreed value:", smsConsentAgreed);
+        console.log("Existing consents:", existingConsents);
+
+        // Find the SMS consent
+        const consentIndex = existingConsents.findIndex(
+          (c) => c.text === SMS_CONSENT_TEXT
+        );
+
+        console.log("Consent index found:", consentIndex);
+        console.log("SMS consent text to match:", SMS_CONSENT_TEXT);
+
+        if (consentIndex === -1) {
+          // Consent doesn't exist, add it
+          console.log("Adding new SMS consent");
+          existingConsents.push({
+            id: Date.now(),
+            text: SMS_CONSENT_TEXT,
+            agreed: smsConsentAgreed,
+          });
+        } else {
+          // Update existing consent's agreed status
+          console.log("Updating existing SMS consent at index:", consentIndex);
+          console.log("Before update - consent:", existingConsents[consentIndex]);
+          existingConsents[consentIndex].agreed = smsConsentAgreed;
+          console.log("After update - consent:", existingConsents[consentIndex]);
+        }
+
+        // Update patient's smsConsentAgreed field and consents
+        patient.smsConsentAgreed = smsConsentAgreed;
+        patient.consents = existingConsents; // Save as array, not stringified
+        
+        // Mark the consents array as modified to ensure Mongoose saves it
+        patient.markModified('consents');
+        
+        console.log("Before save - patient.smsConsentAgreed:", patient.smsConsentAgreed);
+        console.log("Before save - patient.consents:", patient.consents);
+        
+        await patient.save();
+        
+        console.log("After save - Updated consents:", existingConsents);
+        
+        // Verify the save worked by fetching the patient again
+        const savedPatient = await user.findById(patientId);
+        console.log("Verification - saved patient.smsConsentAgreed:", savedPatient.smsConsentAgreed);
+        console.log("Verification - saved patient.consents:", savedPatient.consents);
+      }
+      
     } else {
       // Handle new patient creation
       if (!name || !phone) {
@@ -789,8 +854,10 @@ exports.createReceptionAppointment = async (req, res) => {
         isNewUser = true;
       }
 
+      console.log("is new user",isNewUser);
       // Handle consents for existing user
       if (!isNewUser) {
+        console.log("ntoi a new uyser")
         let existingConsents = [];
         try {
           existingConsents = patient.consents
@@ -806,6 +873,8 @@ exports.createReceptionAppointment = async (req, res) => {
           agreed: smsConsentAgreed,
         };
 
+        console.log("consent to be created",smsConsent )
+
         const consentIndex = existingConsents.findIndex(
           (c) => c.text === smsConsent.text
         );
@@ -817,6 +886,7 @@ exports.createReceptionAppointment = async (req, res) => {
           // Update existing consent's agreed status
           existingConsents[consentIndex].agreed = smsConsentAgreed;
         }
+        console.log("consnet to be",smsConsentAgreed)
 
         patient.smsConsentAgreed = smsConsentAgreed;
         patient.consents = JSON.stringify(existingConsents);
@@ -2287,7 +2357,7 @@ exports.getPatientAppointments = async (req, res) => {
 exports.updateAppointmentTime = async (req, res) => {
   try {
     const { id } = req.params;
-    const { date, startTime, doctorId } = req.body;
+    const { date, startTime, endTime, doctorId } = req.body;
 
     // Validate required fields
     if (!date || !startTime) {
@@ -2349,19 +2419,26 @@ exports.updateAppointmentTime = async (req, res) => {
       doctorToAssign = doctorId;
     }
 
-    // Calculate new end time based on existing duration
-    const duration = appointment.duration || APPOINTMENT_CONFIG.DEFAULT_DURATION;
-    const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
-    const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
-    const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
-    const endTime = `${endTimeHour}:${endTimeMinute}`;
+    // Use provided endTime or calculate based on existing duration
+    let finalEndTime;
+    if (endTime) {
+      // Use the provided endTime
+      finalEndTime = endTime;
+    } else {
+      // Calculate new end time based on existing duration
+      const duration = appointment.duration || APPOINTMENT_CONFIG.DEFAULT_DURATION;
+      const endTimeDate = new Date(appointmentDate.getTime() + duration * 60000);
+      const endTimeHour = endTimeDate.getHours().toString().padStart(2, "0");
+      const endTimeMinute = endTimeDate.getMinutes().toString().padStart(2, "0");
+      finalEndTime = `${endTimeHour}:${endTimeMinute}`;
+    }
 
     // Removed check for existing appointments at the new time to allow double-booking
 
     // Update the appointment
     appointment.date = appointmentDate;
     appointment.startTime = startTime;
-    appointment.endTime = endTime;
+    appointment.endTime = finalEndTime;
     
     // Update doctor if provided
     if (doctorId) {
@@ -2377,7 +2454,7 @@ exports.updateAppointmentTime = async (req, res) => {
         $set: { 
           date: appointmentDate,
           startTime: startTime,
-          endTime: endTime,
+          endTime: finalEndTime,
           ...(doctorId ? { doctor: doctorToAssign } : {})
         } 
       }
