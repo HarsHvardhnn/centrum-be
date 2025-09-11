@@ -259,17 +259,12 @@ exports.getAllBills = async (req, res) => {
           { invoiceId: { $regex: searchRegex } }
         ];
         
-        // If we already have other conditions, use $and to combine them
-        if (Object.keys(query).length > 1) {
-          const existingConditions = { ...query };
-          delete existingConditions.$or; // Remove any existing $or
-          query.$and = [
-            existingConditions,
-            { $or: searchConditions }
-          ];
-        } else {
-          query.$or = searchConditions;
-        }
+        // Always use $and to combine search with existing filters
+        const existingConditions = { ...query };
+        query.$and = [
+          existingConditions,
+          { $or: searchConditions }
+        ];
       }
     }
 

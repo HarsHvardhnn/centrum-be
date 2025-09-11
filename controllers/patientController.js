@@ -440,6 +440,12 @@ exports.getPatientById = async (req, res) => {
       contactPerson2Phone: info?.contactPerson2Phone || "",
       contactPerson2PhoneFull: info?.contactPerson2PhoneFull || "",
       contactPerson2Relationship: info?.contactPerson2Relationship || "",
+      // New appointment-related fields with null checks
+      isWalkin: info?.isWalkin || false,
+      needsAttention: info?.needsAttention || false,
+      isBackdated: info?.isBackdated || false,
+      overrideConflicts: info?.overrideConflicts || false,
+      isEmergency: info?.isEmergency || false,
     };
 
     res.status(200).json(transformedInfo);
