@@ -313,6 +313,7 @@ exports.bookAppointment = async (req, res) => {
               : "Others",
           phone,
           password: hashedPassword,
+          patientId:`P-${new Date().getTime()}`,
           role: "patient",
           signupMethod: "phone",
           address,
