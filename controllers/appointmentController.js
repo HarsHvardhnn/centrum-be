@@ -1014,16 +1014,13 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
     temporaryPassword,
   } = appointmentDetails;
 
-  const logoPath = path.join(__dirname, "../public", "logo_new.png");
-  console.log(logoPath, "logoPath");
-
-  // Read and convert logo to base64
-  const logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
+  // Use the Cloudinary logo URL
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="text-align: left; margin-bottom: 20px;">
-        <img src="data:image/png;base64,${logoBase64}" alt="Centrum Medyczne 7" style="height: 50px;" />
+        <img src="${logoUrl}" alt="Centrum Medyczne 7" style="height: 50px;" />
       </div>
       
       <div style="margin-bottom: 30px;">
@@ -1091,16 +1088,13 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
     mode,
   } = rescheduleDetails;
 
-  const logoPath = path.join(__dirname, "../public", "logo_new.png");
-  console.log(logoPath, "logoPath");
-
-  // Read and convert logo to base64
-  const logoBase64 = fs.readFileSync(logoPath, { encoding: "base64" });
+  // Use the Cloudinary logo URL
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="text-align: left; margin-bottom: 20px;">
-        <img src="data:image/png;base64,${logoBase64}" alt="Centrum Medyczne 7" style="height: 50px;" />
+        <img src="${logoUrl}" alt="Centrum Medyczne 7" style="height: 50px;" />
       </div>
       
       <div style="margin-bottom: 30px;">

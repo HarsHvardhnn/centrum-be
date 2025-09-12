@@ -508,11 +508,118 @@ const requestPasswordReset = async (req, res) => {
 
     await newOTP.save();
 
-  const response=  await sendEmail({
+  // Create professional HTML email template for password reset OTP
+  const createPasswordResetEmailHtml = (otp, userRole = 'Użytkownik') => {
+    const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
+    return `
+      <!DOCTYPE html>
+      <html lang="pl">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Reset Hasła - Centrum Medyczne</title>
+          <style>
+              body {
+                  font-family: Arial, sans-serif;
+                  line-height: 1.6;
+                  color: #333;
+                  max-width: 600px;
+                  margin: 0 auto;
+                  padding: 20px;
+              }
+              .header {
+                  background-color: #000000;
+                  color: white;
+                  padding: 20px;
+                  text-align: center;
+                  border-radius: 8px 8px 0 0;
+              }
+              .logo {
+                  max-width: 150px;
+                  height: auto;
+                  margin-bottom: 15px;
+              }
+              .content {
+                  background-color: #f9f9f9;
+                  padding: 30px;
+                  border-radius: 0 0 8px 8px;
+                  border: 1px solid #ddd;
+              }
+              .otp-code {
+                  background-color: #20B2AA;
+                  color: white;
+                  font-size: 32px;
+                  font-weight: bold;
+                  text-align: center;
+                  padding: 20px;
+                  margin: 20px 0;
+                  border-radius: 8px;
+                  letter-spacing: 5px;
+              }
+              .warning {
+                  background-color: #fff3cd;
+                  border: 1px solid #ffeaa7;
+                  color: #856404;
+                  padding: 15px;
+                  border-radius: 5px;
+                  margin: 20px 0;
+              }
+              .footer {
+                  text-align: center;
+                  margin-top: 30px;
+                  font-size: 12px;
+                  color: #666;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <img src="${logoUrl}" alt="CM7MED Logo" class="logo" />
+              <h1>Centrum Medyczne</h1>
+              <h2>Reset Hasła</h2>
+          </div>
+          
+          <div class="content">
+              <p>Witaj ${userRole},</p>
+              
+              <p>Otrzymałeś ten email, ponieważ zostało zgłoszone żądanie resetu hasła dla Twojego konta.</p>
+              
+              <p><strong>Twój kod weryfikacyjny to:</strong></p>
+              
+              <div class="otp-code">${otp}</div>
+              
+              <div class="warning">
+                  <strong>⚠️ Ważne informacje:</strong>
+                  <ul>
+                      <li>Kod jest ważny przez <strong>10 minut</strong></li>
+                      <li>Nie udostępniaj tego kodu nikomu</li>
+                      <li>Jeśli nie zgłaszałeś resetu hasła, zignoruj ten email</li>
+                      <li>Kod może być użyty tylko raz</li>
+                  </ul>
+              </div>
+              
+              <p>Jeśli masz problemy z dostępem do konta, skontaktuj się z administratorem systemu.</p>
+              
+              <p>Z poważaniem,<br>
+              <strong>Zespół Centrum Medycznego</strong></p>
+          </div>
+          
+          <div class="footer">
+              <p>Ten email został wygenerowany automatycznie. Prosimy nie odpowiadać na tę wiadomość.</p>
+          </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const html = createPasswordResetEmailHtml(otp, user?.role === 'doctor' ? 'Lekarz' : user?.role === 'receptionist' ? 'Recepcjonista' : 'Użytkownik');
+  const text = `Centrum Medyczne - Reset Hasła\\n\\nTwój kod weryfikacyjny do resetu hasła: ${otp}\\n\\nKod jest ważny przez 10 minut. Nie udostępniaj go nikomu.\\n\\nJeśli nie zgłaszałeś resetu hasła, zignoruj ten email.\\n\\nZ poważaniem,\\nZespół Centrum Medycznego`;
+
+  const response = await sendEmail({
       to: email,
-      subject: "Your OTP for Password Reset",
-      html: `<p>Your OTP code is: <strong>${otp}</strong></p>`,
-      text: `Your OTP code is: ${otp}`,
+      subject: "Reset Hasła - Kod Weryfikacyjny - Centrum Medyczne",
+      html: html,
+      text: text,
   });
     
     console.log("response", response);

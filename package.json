@@ -19,7 +19,9 @@
     "view:cron-logs": "node scripts/view-cron-logs.js",
     "view:cron-logs-summary": "node scripts/view-cron-logs.js --summary",
     "view:cron-logs-failed": "node scripts/view-cron-logs.js --failed-only",
-    "setup:sms-consent": "node scripts/setup-test-sms-consent.js"
+    "setup:sms-consent": "node scripts/setup-test-sms-consent.js",
+    "test:forgot-password": "node scripts/test-forgot-password.js",
+    "create:test-users": "node scripts/create-test-user-for-password-reset.js"
   },
   "keywords": [],
   "author": "",
