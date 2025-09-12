@@ -840,6 +840,7 @@ exports.createReceptionAppointment = async (req, res) => {
           password: temporaryPassword,
           role: "patient",
           signupMethod: "email",
+          patientId:`P-${new Date().getTime()}`,
           dateOfBirth: dob,
           smsConsentAgreed: smsConsentAgreed || false,
           consents: [
