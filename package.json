@@ -13,7 +13,13 @@
     "migrate:slugs": "node migrations/runAllMigrations.js",
     "migrate:news-slugs": "node migrations/addSlugsToNews.js",
     "migrate:service-slugs": "node migrations/addSlugsToServices.js",
-    "test:cookie-consent": "node scripts/test-cookie-consent.js"
+    "test:cookie-consent": "node scripts/test-cookie-consent.js",
+    "test:appointment-reminders": "node scripts/test-appointment-reminder.js",
+    "test:appointment-reminders-individual": "node scripts/test-appointment-reminder.js --individual",
+    "view:cron-logs": "node scripts/view-cron-logs.js",
+    "view:cron-logs-summary": "node scripts/view-cron-logs.js --summary",
+    "view:cron-logs-failed": "node scripts/view-cron-logs.js --failed-only",
+    "setup:sms-consent": "node scripts/setup-test-sms-consent.js"
   },
   "keywords": [],
   "author": "",
@@ -40,6 +46,7 @@
     "mongoose": "^8.13.2",
     "multer": "^1.4.5-lts.2",
     "multer-storage-cloudinary": "^4.0.0",
+    "node-cron": "^4.2.1",
     "nodemailer": "^6.10.1",
     "nodemon": "^3.1.10",
     "open": "^10.1.2",

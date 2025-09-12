@@ -53,6 +53,11 @@ const initializeApp = async () => {
     
     // Seed admin user
     await seedAdmin();
+    
+    // Initialize appointment reminder cron job
+    const { initializeAppointmentReminders } = require('./scripts/appointmentReminderCron');
+    await initializeAppointmentReminders();
+    console.log('Appointment reminder cron job initialized');
   } catch (error) {
     console.error('Error during initialization:', error);
     process.exit(1);

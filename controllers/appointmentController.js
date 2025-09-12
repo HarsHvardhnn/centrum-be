@@ -28,21 +28,7 @@ const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 
 // Helper function to check if patient has consented to SMS notifications
 const hasPatientConsentedToSMS = (patientDetails) => {
-  if (!patientDetails.consents || patientDetails.consents.length === 0) {
-    return false;
-  }
-
-  try {
-    const parsedConsents = JSON.parse(patientDetails.consents);
-    return parsedConsents.some(
-      (consent) =>
-        consent.text.toLowerCase().includes("sms notifications") &&
-        consent.agreed === true
-    );
-  } catch (error) {
-    console.error("Error parsing patient consents:", error);
-    return false;
-  }
+  return patientDetails && patientDetails.smsConsentAgreed === true;
 };
 
 // Helper function to send appointment status SMS
@@ -74,7 +60,8 @@ const sendAppointmentStatusSMS = async (
     let message = "";
     switch (status) {
       case "cancelled":
-        message = `Your appointment with Dr. ${doctorName} scheduled for ${appointmentDate} at ${startTimeFormatted} has been cancelled. Contact us for rescheduling.`;
+        const doctorSurname = doctorDetails.name.last;
+        message = `Twoja wizyta u dr ${doctorSurname} dnia ${appointmentDate} godz. ${startTimeFormatted} zostala odwolana. W celu ustalenia nowego terminu prosimy o kontakt z recepcja CM7 Skarzysko.`;
         break;
       case "completed":
         message = `Thank you for visiting Dr. ${doctorName}. Your appointment on ${appointmentDate} has been completed. Take care!`;
@@ -161,19 +148,10 @@ const sendAppointmentConfirmationSMS = async (
     // Get patient's phone number
     const phoneNumber = patientDetails.phone;
 
-    let smsConsentAgreed = false;
-
-    if (patientDetails.consents && patientDetails.consents.length > 0) {
-      const parsedConsents = JSON.parse(patientDetails.consents);
-      smsConsentAgreed = parsedConsents.some(
-        (consent) =>
-          consent.text.toLowerCase().includes("sms notifications") &&
-          consent.agreed === true
-      );
-    }
-
-    if (!smsConsentAgreed) {
-      return;
+    // Check SMS consent using the new smsConsentAgreed field
+    if (!patientDetails.smsConsentAgreed) {
+      console.log("Patient has not consented to SMS notifications");
+      return { success: false, error: "Patient has not consented to SMS notifications" };
     }
 
     if (!phoneNumber) {
@@ -422,7 +400,6 @@ exports.createAppointment = async (req, res) => {
           password: temporaryPassword,
           role: "patient",
           signupMethod: "email",
-          patientId:`P-${new Date().getTime()}`,
           dateOfBirth: dob,
           smsConsentAgreed: smsConsentAgreed || false,
           consents: [
@@ -1531,7 +1508,7 @@ exports.rescheduleAppointment = async (req, res) => {
       console.log("Sending SMS notification for rescheduled appointment");
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz ${newStartTime}. Prosimy o kontakt telefoniczny w przypadku potrzeby zmiany terminu.`;
+        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz.${newStartTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
