@@ -189,12 +189,25 @@ exports.createPatient = async (req, res) => {
       });
     }
 
-    // Check for existing patient with same phone number
+    // Check for existing patient with same phone number (exact match)
     const existingPatientByPhone = await patient.findOne({ phone: phoneNumber });
     if (existingPatientByPhone) {
       return res.status(409).json({
         message: "Pacjent z tym numerem telefonu już istnieje",
         patient: existingPatientByPhone,
+      });
+    }
+
+    // Check for existing patient with same phone + phoneCode combination
+    const phoneCodeToCheck = phoneCode || "+48";
+    const existingPatientByPhoneAndCode = await patient.findOne({ 
+      phone: phoneNumber, 
+      phoneCode: phoneCodeToCheck 
+    });
+    if (existingPatientByPhoneAndCode) {
+      return res.status(409).json({
+        message: "Pacjent z tym numerem telefonu i kodem kraju już istnieje",
+        patient: existingPatientByPhoneAndCode,
       });
     }
     // Email validation regex
