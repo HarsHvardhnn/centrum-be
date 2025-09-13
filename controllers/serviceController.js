@@ -1,6 +1,7 @@
 const Service = require("../models/services");
 const { generateSlug, ensureUniqueSlug } = require("../utils/slugUtils");
 const { updateServicePricesInRelatedModels } = require("../utils/updateServicePrices");
+const { deleteServiceFromRelatedModels } = require("../utils/deleteServiceFromRelatedModels");
 
 exports.createService = async (req, res) => {
   try {
@@ -143,13 +144,30 @@ exports.updateService = async (req, res) => {
 
 exports.deleteService = async (req, res) => {
   try {
+    // First, check if service exists
+    const service = await Service.findById(req.params.id);
+    if (!service) {
+      return res.status(404).json({ message: "Service not found" });
+    }
+
+    // Mark service as deleted
     await Service.findByIdAndUpdate(req.params.id, {
       isDeleted: true,
       updatedBy: req.user.id,
       updatedAt: new Date(),
     });
+
+    // Remove service from related models
+    try {
+      await deleteServiceFromRelatedModels(req.params.id);
+    } catch (relatedModelsError) {
+      console.error('Error removing service from related models:', relatedModelsError);
+      // Don't fail the main delete, just log the error
+    }
+
     res.json({ message: "Service deleted" });
   } catch (error) {
+    console.error('Error deleting service:', error);
     res.status(500).json({ message: "Nie udało się usunąć usługi", error });
   }
 };
