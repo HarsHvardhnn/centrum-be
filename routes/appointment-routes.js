@@ -32,7 +32,7 @@ router.post(
 // @access  Private (receptionist, admin)
 router.post(
   "/reception",
-  authorizeRoles(["receptionist", "admin"]),
+  authorizeRoles(["receptionist", "admin","doctor"]),
   [
     [
       check("doctorId", "Doctor ID is required").notEmpty(),
