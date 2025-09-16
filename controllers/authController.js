@@ -534,10 +534,31 @@ const requestPasswordReset = async (req, res) => {
                   text-align: center;
                   border-radius: 8px 8px 0 0;
               }
+              .logo-container {
+                  display: inline-block;
+                  background-color: rgba(255, 255, 255, 0.95);
+                  border-radius: 12px;
+                  padding: 12px;
+                  margin-bottom: 15px;
+                  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+              }
               .logo {
                   max-width: 150px;
                   height: auto;
-                  margin-bottom: 15px;
+                  margin-bottom: 0;
+                  background-color: transparent !important;
+                  border-radius: 8px;
+                  padding: 0;
+                  /* Ensure logo is visible in both light and dark themes */
+                  filter: brightness(1) contrast(1);
+                  display: block;
+              }
+              /* Dark theme compatibility */
+              @media (prefers-color-scheme: dark) {
+                  .logo {
+                      background-color: rgba(255, 255, 255, 0.1) !important;
+                      filter: brightness(1.2) contrast(1.1);
+                  }
               }
               .content {
                   background-color: #f9f9f9;
@@ -574,7 +595,9 @@ const requestPasswordReset = async (req, res) => {
       </head>
       <body>
           <div class="header">
-              <img src="${logoUrl}" alt="CM7MED Logo" class="logo" />
+              <div class="logo-container">
+                  <img src="${logoUrl}" alt="CM7MED Logo" class="logo" />
+              </div>
               <h1>Centrum Medyczne</h1>
               <h2>Reset Hasła</h2>
           </div>
