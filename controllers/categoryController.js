@@ -35,8 +35,18 @@ exports.deleteCategory = async (req, res) => {
 
 exports.getCategoriesWithNewsCount = async (req, res) => {
   try {
+    const { isNews } = req.query;
+    
+    // Build the match filter
+    const matchFilter = { isDeleted: false };
+    
+    // If isNews is explicitly provided, convert to boolean and include in filter
+    if (isNews !== undefined) {
+      matchFilter.isNews = isNews === "true";
+    }
+    
     const result = await news.aggregate([
-      { $match: { isDeleted: false } },
+      { $match: matchFilter },
       {
         $group: {
           _id: "$category",
@@ -64,6 +74,7 @@ exports.getCategoriesWithNewsCount = async (req, res) => {
 
     res.status(200).json(result);
   } catch (err) {
+    console.log("Error in getCategoriesWithNewsCount:", err);
     res.status(500).json({ message: err.message });
   }
 };
