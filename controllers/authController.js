@@ -289,6 +289,13 @@ const login = async (req, res) => {
       return res.status(401).json({ message: "Nieprawidłowe dane logowania" });
     }
 
+    // Check if user role is patient - prevent patient login
+    if (user.role === "patient") {
+      return res.status(403).json({ 
+        message: "Logowanie dla pacjentów jest niedozwolone" 
+      });
+    }
+
     // Check if user is locked out
     if (user.isLocked()) {
       return res.status(423).json({ 
@@ -431,6 +438,13 @@ const googleLogin = async (req, res) => {
         refreshTokens: [],
         phone: user.phone,
         singleSessionMode: false,
+      });
+    }
+
+    // Check if user role is patient - prevent patient login
+    if (user.role === "patient") {
+      return res.status(403).json({ 
+        message: "Logowanie dla pacjentów jest niedozwolone" 
       });
     }
 
