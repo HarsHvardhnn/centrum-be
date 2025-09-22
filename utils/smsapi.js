@@ -4,6 +4,20 @@ require("dotenv").config();
 const SMSAPI_BASE_URL = "https://api.smsapi.pl/sms.do";
 const SMSAPI_TOKEN = process.env.SMSAPI_TOKEN;
 
+// Function to replace Polish special characters with normal characters
+function replacePolishCharacters(text) {
+  if (!text || typeof text !== 'string') {
+    return text;
+  }
+  
+  const polishCharMap = {
+    'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z',
+    'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z'
+  };
+  
+  return text.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, (char) => polishCharMap[char] || char);
+}
+
 
 
 async function checkSMSStatus(messageId) {
@@ -58,16 +72,26 @@ async function checkSMSStatus(messageId) {
   }
 }
 // Function to send SMS
-async function sendSMS(phoneNumber, message,sender="CM7") {
+async function sendSMS(phoneNumber, message, sender="CM7") {
   try {
     const formattedPhone = formatPhoneNumber(phoneNumber);
+    
+    // Replace Polish special characters in the message
+    const sanitizedMessage = replacePolishCharacters(message);
+    
+    // Log the character replacement for debugging
+    if (message !== sanitizedMessage) {
+      console.log("SMS message character replacement:");
+      console.log("Original:", message);
+      console.log("Sanitized:", sanitizedMessage);
+    }
 
     const response = await axios.post(SMSAPI_BASE_URL, null, {
       params: {
         format: "json",
         access_token: SMSAPI_TOKEN,
         to: formattedPhone,
-        message: message,
+        message: sanitizedMessage,
         from: sender,
       },
     });

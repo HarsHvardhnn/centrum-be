@@ -738,24 +738,35 @@ exports.createReceptionAppointment = async (req, res) => {
           console.log("After update - consent:", existingConsents[consentIndex]);
         }
 
-        // Update patient's smsConsentAgreed field and consents
-        patient.smsConsentAgreed = smsConsentAgreed;
-        patient.consents = existingConsents; // Save as array, not stringified
+        // Update patient's smsConsentAgreed field and consents using findByIdAndUpdate
+        // This avoids potential issues with object modification and duplicate key errors
+        console.log("Before update - patient.smsConsentAgreed:", patient.smsConsentAgreed);
+        console.log("Before update - patient.consents:", patient.consents);
+        console.log("Before update - patient.phone:", patient.phone);
+        console.log("Before update - patient._id:", patient._id);
         
-        // Mark the consents array as modified to ensure Mongoose saves it
-        patient.markModified('consents');
+        const updatedPatient = await user.findByIdAndUpdate(
+          patientId,
+          {
+            smsConsentAgreed: smsConsentAgreed,
+            consents: existingConsents
+          },
+          { 
+            new: true, 
+            runValidators: true 
+          }
+        );
         
-        console.log("Before save - patient.smsConsentAgreed:", patient.smsConsentAgreed);
-        console.log("Before save - patient.consents:", patient.consents);
+        if (!updatedPatient) {
+          throw new Error("Failed to update patient consent information");
+        }
         
-        await patient.save();
+        // Update the patient reference for the rest of the function
+        patient = updatedPatient;
         
-        console.log("After save - Updated consents:", existingConsents);
-        
-        // Verify the save worked by fetching the patient again
-        const savedPatient = await user.findById(patientId);
-        console.log("Verification - saved patient.smsConsentAgreed:", savedPatient.smsConsentAgreed);
-        console.log("Verification - saved patient.consents:", savedPatient.consents);
+        console.log("After update - Updated consents:", existingConsents);
+        console.log("Verification - updated patient.smsConsentAgreed:", patient.smsConsentAgreed);
+        console.log("Verification - updated patient.consents:", patient.consents);
       }
       
     } else {
