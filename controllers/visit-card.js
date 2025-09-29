@@ -553,22 +553,7 @@ exports.generateVisitCard = async (req, res) => {
                 </div>
             </div>
         </div><div class="footer">
-    <div class="footer-item footer-phone1">
-        <div class="footer-icon">📞</div>
-        <span><a href="tel:+48797097487">(+48) 797-097-487</a></span>
-    </div>
-    <div class="footer-item footer-phone2">
-        <div class="footer-icon">📞</div>
-        <span><a href="tel:+48797197487">(+48) 797-197-487</a></span>
-    </div>
-    <div class="footer-item footer-email">
-        <div class="footer-icon">✉</div>
-        <span><a href="mailto:kontakt@centrummedycznecm7.pl">kontakt@centrummedycznecm7.pl</a></span>
-    </div>
-    <div class="footer-item footer-website">
-        <div class="footer-icon">🌐</div>
-        <span><a href="https://www.centrummedycznecm7.pl" target="_blank">www.centrummedycznecm7.pl</a></span>
-    </div>
+
 </div>
 
     </body>
@@ -690,22 +675,27 @@ exports.generateVisitCard = async (req, res) => {
       await appointment.save();
 
       // Save the standardized document reference to the patient as well for backward compatibility
-      const patientDoc = await Patient.findById(patient._id);
-      if (patientDoc) {
-        if (!patientDoc.documents) {
-          patientDoc.documents = [];
+      try {
+        const patientDoc = await Patient.findById(patient._id);
+        if (patientDoc) {
+          if (!patientDoc.documents) {
+            patientDoc.documents = [];
+          }
+
+          // Create standardized document for patient's documents array
+          const patientDocument = createStandardizedDocument(
+            mockFileData,
+            "report"
+          );
+          patientDocument.documentType = "visit-card"; // Override document type for patient
+          patientDocument.appointmentId = appointmentId; // Add appointment reference
+
+          patientDoc.documents.push(patientDocument);
+          await patientDoc.save();
         }
-
-        // Create standardized document for patient's documents array
-        const patientDocument = createStandardizedDocument(
-          mockFileData,
-          "report"
-        );
-        patientDocument.documentType = "visit-card"; // Override document type for patient
-        patientDocument.appointmentId = appointmentId; // Add appointment reference
-
-        patientDoc.documents.push(patientDocument);
-        await patientDoc.save();
+      } catch (patientSaveError) {
+        console.error("Error saving patient document:", patientSaveError);
+        // Continue execution - the visit card is still generated successfully
       }
 
       // Return the download URL
@@ -720,11 +710,15 @@ exports.generateVisitCard = async (req, res) => {
       });
     } catch (uploadError) {
       console.error("Error uploading visit card to Cloudinary:", uploadError);
+      console.error("Upload error details:", {
+        message: uploadError.message,
+        http_code: uploadError.http_code,
+        name: uploadError.name
+      });
 
       return res.status(200).json({
         success: true,
-        message:
-          "Karta wizyty wygenerowana, ale nie udało się przesłać do chmury",
+        message: "Karta wizyty wygenerowana, ale nie udało się przesłać do chmury",
         data: {
           url: `/temp/${filename}`,
           appointmentId: appointmentId,

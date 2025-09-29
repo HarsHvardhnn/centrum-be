@@ -171,6 +171,9 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Serve static files from temp directory
+app.use('/temp', express.static('temp'));
+
 // Add SEO middleware BEFORE routes (for crawler detection)
 app.use(seoMiddleware);
 

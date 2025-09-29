@@ -3,7 +3,7 @@ const Appointment = require("../models/appointment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
 const sendEmail = require("../utils/mailer");
-const { format } = require("date-fns");
+const { formatDateForSMS, formatTimeForSMS } = require("../utils/dateUtils");
 const MessageReceipt = require("../models/smsData");
 const { sendSMS } = require("../utils/smsapi");
 const { getCalendarClient } = require("../config/googleCalendar");
@@ -450,11 +450,12 @@ exports.bookAppointment = async (req, res) => {
     let smsResult = null;
     if (smsConsentAgreed) {
       try {
-        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const formattedDate = formatDateForSMS(appointmentDate);
+        const formattedTime = formatTimeForSMS(time);
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. ${isValidEmail ? 'Link do wizyty otrzymaja Panstwo na adres e-mail.' : 'Prosimy o kontakt w celu otrzymania linku do wizyty.'}`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime}. ${isValidEmail ? 'Link do wizyty otrzymaja Panstwo na adres e-mail.' : 'Prosimy o kontakt w celu otrzymania linku do wizyty.'}`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
@@ -501,7 +502,7 @@ exports.bookAppointment = async (req, res) => {
           html: createAppointmentEmailHtml(emailData),
           text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
             doctorDetails.name.last
-          } została zaplanowana na ${formattedDate} o godz ${time}. ${
+          } została zaplanowana na ${formattedDate} o godz ${formattedTime}. ${
             meetingLink
               ? `Dołącz do spotkania pod adresem: ${meetingLink}`
               : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."

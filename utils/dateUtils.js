@@ -1,34 +1,56 @@
 // utils/dateUtils.js
 
 /**
- * Formats a date object to a human-readable date string
+ * Formats a date object to a Polish date string
  * @param {Date} date - Date to format
- * @returns {string} - Formatted date string (e.g., "Monday, January 1, 2025")
+ * @returns {string} - Formatted date string (e.g., "1 stycznia 2025")
  */
 exports.formatDate = (date) => {
-  return new Date(date).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
+  return new Date(date).toLocaleDateString("pl-PL", {
     day: "numeric",
+    month: "long",
+    year: "numeric",
   });
 };
 
 /**
- * Converts 24-hour time format to 12-hour format with AM/PM
+ * Formats a date object to DD.MM.YYYY format for SMS
+ * @param {Date} date - Date to format
+ * @returns {string} - Formatted date string (e.g., "01.01.2025")
+ */
+exports.formatDateForSMS = (date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+};
+
+/**
+ * Formats time to Polish 24-hour format
  * @param {string} timeString - Time in 24-hour format (e.g., "14:30")
- * @returns {string} - Time in 12-hour format (e.g., "2:30 PM")
+ * @returns {string} - Time in Polish format (e.g., "14:30")
  */
 exports.formatTime = (timeString) => {
   if (!timeString || typeof timeString !== "string") {
     return "";
   }
 
-  // Convert 24-hour format to 12-hour format
-  const [hours, minutes] = timeString.split(":").map(Number);
-  const period = hours >= 12 ? "PM" : "AM";
-  const hour12 = hours % 12 || 12;
-  return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
+  // Return time in 24-hour format as is (Polish standard)
+  return timeString;
+};
+
+/**
+ * Formats time to HH.MM format for SMS
+ * @param {string} timeString - Time in 24-hour format (e.g., "14:30")
+ * @returns {string} - Time in HH.MM format (e.g., "14.30")
+ */
+exports.formatTimeForSMS = (timeString) => {
+  if (!timeString || typeof timeString !== "string") {
+    return "";
+  }
+
+  // Convert HH:MM to HH.MM format
+  return timeString.replace(':', '.');
 };
 
 /**

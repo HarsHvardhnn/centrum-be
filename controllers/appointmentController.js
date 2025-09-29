@@ -6,7 +6,7 @@ const doctor = require("../models/user-entity/doctor");
 const user = require("../models/user-entity/user");
 const MessageReceipt = require("../models/smsData");
 const { sendSMS } = require("../utils/smsapi");
-const { formatDate, formatTime } = require("../utils/dateUtils");
+const { formatDate, formatTime, formatDateForSMS, formatTimeForSMS } = require("../utils/dateUtils");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
@@ -160,8 +160,8 @@ const sendAppointmentConfirmationSMS = async (
     }
 
     // Format date and time for SMS
-    const appointmentDate = formatDate(new Date(appointment.date));
-    const startTimeFormatted = formatTime(appointment.startTime);
+    const appointmentDate = formatDateForSMS(new Date(appointment.date));
+    const startTimeFormatted = formatTimeForSMS(appointment.startTime);
 
     const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
     const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
@@ -486,7 +486,8 @@ exports.createAppointment = async (req, res) => {
     let emailSent = false;
     if (emailRegex.test(patient.email) && patient.email) {
       try {
-        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const formattedDate = formatDateForSMS(appointmentDate);
+        const formattedTime = formatTimeForSMS(time);
 
         // Email data
         const emailData = {
@@ -526,11 +527,12 @@ exports.createAppointment = async (req, res) => {
 
     if (patient.smsConsentAgreed) {
       try {
-        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const formattedDate = formatDateForSMS(appointmentDate);
+        const formattedTime = formatTimeForSMS(time);
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
@@ -914,7 +916,8 @@ exports.createReceptionAppointment = async (req, res) => {
     let emailSent = false;
     if (emailRegex.test(patient.email) && patient.email) {
       try {
-        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const formattedDate = formatDateForSMS(appointmentDate);
+        const formattedTime = formatTimeForSMS(time);
 
         // Email data
         const emailData = {
@@ -954,11 +957,12 @@ exports.createReceptionAppointment = async (req, res) => {
 
     if (patient.smsConsentAgreed) {
       try {
-        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const formattedDate = formatDateForSMS(appointmentDate);
+        const formattedTime = formatTimeForSMS(time);
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${time} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
@@ -1477,7 +1481,8 @@ exports.rescheduleAppointment = async (req, res) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (false) {
       try {
-        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const formattedDate = formatDateForSMS(appointmentDate);
+        const formattedTime = formatTimeForSMS(time);
         const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
 
         const emailData = {
@@ -1512,8 +1517,9 @@ exports.rescheduleAppointment = async (req, res) => {
     if (smsToBeSent && patientDetails.smsConsentAgreed) {
       console.log("Sending SMS notification for rescheduled appointment");
       try {
-        const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz.${newStartTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+        const formattedDate = formatDateForSMS(appointmentDate);
+        const formattedTime = formatTimeForSMS(newStartTime);
+        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz.${formattedTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
