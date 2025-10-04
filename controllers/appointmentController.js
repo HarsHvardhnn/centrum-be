@@ -52,8 +52,8 @@ const sendAppointmentStatusSMS = async (
       return { success: false, error: "No phone number available" };
     }
 
-    const appointmentDate = formatDate(new Date(appointment.date));
-    const startTimeFormatted = formatTime(appointment.startTime);
+    const appointmentDate = formatDateForSMS(new Date(appointment.date));
+    const startTimeFormatted = formatTimeForSMS(appointment.startTime);
     const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
     const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
 
@@ -64,13 +64,13 @@ const sendAppointmentStatusSMS = async (
         message = `Twoja wizyta u dr ${doctorSurname} dnia ${appointmentDate} godz. ${startTimeFormatted} zostala odwolana. W celu ustalenia nowego terminu prosimy o kontakt z recepcja CM7 Skarzysko.`;
         break;
       case "completed":
-        message = `Thank you for visiting Dr. ${doctorName}. Your appointment on ${appointmentDate} has been completed. Take care!`;
+        message = `Wizyta u dr ${doctorName} w dniu ${appointmentDate} zostala zakonczona. Dziekujemy!`;
         break;
       case "rescheduled":
-        message = `Your appointment with Dr. ${doctorName} has been rescheduled to ${appointmentDate} at ${startTimeFormatted}.`;
+        message = `Twoja wizyta u dr ${doctorName} zostala przeniesiora na ${appointmentDate} godz. ${startTimeFormatted}.`;
         break;
       default:
-        message = `Your appointment status with Dr. ${doctorName} for ${appointmentDate} at ${startTimeFormatted} has been updated to: ${status}`;
+        message = `Status wizyty u dr ${doctorName} w dniu ${appointmentDate} godz. ${startTimeFormatted} zostal zmieniony: ${status}`;
     }
 
     const batchId = uuidv4();
@@ -110,11 +110,11 @@ const sendReportUploadSMS = async (
       return { success: false, error: "No phone number available" };
     }
 
-    const appointmentDate = formatDate(new Date(appointment.date));
+    const appointmentDate = formatDateForSMS(new Date(appointment.date));
     const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
     const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
 
-    const message = `New medical report(s) have been uploaded for your appointment with Dr. ${doctorName} on ${appointmentDate}. Please check your patient portal.`;
+    const message = `Nowy raport medyczny dla wizyty u dr ${doctorName} w dniu ${appointmentDate}. Sprawdz portal pacjenta.`;
 
     const batchId = uuidv4();
     await MessageReceipt.create({
@@ -165,16 +165,8 @@ const sendAppointmentConfirmationSMS = async (
 
     const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
     const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
-    // Create SMS content
-    const message = `
-Hello ${patientName},
-
-Your appointment with Dr. ${doctorName} has been successfully booked for ${appointmentDate} at ${startTimeFormatted}.
-
-Please arrive 15 minutes before your scheduled time. For rescheduling or cancellations, please contact us at least 24 hours in advance.
-
-Thank you for choosing our services - Regards,Centrum Medyczne.
-    `.trim();
+    // Create SMS content - shorter Polish version to save costs
+    const message = `Witaj ${patientName}, Twoja wizyta u dr ${doctorName} zostala umowiona na ${appointmentDate} godz. ${startTimeFormatted}. Prosimy przybyc 15 min wczesniej. Pozdrawiamy, CM7.`.trim();
 
     // Generate batch ID for tracking
     const batchId = uuidv4();
