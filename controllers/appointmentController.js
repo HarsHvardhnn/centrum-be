@@ -523,8 +523,8 @@ exports.createAppointment = async (req, res) => {
         const formattedTime = formatTimeForSMS(time);
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
@@ -953,8 +953,8 @@ exports.createReceptionAppointment = async (req, res) => {
         const formattedTime = formatTimeForSMS(time);
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({
@@ -1511,7 +1511,7 @@ exports.rescheduleAppointment = async (req, res) => {
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
         const formattedTime = formatTimeForSMS(newStartTime);
-        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz.${formattedTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz. ${formattedTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({

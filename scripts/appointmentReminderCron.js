@@ -26,9 +26,9 @@ const formatDate = (date) => {
   return `${day}.${month}.${year}`;
 };
 
-// Format time to HH.MM
+// Format time to HH:MM (keep colon)
 const formatTime = (timeString) => {
-  return timeString.replace(':', '.');
+  return timeString;
 };
 
 // Send appointment reminder SMS with logging

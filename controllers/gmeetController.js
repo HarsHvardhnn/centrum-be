@@ -454,8 +454,8 @@ exports.bookAppointment = async (req, res) => {
         const formattedTime = formatTimeForSMS(time);
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime}. ${isValidEmail ? 'Link do wizyty otrzymaja Panstwo na adres e-mail.' : 'Prosimy o kontakt w celu otrzymania linku do wizyty.'}`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. ${isValidEmail ? 'Link do wizyty otrzymaja Panstwo na adres e-mail.' : 'Prosimy o kontakt w celu otrzymania linku do wizyty.'}`
+            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
         await MessageReceipt.create({

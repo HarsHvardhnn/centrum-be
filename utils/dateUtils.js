@@ -40,17 +40,17 @@ exports.formatTime = (timeString) => {
 };
 
 /**
- * Formats time to HH.MM format for SMS
+ * Formats time to HH:MM format for SMS (keeps colon)
  * @param {string} timeString - Time in 24-hour format (e.g., "14:30")
- * @returns {string} - Time in HH.MM format (e.g., "14.30")
+ * @returns {string} - Time in HH:MM format (e.g., "14:30")
  */
 exports.formatTimeForSMS = (timeString) => {
   if (!timeString || typeof timeString !== "string") {
     return "";
   }
 
-  // Convert HH:MM to HH.MM format
-  return timeString.replace(':', '.');
+  // Return time as-is with colon (HH:MM format)
+  return timeString;
 };
 
 /**
