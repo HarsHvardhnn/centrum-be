@@ -12,8 +12,9 @@ const getEmailTemplates = (userData) => {
   const englishSubject = "Welcome to Centrum Medical Center";
   const englishHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
-      <div style="text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #3f51b5;">Welcome to Centrum Medical Center</h2>
+      <div style="text-align: center; margin-bottom: 30px;">
+        <img src="https://centrum-pl.netlify.app/logo_new.png" alt="Centrum Medical Center Logo" style="width: 220px; max-width: 100%; height: auto; margin-bottom: 20px;" />
+        <h2 style="color: #3f51b5; margin-top: 10px;">Welcome to Centrum Medical Center</h2>
         <p style="color: #666;">Your account has been created successfully</p>
       </div>
       
@@ -61,8 +62,9 @@ If you have any questions, please contact our support team.
   const polishSubject = "Witamy w Centrum Medycznym";
   const polishHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
-      <div style="text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #3f51b5;">Witamy w Centrum Medycznym</h2>
+      <div style="text-align: center; margin-bottom: 30px;">
+        <img src="https://centrum-pl.netlify.app/logo_new.png" alt="Centrum Medyczne Logo" style="width: 220px; max-width: 100%; height: auto; margin-bottom: 20px;" />
+        <h2 style="color: #3f51b5; margin-top: 10px;">Witamy w Centrum Medycznym</h2>
         <p style="color: #666;">Twoje konto zostało pomyślnie utworzone</p>
       </div>
       
