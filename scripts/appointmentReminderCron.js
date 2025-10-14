@@ -158,14 +158,18 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
       }
     });
     
-    // Get today's date
-    const today = new Date();
+    // Get today's date in Europe/Warsaw timezone
+    const now = new Date();
+    const today = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Warsaw' }));
     today.setHours(0, 0, 0, 0); // Start of day
     
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1); // End of day
+    tomorrow.setHours(0, 0, 0, 0);
     
     console.log(`Looking for appointments on: ${today.toISOString().split('T')[0]}`);
+    console.log(`Date range: ${today.toISOString()} to ${tomorrow.toISOString()}`);
+    console.log(`Timezone offset: ${now.getTimezoneOffset()} minutes`);
     
     // Find appointments for today with 'booked' status
     const appointments = await Appointment.find({
@@ -177,8 +181,35 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
     })
     .populate('patient', 'name phone smsConsentAgreed')
     .populate('doctor', 'name');
+    
+    console.log(`Query used - Start: ${today.toISOString()}, End: ${tomorrow.toISOString()}`);
 
     console.log(`Found ${appointments.length} appointments for today`);
+    
+    // Log first few appointments for debugging
+    if (appointments.length > 0) {
+      console.log('Sample appointments found:');
+      appointments.slice(0, 3).forEach((apt, idx) => {
+        console.log(`  ${idx + 1}. Date: ${apt.date.toISOString()}, Time: ${apt.startTime}, Status: ${apt.status}, Patient: ${apt.patient?.name?.first || 'N/A'} ${apt.patient?.name?.last || 'N/A'}`);
+      });
+    } else {
+      console.log('No appointments found. Checking total booked appointments in DB...');
+      const totalBooked = await Appointment.countDocuments({ status: 'booked' });
+      console.log(`Total booked appointments in database: ${totalBooked}`);
+      
+      if (totalBooked > 0) {
+        // Get a few booked appointments to see their dates
+        const sampleBooked = await Appointment.find({ status: 'booked' })
+          .limit(5)
+          .select('date startTime status')
+          .populate('patient', 'name');
+        
+        console.log('Sample booked appointments in database:');
+        sampleBooked.forEach((apt, idx) => {
+          console.log(`  ${idx + 1}. Date: ${apt.date.toISOString()}, Time: ${apt.startTime}, Status: ${apt.status}`);
+        });
+      }
+    }
     
     // Update log with total records found
     logEntry.totalRecords = appointments.length;

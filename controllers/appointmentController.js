@@ -1022,12 +1022,12 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
   } = appointmentDetails;
 
   // Use the Cloudinary logo URL
-  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: left; margin-bottom: 20px;">
-        <img src="${logoUrl}" alt="Centrum Medyczne 7" style="height: 50px;" />
+      <div style="text-align: center; margin-bottom: 30px;">
+        <img src="${logoUrl}" alt="Centrum Medyczne 7" style="width: 220px; max-width: 100%; height: auto; margin-bottom: 20px;" />
       </div>
       
       <div style="margin-bottom: 30px;">
