@@ -175,7 +175,7 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
     const appointments = await Appointment.find({
       date: {
         $gte: today,
-        $lt: tomorrow
+        $lte: tomorrow
       },
       status: 'booked'
     })

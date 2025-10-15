@@ -67,6 +67,12 @@ const userSchema = new mongoose.Schema(
     },
     lockUntil: Date,
 
+    // SMS Consent
+    smsConsentAgreed: {
+      type: Boolean,
+      default: false,
+    },
+
     deleted: {
       type: Boolean,
       required: true,
