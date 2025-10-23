@@ -38,6 +38,7 @@ const appointmentConfigRoutes = require("./routes/appointment-config-routes");
 const smsConsentRoutes = require("./routes/sms-consent-routes");
 const forgotPasswordRoutes = require("./routes/forgot-password-routes");
 const logoRoutes = require("./routes/logo-routes");
+const emailPreviewRoutes = require("./routes/email-preview-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -214,6 +215,7 @@ app.use("/api/appointment-config", appointmentConfigRoutes);
 app.use("/api/sms-consent", smsConsentRoutes);
 app.use("/api/auth", forgotPasswordRoutes);
 app.use("/api/logo", logoRoutes);
+app.use("/api/email-preview", emailPreviewRoutes);
 
 // Test route for SEO (can be removed later)
 app.get("/seo-test", (req, res) => {

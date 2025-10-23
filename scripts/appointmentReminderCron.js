@@ -181,7 +181,7 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
       },
       status: 'booked',
       // Add a field to track if reminder was sent
-      reminderSent: { $ne: true }
+      'metadata.reminderSent': { $ne: true }
     })
     .populate('patient', 'name phone smsConsentAgreed')
     .populate('doctor', 'name');
@@ -220,8 +220,8 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
         
         if (result.success) {
           // Mark appointment as reminder sent
-          appointment.reminderSent = true;
-          appointment.reminderSentAt = new Date();
+          appointment.metadata.reminderSent = true;
+          appointment.metadata.reminderSentAt = new Date();
           await appointment.save();
           
           successCount++;
