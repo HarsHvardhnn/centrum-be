@@ -626,7 +626,7 @@ exports.getDoctorsList = async (req, res) => {
   try {
     
     const doctors = await User.find(
-      { role: "doctor", isDeleted: {$ne:true} },
+      { role: "doctor", deleted: false },
       { _id: 1,name: 1 }
     ).sort({ name: 1 });
     

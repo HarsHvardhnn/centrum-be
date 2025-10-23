@@ -1025,60 +1025,104 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
 
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <img src="${logoUrl}" alt="Centrum Medyczne 7" style="width: 220px; max-width: 100%; height: auto; margin-bottom: 20px;" />
-      </div>
-      
-      <div style="margin-bottom: 30px;">
-        <h2 style="color: #333; margin-bottom: 5px;"> Potwierdzenie Wizyty</h2>
-        <p style="color: #666; font-size: 16px; margin-top: 0;">Twoja wizyta została umówiona pomyślnie.</p>
-      </div>
-      
-      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-        <h3 style="color: #333; margin-top: 0;">Szczegóły Wizyty:</h3>
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Potwierdzenie wizyty – Centrum Medyczne 7</title>
+      <style>
+        body {
+          font-family: 'Helvetica Neue', Arial, sans-serif;
+          background-color: #ffffff;
+          color: #333333;
+          margin: 0;
+          padding: 0;
+        }
+        .container {
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 40px 20px;
+        }
+        .logo {
+          text-align: center;
+          margin-bottom: 30px;
+        }
+        .logo img {
+          width: 110px;
+          height: auto;
+        }
+        h1 {
+          font-size: 20px;
+          color: #222222;
+          text-align: left;
+        }
+        p {
+          font-size: 15px;
+          line-height: 1.5;
+          color: #444444;
+        }
+        .details {
+          background-color: #f8f9fa;
+          padding: 18px 20px;
+          border-radius: 10px;
+          margin: 25px 0;
+        }
+        .details b {
+          color: #000000;
+        }
+        .footer {
+          font-size: 12px;
+          color: #777777;
+          text-align: center;
+          margin-top: 30px;
+        }
+        .confidential {
+          font-size: 11.5px;
+          color: #777777;
+          margin-top: 25px;
+          line-height: 1.5;
+          text-align: justify;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="logo">
+          <img src="${logoUrl}" alt="Centrum Medyczne 7" />
+        </div>
         
-        <div style="margin-bottom: 15px;">
-          <p style="margin: 5px 0;"><strong>Pacjent:</strong> ${patientName}</p>
-          <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
-          <p style="margin: 5px 0;"><strong>Data:</strong> ${date}</p>
-          <p style="margin: 5px 0;"><strong>Godzina:</strong> ${time}</p>
-          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${
-            mode === "online" ? "Online" : "Stacjonarna"
-          }</p>
-          ${
-            notes
-              ? `<p style="margin: 5px 0;"><strong>Uwagi pacjenta:</strong> ${notes}</p>`
-              : ""
-          }
+        <h1>Potwierdzenie wizyty</h1>
+        <p>Twoja wizyta została pomyślnie umówiona. Poniżej znajdziesz szczegóły rezerwacji:</p>
+        
+        <div class="details">
+          <p><b>Pacjent:</b> ${patientName}<br>
+          <b>Lekarz prowadzący:</b> ${doctorName}<br>
+          <b>Data:</b> ${date}<br>
+          <b>Godzina:</b> ${time}<br>
+          <b>Forma konsultacji:</b> ${mode === "online" ? "online" : "stacjonarna"}<br>
+          <b>Adres:</b> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
+        </div>
+        
+        <p>W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny 
+        <b>najpóźniej na 24 godziny przed planowaną wizytą</b>.<br>
+        Odwołania dokonane w krótszym czasie <b>nie będą uwzględniane</b>.</p>
+        
+        <p>Dziękujemy za zrozumienie i poszanowanie czasu naszych specjalistów.</p>
+        
+        <div class="footer">
+          © 2025 <b>Centrum Medyczne 7</b> – Wszelkie prawa zastrzeżone
+        </div>
+        
+        <div class="confidential">
+          <b>Klauzula poufności:</b><br>
+          Niniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane
+          osobowe lub informacje medyczne objęte tajemnicą zawodową.
+          Jeśli wiadomość trafiła do Ciebie omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.
         </div>
       </div>
-      
-      ${
-        mode === "online"
-          ? `
-        ${
-          meetingLink
-            ? `
-          <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-            <p style="margin: 0;">Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
-          </div>
-        `
-            : `
-        `
-        }
-      `
-          : `
-      `
-      }
-      
-
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
-        <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>
-        <p style="color: #666; margin-bottom: 10px;">Dziękujemy za zaufanie!</p>
-        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - Wszelkie prawa zastrzeżone</p>
-      </div>
-    </div>
+    </body>
+    </html>
   `;
 };
 

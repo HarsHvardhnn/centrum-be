@@ -204,6 +204,15 @@ const appointmentSchema = new mongoose.Schema(
       consultationFee: {
         type: Number,
         default: 0
+      },
+      // Reminder tracking fields
+      reminderSent: {
+        type: Boolean,
+        default: false
+      },
+      reminderSentAt: {
+        type: Date,
+        default: null
       }
     }
   },

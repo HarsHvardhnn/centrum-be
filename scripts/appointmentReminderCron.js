@@ -158,33 +158,36 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
       }
     });
     
-    // Get today's date in Europe/Warsaw timezone
+    // Get current time in Europe/Warsaw timezone
     const now = new Date();
-    const today = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Warsaw' }));
-    today.setHours(0, 0, 0, 0); // Start of day
+    const currentTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Warsaw' }));
     
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1); // End of day
-    tomorrow.setHours(0, 0, 0, 0);
+    // Calculate 4 hours from now
+    const fourHoursFromNow = new Date(currentTime.getTime() + (4 * 60 * 60 * 1000));
     
-    console.log(`Looking for appointments on: ${today.toISOString().split('T')[0]}`);
-    console.log(`Date range: ${today.toISOString()} to ${tomorrow.toISOString()}`);
-    console.log(`Timezone offset: ${now.getTimezoneOffset()} minutes`);
+    // Create a time window (4 hours ± 1 minute to catch appointments)
+    const timeWindowStart = new Date(fourHoursFromNow.getTime() - (1 * 60 * 1000)); // 4 hours - 1 minute
+    const timeWindowEnd = new Date(fourHoursFromNow.getTime() + (1 * 60 * 1000));   // 4 hours + 1 minute
     
-    // Find appointments for today with 'booked' status
+    console.log(`Current time (Warsaw): ${currentTime.toISOString()}`);
+    console.log(`Looking for appointments 4 hours from now: ${fourHoursFromNow.toISOString()}`);
+    console.log(`Time window: ${timeWindowStart.toISOString()} to ${timeWindowEnd.toISOString()}`);
+    
+    // Find appointments that are 4 hours away (±1 minute) and haven't been reminded yet
     const appointments = await Appointment.find({
       date: {
-        $gte: today,
-        $lte: tomorrow
+        $gte: timeWindowStart,
+        $lte: timeWindowEnd
       },
-      status: 'booked'
+      status: 'booked',
+      // Add a field to track if reminder was sent
+      reminderSent: { $ne: true }
     })
     .populate('patient', 'name phone smsConsentAgreed')
     .populate('doctor', 'name');
     
-    console.log(`Query used - Start: ${today.toISOString()}, End: ${tomorrow.toISOString()}`);
-
-    console.log(`Found ${appointments.length} appointments for today`);
+    console.log(`Query used - Start: ${timeWindowStart.toISOString()}, End: ${timeWindowEnd.toISOString()}`);
+    console.log(`Found ${appointments.length} appointments needing reminders`);
     
     // Log first few appointments for debugging
     if (appointments.length > 0) {
@@ -193,22 +196,7 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
         console.log(`  ${idx + 1}. Date: ${apt.date.toISOString()}, Time: ${apt.startTime}, Status: ${apt.status}, Patient: ${apt.patient?.name?.first || 'N/A'} ${apt.patient?.name?.last || 'N/A'}`);
       });
     } else {
-      console.log('No appointments found. Checking total booked appointments in DB...');
-      const totalBooked = await Appointment.countDocuments({ status: 'booked' });
-      console.log(`Total booked appointments in database: ${totalBooked}`);
-      
-      if (totalBooked > 0) {
-        // Get a few booked appointments to see their dates
-        const sampleBooked = await Appointment.find({ status: 'booked' })
-          .limit(5)
-          .select('date startTime status')
-          .populate('patient', 'name');
-        
-        console.log('Sample booked appointments in database:');
-        sampleBooked.forEach((apt, idx) => {
-          console.log(`  ${idx + 1}. Date: ${apt.date.toISOString()}, Time: ${apt.startTime}, Status: ${apt.status}`);
-        });
-      }
+      console.log('No appointments found needing reminders.');
     }
     
     // Update log with total records found
@@ -231,6 +219,11 @@ const processAppointmentReminders = async (triggeredBy = 'cron') => {
         const result = await sendAppointmentReminder(appointment, patient, doctor, logEntry);
         
         if (result.success) {
+          // Mark appointment as reminder sent
+          appointment.reminderSent = true;
+          appointment.reminderSentAt = new Date();
+          await appointment.save();
+          
           successCount++;
         } else {
           errorCount++;
@@ -325,12 +318,12 @@ const cleanupOldLogs = async () => {
   }
 };
 
-// Schedule the cron job to run at 12:00 AM (midnight) every day
+// Schedule the cron job to run every minute to check for appointments 4 hours away
 const startAppointmentReminderCron = () => {
   console.log('Starting appointment reminder cron job...');
   
-  // Cron expression: '0 0 * * *' means at 00:00 (midnight) every day
-  cron.schedule('0 0 * * *', async () => {
+  // Cron expression: '* * * * *' means every minute
+  cron.schedule('* * * * *', async () => {
     console.log('Appointment reminder cron job triggered at:', new Date().toISOString());
     const result = await processAppointmentReminders('cron');
     console.log('Cron job execution result:', result);
@@ -349,7 +342,7 @@ const startAppointmentReminderCron = () => {
     timezone: "Europe/Warsaw"
   });
   
-  console.log('Appointment reminder cron job scheduled to run daily at 12:00 AM');
+  console.log('Appointment reminder cron job scheduled to run every minute');
   console.log('Log cleanup scheduled to run weekly on Sundays at 2:00 AM');
 };
 
