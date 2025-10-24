@@ -250,7 +250,7 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
     mode,
   } = rescheduleDetails;
 
-  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -307,7 +307,7 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
 
 // Password Reset Email Template
 const createPasswordResetEmailHtml = (otp, userRole) => {
-  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
   
   return `
     <!DOCTYPE html>

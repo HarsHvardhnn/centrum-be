@@ -43,7 +43,7 @@ const sendEmail = async ({ to, subject, html, text }) => {
     }
 
     const mailOptions = {
-      from: `"Centrum Medyczne" <${process.env.ZOHO_USER}>`,
+      from: `"Centrum Medyczne 7" <${process.env.ZOHO_USER}>`,
       to,
       subject,
       text,

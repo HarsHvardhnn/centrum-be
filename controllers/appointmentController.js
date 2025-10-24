@@ -1140,7 +1140,7 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
   } = rescheduleDetails;
 
   // Use the Cloudinary logo URL
-  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -1691,6 +1691,7 @@ exports.getAppointmentsDashboard = async (req, res) => {
 exports.cancelAppointment = async (req, res) => {
   try {
     const { id } = req.params;
+    const { sendSMSNotification = false } = req.body; // Default to false if not provided
 
     const appointment = await Appointment.findById(id).populate(
       "doctor patient",
@@ -1707,39 +1708,45 @@ exports.cancelAppointment = async (req, res) => {
         .json({ message: "Appointment is already cancelled" });
     }
 
-    // Get doctor and patient details for SMS
-    const doctorDetails = await doctor.findById(appointment.doctor._id);
-    const patientDetails = await user.findById(appointment.patient?._id);
-
-    if (!doctorDetails || !patientDetails) {
-      return res.status(404).json({
-        success: false,
-        message: "Doctor or patient details not found",
-      });
-    }
-
     // Update appointment status
     appointment.status = "cancelled";
     await appointment.save();
 
-    // Send SMS notification
+    // Send SMS notification only if requested
     let smsResult = null;
-    try {
-      smsResult = await sendAppointmentStatusSMS(
-        appointment,
-        patientDetails,
-        doctorDetails,
-        "cancelled"
-      );
-    } catch (smsError) {
-      console.error("Error sending cancellation SMS:", smsError);
+    if (sendSMSNotification) {
+      try {
+        // Get doctor and patient details for SMS
+        const doctorDetails = await doctor.findById(appointment.doctor._id);
+        const patientDetails = await user.findById(appointment.patient?._id);
+
+        if (!doctorDetails || !patientDetails) {
+          return res.status(404).json({
+            success: false,
+            message: "Doctor or patient details not found",
+          });
+        }
+
+        smsResult = await sendAppointmentStatusSMS(
+          appointment,
+          patientDetails,
+          doctorDetails,
+          "cancelled"
+        );
+      } catch (smsError) {
+        console.error("Error sending cancellation SMS:", smsError);
+        smsResult = {
+          success: false,
+          error: smsError.message
+        };
+      }
     }
 
     res.status(200).json({
       success: true,
       message: "Appointment cancelled successfully",
       notifications: {
-        sms: smsResult
+        sms: sendSMSNotification ? (smsResult
           ? {
               sent: smsResult.success,
               error: smsResult.error,
@@ -1747,7 +1754,10 @@ exports.cancelAppointment = async (req, res) => {
           : {
               sent: false,
               error: "SMS notification not sent - patient consent not given",
-            },
+            }) : {
+              sent: false,
+              message: "SMS notification not requested"
+            }
       },
     });
   } catch (error) {

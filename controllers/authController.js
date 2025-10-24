@@ -524,7 +524,7 @@ const requestPasswordReset = async (req, res) => {
 
   // Create professional HTML email template for password reset OTP
   const createPasswordResetEmailHtml = (otp, userRole = 'Użytkownik') => {
-    const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1757666023/hospital_app/images/a8qfdccxpi0aipcavki2.png';
+    const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
     return `
       <!DOCTYPE html>
       <html lang="pl">

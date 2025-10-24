@@ -1656,6 +1656,63 @@ exports.fixPatientDocumentUrls = async (req, res) => {
   }
 };
 
+// Remove patient email by patient ID
+exports.removePatientEmail = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+
+    // Validate MongoDB ID
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID format"
+      });
+    }
+
+    // Find the patient first
+    const existingPatient = await patient.findById(patientId);
+    if (!existingPatient) {
+      return res.status(404).json({
+        success: false,
+        message: "Nie znaleziono pacjenta"
+      });
+    }
+
+    // Update patient to remove email (set to empty string)
+    const updatedPatient = await patient.findByIdAndUpdate(
+      patientId,
+      { email: "" },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedPatient) {
+      return res.status(404).json({
+        success: false,
+        message: "Nie znaleziono pacjenta"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Email pacjenta został pomyślnie usunięty",
+      patient: {
+        id: updatedPatient._id,
+        name: `${updatedPatient.name?.first || ""} ${updatedPatient.name?.last || ""}`.trim(),
+        patientId: updatedPatient.patientId,
+        email: updatedPatient.email, // Will be empty string
+        phone: updatedPatient.phone
+      }
+    });
+  } catch (error) {
+    console.error("Error removing patient email:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się usunąć email pacjenta",
+      error: error.message
+    });
+  }
+};
+
 exports.getAppointmentsList = async (req, res) => {
   try {
     // Extract query parameters

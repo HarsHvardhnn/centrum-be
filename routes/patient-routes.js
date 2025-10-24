@@ -167,4 +167,7 @@ router.get("/:patientId/documents", patientController.getPatientDocuments);
 router.delete("/:patientId/documents/:documentId", authorizeRoles(["doctor", "admin", "receptionist"]), patientController.deletePatientDocument);
 router.patch("/:patientId/documents/fix-urls", patientController.fixPatientDocumentUrls);
 
+// Email management routes
+router.delete("/:patientId/email", authorizeRoles(["doctor", "admin", "receptionist"]), patientController.removePatientEmail);
+
 module.exports = router;
