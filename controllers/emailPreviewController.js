@@ -45,6 +45,15 @@ const getSampleData = () => ({
   passwordResetData: {
     otp: "123456",
     userRole: "Lekarz"
+  },
+  
+  // Cancellation email data
+  cancellationData: {
+    patientName: "Jan Kowalski",
+    doctorName: "Dr. Anna Nowak",
+    date: "15.01.2025",
+    time: "10:00 - 10:30",
+    mode: "stacjonarna"
   }
 });
 
@@ -305,6 +314,210 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
   `;
 };
 
+// Appointment Cancellation Email Template
+const createCancellationEmailHtml = (cancellationDetails) => {
+  const {
+    patientName,
+    doctorName,
+    date,
+    time,
+    mode,
+  } = cancellationDetails;
+
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
+
+  return `
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Odwołanie wizyty – Centrum Medyczne 7</title>
+        <style>
+            body {
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #f8f9fa;
+                color: #333333;
+            }
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+                background-color: white;
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+                background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+                color: white;
+                padding: 40px 20px;
+                text-align: center;
+            }
+            .logo-container {
+                margin-bottom: 20px;
+            }
+            .logo {
+                width: 80px;
+                height: 80px;
+                border-radius: 10px;
+                margin: 0 auto 20px;
+                display: block;
+                background-color: white;
+                padding: 10px;
+            }
+            .header h1 {
+                margin: 0;
+                font-size: 24px;
+                font-weight: 600;
+                color: white;
+            }
+            .content {
+                padding: 40px 30px;
+            }
+            .title {
+                font-size: 28px;
+                color: #2c3e50;
+                margin-bottom: 20px;
+                font-weight: 600;
+                text-align: center;
+            }
+            .intro-text {
+                font-size: 16px;
+                color: #555;
+                line-height: 1.6;
+                margin-bottom: 30px;
+            }
+            .cancellation-details {
+                background-color: #e8f5e8;
+                border-radius: 10px;
+                padding: 25px;
+                margin: 30px 0;
+                border-left: 4px solid #dc3545;
+                position: relative;
+            }
+            .cancellation-details h3 {
+                color: #dc3545;
+                margin-top: 0;
+                font-size: 18px;
+                font-weight: 600;
+                margin-bottom: 20px;
+            }
+            .cancellation-details p {
+                margin: 10px 0;
+                color: #2c3e50;
+                font-size: 16px;
+            }
+            .cancellation-details strong {
+                color: #2c3e50;
+            }
+            .red-indicator {
+                position: absolute;
+                top: 20px;
+                right: 20px;
+                background-color: #dc3545;
+                color: white;
+                padding: 8px 12px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
+                border: 2px solid white;
+            }
+            .warning-info {
+                background-color: #fff3cd;
+                border-radius: 10px;
+                padding: 25px;
+                margin: 30px 0;
+                border-left: 4px solid #ffc107;
+            }
+            .warning-info p {
+                margin: 15px 0;
+                color: #856404;
+                font-size: 16px;
+                line-height: 1.6;
+            }
+            .confidentiality-clause {
+                background-color: #f0e6ff;
+                border-radius: 10px;
+                padding: 25px;
+                margin: 25px 0;
+                border-left: 4px solid #9b59b6;
+            }
+            .confidentiality-clause h3 {
+                color: #9b59b6;
+                margin-top: 0;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            .confidentiality-clause p {
+                color: #2c3e50;
+                margin: 10px 0;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            .footer {
+                background-color: #f8f9fa;
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 12px;
+                border-top: 1px solid #e9ecef;
+            }
+            .footer p {
+                margin: 5px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo-container">
+                    <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" class="logo" />
+                </div>
+                <h1>Centrum Medyczne 7</h1>
+            </div>
+            
+            <div class="content">
+                <div class="title">Odwołanie Wizyty</div>
+                
+                <div class="intro-text">
+                    Wizyta została odwołana z przyczyn organizacyjnych lub na prośbę pacjenta.<br>
+                    Poniżej znajdują się szczegóły dotyczące odwołanego terminu:
+                </div>
+                
+                <div class="cancellation-details">
+                    <div class="red-indicator">RED</div>
+                    <h3>Szczegóły Odwołanej Wizyty:</h3>
+                    <p><strong>Pacjent:</strong> ${patientName}</p>
+                    <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
+                    <p><strong>Data:</strong> ${date}</p>
+                    <p><strong>Godzina:</strong> ${time}</p>
+                    <p><strong>Forma konsultacji:</strong> ${mode === "online" ? "Online" : "Stacjonarna"}</p>
+                    <p><strong>Adres:</strong> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
+                </div>
+                
+                <div class="warning-info">
+                    <p>W przypadku gdy wizyta nie została odwołana z Państwa inicjatywy ani nie przekazano wcześniej takiej informacji telefonicznie, prosimy o niezwłoczny kontakt z rejestracją w celu potwierdzenia statusu wizyty.</p>
+                    <p>Informacja o odwołaniu mogła zostać wygenerowana automatycznie w wyniku błędu systemowego lub nieprawidłowej synchronizacji danych.</p>
+                </div>
+                
+                <div class="confidentiality-clause">
+                    <h3>Klauzula poufności:</h3>
+                    <p>Niniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane osobowe lub informacje medyczne objęte tajemnicą zawodową.</p>
+                    <p>Jeśli wiadomość trafiła do Państwa omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.</p>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <p>© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone</p>
+            </div>
+        </div>
+    </body>
+    </html>
+  `;
+};
+
 // Password Reset Email Template
 const createPasswordResetEmailHtml = (otp, userRole) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
@@ -518,6 +731,19 @@ exports.sendAllEmailTemplates = async (req, res) => {
       results.push({ template: "Password Reset", status: "failed", error: error.message });
     }
 
+    // 6. Appointment Cancellation Email
+    try {
+      await sendEmail({
+        to: email,
+        subject: "[PREVIEW] Odwołanie wizyty – Centrum Medyczne 7 (Cancellation)",
+        html: createCancellationEmailHtml(sampleData.cancellationData),
+        text: `Odwołanie Wizyty\n\nWizyta została odwołana z przyczyn organizacyjnych lub na prośbę pacjenta.\n\nSzczegóły Odwołanej Wizyty:\nPacjent: ${sampleData.cancellationData.patientName}\nLekarz prowadzący: ${sampleData.cancellationData.doctorName}\nData: ${sampleData.cancellationData.date}\nGodzina: ${sampleData.cancellationData.time}\nForma konsultacji: ${sampleData.cancellationData.mode}\nAdres: ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna\n\nW przypadku gdy wizyta nie została odwołana z Państwa inicjatywy ani nie przekazano wcześniej takiej informacji telefonicznie, prosimy o niezwłoczny kontakt z rejestracją w celu potwierdzenia statusu wizyty.\n\n© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone`
+      });
+      results.push({ template: "Appointment Cancellation", status: "sent" });
+    } catch (error) {
+      results.push({ template: "Appointment Cancellation", status: "failed", error: error.message });
+    }
+
     res.status(200).json({
       success: true,
       message: "Email templates sent for preview",
@@ -580,6 +806,13 @@ exports.getEmailTemplatesList = async (req, res) => {
         description: "Sent when user requests password reset",
         subject: "Reset Hasła",
         usage: "Password reset with OTP"
+      },
+      {
+        id: "appointment-cancellation",
+        name: "Appointment Cancellation",
+        description: "Sent when appointment is cancelled",
+        subject: "Odwołanie wizyty – Centrum Medyczne 7",
+        usage: "Appointment cancellation notification"
       }
     ];
 

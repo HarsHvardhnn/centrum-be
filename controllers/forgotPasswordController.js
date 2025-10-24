@@ -12,8 +12,7 @@ const generateOTP = () => {
 };
 
 // Create HTML email template for password reset OTP
-const createPasswordResetEmailHtml = (otp, userRole) => {
-  const roleDisplay = userRole === 'doctor' ? 'Lekarz' : 'Recepcjonista';
+const createPasswordResetEmailHtml = (otp, userRole, userName = '') => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
   
   return `
@@ -22,118 +21,246 @@ const createPasswordResetEmailHtml = (otp, userRole) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Reset Hasła - Centrum Medyczne</title>
+        <title>Reset Hasła - Centrum Medyczne 7</title>
         <style>
             body {
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                color: #333;
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #f8f9fa;
+                color: #333333;
+            }
+            .container {
                 max-width: 600px;
                 margin: 0 auto;
-                padding: 20px;
+                background-color: white;
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             }
             .header {
-                background-color: #000000;
+                background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
                 color: white;
-                padding: 20px;
+                padding: 40px 20px;
                 text-align: center;
-                border-radius: 8px 8px 0 0;
             }
             .logo-container {
-                display: inline-block;
-                background-color: rgba(255, 255, 255, 0.95);
-                border-radius: 12px;
-                padding: 12px;
-                margin-bottom: 15px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                margin-bottom: 20px;
             }
             .logo {
-                max-width: 150px;
-                height: auto;
-                margin-bottom: 0;
-                background-color: transparent !important;
-                border-radius: 8px;
-                padding: 0;
-                /* Ensure logo is visible in both light and dark themes */
-                filter: brightness(1) contrast(1);
+                width: 80px;
+                height: 80px;
+                border-radius: 10px;
+                margin: 0 auto 20px;
                 display: block;
+                background-color: white;
+                padding: 10px;
             }
-            /* Dark theme compatibility */
-            @media (prefers-color-scheme: dark) {
-                .logo {
-                    background-color: rgba(255, 255, 255, 0.1) !important;
-                    filter: brightness(1.2) contrast(1.1);
-                }
+            .header h1 {
+                margin: 0;
+                font-size: 24px;
+                font-weight: 600;
+                color: white;
+            }
+            .header h2 {
+                margin: 10px 0 0;
+                font-size: 16px;
+                font-weight: 400;
+                opacity: 0.9;
+                color: white;
             }
             .content {
-                background-color: #f9f9f9;
-                padding: 30px;
-                border-radius: 0 0 8px 8px;
-                border: 1px solid #ddd;
+                padding: 40px 30px;
+            }
+            .greeting {
+                font-size: 18px;
+                color: #2c3e50;
+                margin-bottom: 20px;
+                font-weight: 500;
+            }
+            .message {
+                font-size: 16px;
+                color: #555;
+                line-height: 1.6;
+                margin-bottom: 30px;
+            }
+            .otp-container {
+                text-align: center;
+                margin: 40px 0;
+            }
+            .otp-label {
+                font-size: 16px;
+                color: #2c3e50;
+                margin-bottom: 20px;
+                font-weight: 500;
             }
             .otp-code {
-                background-color: #20B2AA;
+                display: inline-block;
+                background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
                 color: white;
-                font-size: 32px;
+                font-size: 36px;
                 font-weight: bold;
-                text-align: center;
-                padding: 20px;
-                margin: 20px 0;
-                border-radius: 8px;
-                letter-spacing: 5px;
+                padding: 25px 50px;
+                border-radius: 10px;
+                letter-spacing: 10px;
+                box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+                margin: 10px 0;
             }
-            .warning {
+            .warning-box {
                 background-color: #fff3cd;
                 border: 1px solid #ffeaa7;
+                border-radius: 10px;
+                padding: 25px;
+                margin: 30px 0;
+            }
+            .warning-title {
                 color: #856404;
-                padding: 15px;
-                border-radius: 5px;
-                margin: 20px 0;
+                font-weight: bold;
+                margin-bottom: 15px;
+                font-size: 16px;
+            }
+            .warning-list {
+                color: #856404;
+                margin: 0;
+                padding-left: 20px;
+            }
+            .warning-list li {
+                margin-bottom: 10px;
+                line-height: 1.5;
+            }
+            .contact-info {
+                background-color: #e8f4fd;
+                border-radius: 10px;
+                padding: 20px;
+                margin: 30px 0;
+                border-left: 4px solid #3498db;
+            }
+            .contact-info p {
+                margin: 0;
+                color: #2c3e50;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            .signature {
+                margin-top: 30px;
+                color: #555;
+            }
+            .signature p {
+                margin: 5px 0;
+            }
+            .security-clause {
+                background-color: #e8f5e8;
+                border-radius: 10px;
+                padding: 25px;
+                margin: 25px 0;
+                border-left: 4px solid #27ae60;
+            }
+            .security-clause h3 {
+                color: #27ae60;
+                margin-top: 0;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            .security-clause p {
+                color: #2c3e50;
+                margin: 10px 0;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            .confidentiality-clause {
+                background-color: #f0e6ff;
+                border-radius: 10px;
+                padding: 25px;
+                margin: 25px 0;
+                border-left: 4px solid #9b59b6;
+            }
+            .confidentiality-clause h3 {
+                color: #9b59b6;
+                margin-top: 0;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            .confidentiality-clause p {
+                color: #2c3e50;
+                margin: 10px 0;
+                font-size: 14px;
+                line-height: 1.5;
             }
             .footer {
+                background-color: #f8f9fa;
+                padding: 20px;
                 text-align: center;
-                margin-top: 30px;
-                font-size: 12px;
                 color: #666;
+                font-size: 12px;
+                border-top: 1px solid #e9ecef;
+            }
+            .footer p {
+                margin: 5px 0;
             }
         </style>
     </head>
     <body>
-        <div class="header">
-            <div class="logo-container">
-                <img src="${logoUrl}" alt="CM7MED Logo" class="logo" />
-            </div>
-            <h1>Centrum Medyczne</h1>
-            <h2>Reset Hasła</h2>
-        </div>
-        
-        <div class="content">
-            <p>Witaj ${roleDisplay},</p>
-            
-            <p>Otrzymałeś ten email, ponieważ zostało zgłoszone żądanie resetu hasła dla Twojego konta.</p>
-            
-            <p><strong>Twój kod weryfikacyjny to:</strong></p>
-            
-            <div class="otp-code">${otp}</div>
-            
-            <div class="warning">
-                <strong>⚠️ Ważne informacje:</strong>
-                <ul>
-                    <li>Kod jest ważny przez <strong>10 minut</strong></li>
-                    <li>Nie udostępniaj tego kodu nikomu</li>
-                    <li>Jeśli nie zgłaszałeś resetu hasła, zignoruj ten email</li>
-                    <li>Kod może być użyty tylko raz</li>
-                </ul>
+        <div class="container">
+            <div class="header">
+                <div class="logo-container">
+                    <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" class="logo" />
+                </div>
+                <h1>Centrum Medyczne 7</h1>
+                <h2>Reset Hasła</h2>
             </div>
             
-            <p>Jeśli masz problemy z dostępem do konta, skontaktuj się z administratorem systemu.</p>
+            <div class="content">
+                <div class="greeting">
+                    Witaj, ${userName || 'Użytkowniku'}
+                </div>
+                
+                <div class="message">
+                    Otrzymano zgłoszenie dotyczące resetu hasła do Twojego konta pacjenta.<br>
+                    Aby zweryfikować to żądanie, użyj poniższego kodu weryfikacyjnego:
+                </div>
+                
+                <div class="otp-container">
+                    <div class="otp-label">Twój kod weryfikacyjny:</div>
+                    <div class="otp-code">${otp}</div>
+                </div>
+                
+                <div class="warning-box">
+                    <div class="warning-title">Ważne informacje</div>
+                    <ul class="warning-list">
+                        <li>Kod jest ważny przez 10 minut.</li>
+                        <li>Nie udostępniaj tego kodu osobom trzecim.</li>
+                        <li>Jeśli nie zgłaszałeś(aś) resetu hasła, zignoruj tę wiadomość.</li>
+                        <li>Kod może być użyty tylko jeden raz.</li>
+                    </ul>
+                </div>
+                
+                <div class="contact-info">
+                    <p>Jeśli masz problem z dostępem do konta, skontaktuj się z administratorem systemu: admin@cm7med.pl lub rejestracją.</p>
+                </div>
+                
+                <div class="signature">
+                    <p>Z poważaniem,</p>
+                    <p><strong>Zespół CM7</strong></p>
+                </div>
+                
+                <div class="security-clause">
+                    <h3>Klauzula bezpieczeństwa:</h3>
+                    <p>Informacje zawarte w niniejszej wiadomości, w tym kod weryfikacyjny, mają charakter poufny.</p>
+                    <p>Centrum Medyczne 7 nigdy nie prosi o podawanie kodów ani haseł drogą mailową lub telefoniczną.</p>
+                    <p>Prosimy o zachowanie poufności i nieprzekazywanie tych danych osobom trzecim.</p>
+                </div>
+                
+                <div class="confidentiality-clause">
+                    <h3>Klauzula poufności:</h3>
+                    <p>Niniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane osobowe lub informacje medyczne objęte tajemnicą zawodową.</p>
+                    <p>Jeśli wiadomość trafiła do Państwa omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.</p>
+                </div>
+            </div>
             
-            <p>Z poważaniem,<br>
-            <strong>Zespół Centrum Medycznego</strong></p>
-        </div>
-        
-        <div class="footer">
-            <p>Ten email został wygenerowany automatycznie. Prosimy nie odpowiadać na tę wiadomość.</p>
+            <div class="footer">
+                <p>Ten e-mail został wygenerowany automatycznie — prosimy na niego nie odpowiadać.</p>
+                <p>© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone</p>
+            </div>
         </div>
     </body>
     </html>
@@ -148,7 +275,7 @@ const sendPasswordResetOTPEmail = async (email, otp, userRole) => {
     
     await sendEmail({
       to: email,
-      subject: "Reset Hasła - Kod Weryfikacyjny",
+      subject: "Reset hasła – Centrum Medyczne 7",
       html: html,
       text: text
     });

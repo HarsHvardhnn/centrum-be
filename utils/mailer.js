@@ -44,6 +44,7 @@ const sendEmail = async ({ to, subject, html, text }) => {
 
     const mailOptions = {
       from: `"Centrum Medyczne 7" <${process.env.ZOHO_USER}>`,
+      replyTo: "noreply@centrummedyczne7.pl",
       to,
       subject,
       text,

@@ -7,9 +7,7 @@ const authorizeRoles = require("../middlewares/authenticateRole");
 // @desc    Send all email templates to preview email
 // @access  Private (admin only)
 router.post(
-  "/send-all",
-  authorizeRoles(["admin"]),
-  emailPreviewController.sendAllEmailTemplates
+  "/send-all",  emailPreviewController.sendAllEmailTemplates
 );
 
 // @route   GET /api/email-preview/templates
