@@ -91,48 +91,6 @@ const sendAppointmentStatusSMS = async (
   }
 };
 
-// Helper function to send report upload notification SMS
-const sendReportUploadSMS = async (
-  appointment,
-  patientDetails,
-  doctorDetails
-) => {
-  try {
-    if (!hasPatientConsentedToSMS(patientDetails)) {
-      return {
-        success: false,
-        error: "Patient has not consented to SMS notifications",
-      };
-    }
-
-    const phoneNumber = patientDetails.phone;
-    if (!phoneNumber) {
-      return { success: false, error: "No phone number available" };
-    }
-
-    const appointmentDate = formatDateForSMS(new Date(appointment.date));
-    const patientName = `${patientDetails.name.first} ${patientDetails.name.last}`;
-    const doctorName = `${doctorDetails.name.first} ${doctorDetails.name.last}`;
-
-    const message = `Nowy raport medyczny dla wizyty u dr ${doctorName} w dniu ${appointmentDate}. Sprawdz portal pacjenta.`;
-
-    const batchId = uuidv4();
-    await MessageReceipt.create({
-      content: message,
-      batchId,
-      recipient: {
-        userId: patientDetails._id.toString(),
-        phone: phoneNumber,
-      },
-      status: "PENDING",
-    });
-
-    return await sendSMS(phoneNumber, message);
-  } catch (error) {
-    console.error("Error sending report upload SMS:", error);
-    return { success: false, error: error.message };
-  }
-};
 
 // Helper function to generate temporary password
 const generateTemporaryPassword = () => {
@@ -2356,17 +2314,6 @@ exports.uploadAppointmentReport = async (req, res) => {
       });
     }
 
-    // Get doctor and patient details for SMS
-    const doctorDetails = await doctor.findById(appointment.doctor._id);
-    const patientDetails = await user.findById(appointment.patient._id);
-
-    if (!doctorDetails || !patientDetails) {
-      return res.status(404).json({
-        success: false,
-        message: "Doctor or patient details not found",
-      });
-    }
-
     // Process uploaded file
     if (!req.file) {
       return res.status(400).json({
@@ -2402,35 +2349,12 @@ exports.uploadAppointmentReport = async (req, res) => {
     appointment.reports.push(report);
     await appointment.save();
 
-    // Send SMS notification
-    let smsResult = null;
-    try {
-      smsResult = await sendReportUploadSMS(
-        appointment,
-        patientDetails,
-        doctorDetails
-      );
-    } catch (smsError) {
-      console.error("Error sending report upload SMS:", smsError);
-    }
-
     res.status(200).json({
       success: true,
       message: "Report uploaded successfully",
       data: {
         report,
         appointment,
-      },
-      notifications: {
-        sms: smsResult
-          ? {
-              sent: smsResult.success,
-              error: smsResult.error,
-            }
-          : {
-              sent: false,
-              error: "SMS notification not sent - patient consent not given",
-            },
       },
     });
   } catch (error) {
