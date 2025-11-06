@@ -1986,7 +1986,7 @@ exports.cancelAppointment = async (req, res) => {
 exports.completeCheckIn = async (req, res) => {
   try {
     const { id } = req.params;
-    const { patientId } = req.body; // Assuming you want to update the patientId as well
+    const patientId = req.query.patientId || req.body.patientId; // Read from query params or body
 
     const appointment = await Appointment.findOne({
       _id: id,
@@ -2003,12 +2003,20 @@ exports.completeCheckIn = async (req, res) => {
         .json({ message: "Appointment is already completed" });
     }
 
-    appointment.status = "completed";
+    if (appointment.status === "checkedIn") {
+      return res
+        .status(400)
+        .json({ message: "Appointment is already checked in" });
+    }
+
+    appointment.status = "checkedIn";
+    appointment.checkedIn = true;
+    appointment.checkInDate = new Date();
     await appointment.save();
 
-    res.status(200).json({ message: "Appointment completed successfully" });
+    res.status(200).json({ message: "Appointment checked in successfully" });
   } catch (error) {
-    console.error("Error completing appointment:", error);
+    console.error("Error checking in appointment:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

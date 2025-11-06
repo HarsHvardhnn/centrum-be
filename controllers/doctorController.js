@@ -1495,7 +1495,7 @@ const getDoctorBySlug = async (req, res) => {
       isDeleted: false
     }).populate({
       path: 'services.service',
-      select: 'title shortDescription description price'
+      select: 'title slug shortDescription description price'
     });
     
     // Format response for SEO optimization

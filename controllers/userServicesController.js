@@ -138,7 +138,7 @@ exports.getUserServices = async (req, res) => {
       isDeleted: false
     }).populate([
       { path: "user", select: "name email role" },
-      { path: "services.service", select: "title shortDescription price icon images" },
+      { path: "services.service", select: "title slug shortDescription price icon images" },
       { path: "assignedBy", select: "name email" }
     ]);
 
