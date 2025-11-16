@@ -862,13 +862,18 @@ exports.createReceptionAppointment = async (req, res) => {
     await appointment.save();
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    // Send email only if valid email is provided
+    // Send email and SMS together only if SMS consent is given AND both channels are available
     let emailSent = false;
-    if (emailRegex.test(patient.email) && patient.email) {
+    const hasSmsConsent = Boolean(patient.smsConsentAgreed);
+    const hasPhone = Boolean(patient.phone);
+    const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
+    const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
+ 
+    if (shouldSendBoth) {
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
         const formattedTime = formatTimeForSMS(time);
-
+ 
         // Email data
         const emailData = {
           patientName: `${patient.name.first} ${patient.name.last}`,
@@ -883,7 +888,7 @@ exports.createReceptionAppointment = async (req, res) => {
           isNewUser,
           temporaryPassword: isNewUser ? temporaryPassword : null,
         };
-
+ 
         // Send email
         await sendEmail({
           to: patient.email,
@@ -897,26 +902,17 @@ exports.createReceptionAppointment = async (req, res) => {
               : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
           }`,
         });
-
-        console.log(`Reception appointment confirmation email sent to ${patient.email}`);
         emailSent = true;
-      } catch (emailError) {
-        console.error("Failed to send reception appointment email:", emailError);
-      }
-    }
-
-    if (patient.smsConsentAgreed) {
-      try {
-        const formattedDate = formatDateForSMS(appointmentDate);
-        const formattedTime = formatTimeForSMS(time);
-        const message =
+ 
+        // Prepare and send SMS
+        const messageText =
           appointment.mode === "online"
             ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
             : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
-
+ 
         const batchId = uuidv4();
         await MessageReceipt.create({
-          content: message,
+          content: messageText,
           batchId,
           recipient: {
             userId: patient._id.toString(),
@@ -924,13 +920,20 @@ exports.createReceptionAppointment = async (req, res) => {
           },
           status: "PENDING",
         });
-
-        await sendSMS(patient.phone, message);
-      } catch (smsError) {
-        console.error(
-          "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
-          smsError
-        );
+ 
+        await sendSMS(patient.phone, messageText);
+        console.log("Reception appointment SMS sent to", patient.phone);
+      } catch (notifyError) {
+        console.error("Failed to send reception notifications (email/SMS):", notifyError);
+      }
+    } else {
+      // Do not send either if consent not given or a channel is unavailable
+      if (!hasSmsConsent) {
+        console.log("Skipping notifications: SMS consent not given.");
+      } else if (!hasPhone) {
+        console.log("Skipping notifications: phone number missing, enforcing both-or-neither policy.");
+      } else if (!hasValidEmail) {
+        console.log("Skipping notifications: email invalid/missing, enforcing both-or-neither policy.");
       }
     }
 
