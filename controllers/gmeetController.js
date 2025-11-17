@@ -479,13 +479,14 @@ exports.bookAppointment = async (req, res) => {
     if (isValidEmail && patient.email && smsConsentAgreed) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
+        const formattedTime = formatTimeForSMS(time);
 
         // Email data
         const emailData = {
           patientName: `${patient.name.first} ${patient.name.last}`,
           doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
           date: formattedDate,
-          time: `${time} - ${endTime}`,
+          time: time,
           department: department || "General",
           meetingLink:
             consultationType.toLowerCase() === "online" ? meetingLink : null,

@@ -444,7 +444,7 @@ exports.createAppointment = async (req, res) => {
           patientName: `${patient.name.first} ${patient.name.last}`,
           doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
           date: formattedDate,
-          time: `${time} - ${endTime}`,
+          time: time,
           department: doctorDetails.specialization || "General",
           meetingLink:
             consultationType.toLowerCase() === "online" ? meetingLink : null,
@@ -879,7 +879,7 @@ exports.createReceptionAppointment = async (req, res) => {
           patientName: `${patient.name.first} ${patient.name.last}`,
           doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
           date: formattedDate,
-          time: `${time} - ${endTime}`,
+          time: time,
           department: doctorDetails.specialization || "General",
           meetingLink:
             consultationType.toLowerCase() === "online" ? false : null,
@@ -1690,9 +1690,9 @@ exports.rescheduleAppointment = async (req, res) => {
           patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
           doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
           oldDate: oldFormattedDate,
-          oldTime: `${oldStartTime} - ${oldEndTime}`,
+          oldTime: oldStartTime,
           newDate: formattedDate,
-          newTime: `${newStartTime} - ${finalNewEndTime}`,
+          newTime: newStartTime,
           department: doctorDetails.specialization || "General",
           mode: appointment.mode,
         };
@@ -1914,7 +1914,7 @@ exports.cancelAppointment = async (req, res) => {
         // Format appointment data for email
         const appointmentDate = new Date(appointment.date);
         const formattedDate = appointmentDate.toLocaleDateString('pl-PL');
-        const formattedTime = `${appointment.startTime} - ${appointment.endTime}`;
+        const formattedTime = appointment.startTime;
         
         const patientName = appointment.patient.name?.first && appointment.patient.name?.last 
           ? `${appointment.patient.name.first} ${appointment.patient.name.last}`
