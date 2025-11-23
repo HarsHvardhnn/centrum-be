@@ -31,6 +31,14 @@ const contactSchema = new mongoose.Schema(
     privacyPolicyAccepted: {
       type: Boolean,
       default: false
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false
+    },
+    deletedAt: {
+      type: Date,
+      default: null
     }
   },
   {

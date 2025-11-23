@@ -51,8 +51,12 @@ exports.getAllContacts = async (req, res) => {
       search
     } = req.query;
 
-    // Build query
-    const query = {};
+    // Build query - exclude soft-deleted contacts
+    // Handle both existing records (without isDeleted field) and new records (with isDeleted: false)
+    // $ne: true matches both false and undefined (non-existent field)
+    const query = {
+      isDeleted: { $ne: true }
+    };
     
     // Add status filter if provided
     if (status && ["new", "read", "replied"].includes(status)) {
@@ -108,7 +112,12 @@ exports.getAllContacts = async (req, res) => {
 // Get single contact message (admin and receptionist only)
 exports.getContactById = async (req, res) => {
   try {
-    const contact = await Contact.findById(req.params.id).lean();
+    // Handle both existing records (without isDeleted field) and new records (with isDeleted: false)
+    // $ne: true matches both false and undefined (non-existent field)
+    const contact = await Contact.findOne({
+      _id: req.params.id,
+      isDeleted: { $ne: true }
+    }).lean();
 
     if (!contact) {
       return res.status(404).json({
@@ -143,18 +152,26 @@ exports.updateContactStatus = async (req, res) => {
       });
     }
 
-    const contact = await Contact.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true, runValidators: true }
-    ).lean();
+    // First check if contact exists and is not deleted
+    // Handle both existing records (without isDeleted field) and new records (with isDeleted: false)
+    // $ne: true matches both false and undefined (non-existent field)
+    const existingContact = await Contact.findOne({
+      _id: req.params.id,
+      isDeleted: { $ne: true }
+    });
 
-    if (!contact) {
+    if (!existingContact) {
       return res.status(404).json({
         success: false,
         message: "Wiadomość kontaktowa nie znaleziona"
       });
     }
+
+    const contact = await Contact.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, runValidators: true }
+    ).lean();
 
     res.status(200).json({
       success: true,
@@ -171,17 +188,33 @@ exports.updateContactStatus = async (req, res) => {
   }
 };
 
-// Delete contact message (admin and receptionist only)
+// Delete contact message (admin and receptionist only) - Soft delete
 exports.deleteContact = async (req, res) => {
   try {
-    const contact = await Contact.findByIdAndDelete(req.params.id);
+    // First check if contact exists and is not already deleted
+    // Handle both existing records (without isDeleted field) and new records (with isDeleted: false)
+    // $ne: true matches both false and undefined (non-existent field)
+    const existingContact = await Contact.findOne({
+      _id: req.params.id,
+      isDeleted: { $ne: true }
+    });
 
-    if (!contact) {
+    if (!existingContact) {
       return res.status(404).json({
         success: false,
         message: "Wiadomość kontaktowa nie znaleziona"
       });
     }
+
+    // Perform soft delete
+    const contact = await Contact.findByIdAndUpdate(
+      req.params.id,
+      {
+        isDeleted: true,
+        deletedAt: new Date()
+      },
+      { new: true }
+    );
 
     res.status(200).json({
       success: true,

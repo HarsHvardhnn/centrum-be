@@ -12,6 +12,7 @@ exports.getDoctorAppointmentStats = async (req, res) => {
     const { 
       startDate, 
       endDate, 
+      timeframe, // New parameter: 'today', 'week', 'month', 'year'
       groupBy = 'month',  // Default grouping by month
       includeRevenue = 'false' // Whether to include revenue statistics
     } = req.query;
@@ -25,38 +26,85 @@ exports.getDoctorAppointmentStats = async (req, res) => {
 
     // Validate dates
     let start, end;
-    if (startDate) {
-      start = new Date(startDate);
-      if (isNaN(start.getTime())) {
-        return res.status(400).json({
-          success: false,
-          message: "Nieprawidłowy format daty początkowej. Proszę użyć YYYY-MM-DD"
-        });
+    
+    // If timeframe is provided and no explicit dates, calculate start and end dates based on timeframe
+    if (timeframe && !startDate && !endDate) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      switch (timeframe.toLowerCase()) {
+        case 'today':
+          start = new Date(today);
+          start.setHours(0, 0, 0, 0);
+          end = new Date(today);
+          end.setHours(23, 59, 59, 999);
+          break;
+        case 'week':
+          // This week (Monday to Sunday)
+          const dayOfWeek = now.getDay();
+          const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to Monday
+          start = new Date(now);
+          start.setDate(diff);
+          start.setHours(0, 0, 0, 0);
+          end = new Date(start);
+          end.setDate(end.getDate() + 6);
+          end.setHours(23, 59, 59, 999);
+          break;
+        case 'month':
+          // Current month
+          start = new Date(now.getFullYear(), now.getMonth(), 1);
+          start.setHours(0, 0, 0, 0);
+          end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          end.setHours(23, 59, 59, 999);
+          break;
+        case 'year':
+          // Current year
+          start = new Date(now.getFullYear(), 0, 1);
+          start.setHours(0, 0, 0, 0);
+          end = new Date(now.getFullYear(), 11, 31);
+          end.setHours(23, 59, 59, 999);
+          break;
+        default:
+          return res.status(400).json({
+            success: false,
+            message: "Nieprawidłowy parametr timeframe. Dozwolone wartości: today, week, month, year"
+          });
       }
-      // Set time to beginning of day
-      start.setHours(0, 0, 0, 0);
     } else {
-      // Default to 6 months ago if no startDate
-      start = new Date();
-      start.setMonth(start.getMonth() - 6);
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-    }
+      // Use provided dates or defaults (startDate/endDate take precedence over timeframe)
+      if (startDate) {
+        start = new Date(startDate);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Nieprawidłowy format daty początkowej. Proszę użyć YYYY-MM-DD"
+          });
+        }
+        // Set time to beginning of day
+        start.setHours(0, 0, 0, 0);
+      } else {
+        // Default to 6 months ago if no startDate
+        start = new Date();
+        start.setMonth(start.getMonth() - 6);
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+      }
 
-    if (endDate) {
-      end = new Date(endDate);
-      if (isNaN(end.getTime())) {
-        return res.status(400).json({
-          success: false,
-          message: "Nieprawidłowy format daty końcowej. Proszę użyć YYYY-MM-DD"
-        });
+      if (endDate) {
+        end = new Date(endDate);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Nieprawidłowy format daty końcowej. Proszę użyć YYYY-MM-DD"
+          });
+        }
+        // Set time to end of day
+        end.setHours(23, 59, 59, 999);
+      } else {
+        // Default to current date if no endDate
+        end = new Date();
+        end.setHours(23, 59, 59, 999);
       }
-      // Set time to end of day
-      end.setHours(23, 59, 59, 999);
-    } else {
-      // Default to current date if no endDate
-      end = new Date();
-      end.setHours(23, 59, 59, 999);
     }
 
     // Validate dates are in order
@@ -67,11 +115,30 @@ exports.getDoctorAppointmentStats = async (req, res) => {
       });
     }
 
+    // Auto-set groupBy based on timeframe if not explicitly provided
+    let finalGroupBy = groupBy;
+    if (timeframe && groupBy === 'month') {
+      switch (timeframe.toLowerCase()) {
+        case 'today':
+          finalGroupBy = 'day';
+          break;
+        case 'week':
+          finalGroupBy = 'day';
+          break;
+        case 'month':
+          finalGroupBy = 'day';
+          break;
+        case 'year':
+          finalGroupBy = 'month';
+          break;
+      }
+    }
+
     // Define the date grouping format based on groupBy parameter
     let dateGroupFormat;
     let dateFormat; // For formatting the response
     
-    switch(groupBy.toLowerCase()) {
+    switch(finalGroupBy.toLowerCase()) {
       case 'day':
         dateGroupFormat = { $dateToString: { format: "%Y-%m-%d", date: "$date" } };
         dateFormat = "YYYY-MM-DD";
@@ -160,7 +227,7 @@ exports.getDoctorAppointmentStats = async (req, res) => {
     }
 
     // Fill in gaps in the date range
-    const stats = fillDateGaps(appointmentStats, revenueStats, start, end, groupBy);
+    const stats = fillDateGaps(appointmentStats, revenueStats, start, end, finalGroupBy);
 
     // Add metadata to response
     const response = {
@@ -170,7 +237,8 @@ exports.getDoctorAppointmentStats = async (req, res) => {
         timeframe: {
           startDate: start.toISOString().split('T')[0],
           endDate: end.toISOString().split('T')[0],
-          groupBy
+          groupBy: finalGroupBy,
+          ...(timeframe && { timeframe: timeframe.toLowerCase() })
         },
         dateFormat,
         stats

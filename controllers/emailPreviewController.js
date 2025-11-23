@@ -262,55 +262,173 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
 
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: left; margin-bottom: 20px;">
-        <img src="${logoUrl}" alt="Centrum Medyczne 7" style="height: 50px;" />
-      </div>
-      
-      <div style="margin-bottom: 30px;">
-        <h2 style="color: #333; margin-bottom: 5px;">Zmiana Terminu Wizyty</h2>
-        <p style="color: #666; font-size: 16px; margin-top: 0;">Twoja wizyta została przełożona.</p>
-      </div>
-      
-      <div style="background-color: #fff3cd; padding: 20px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
-        <h3 style="color: #856404; margin-top: 0;">Stary Termin:</h3>
-        <div style="margin-bottom: 15px;">
-          <p style="margin: 5px 0;"><strong>Pacjent:</strong> ${patientName}</p>
-          <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
-          <p style="margin: 5px 0;"><strong>Data:</strong> ${oldDate}</p>
-          <p style="margin: 5px 0;"><strong>Godzina:</strong> ${oldTime}</p>
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Zmiana Terminu Wizyty – Centrum Medyczne 7</title>
+        <style>
+            body {
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: #f8f9fa;
+                color: #333333;
+            }
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+                background-color: white;
+                padding: 20px;
+            }
+            .email-title {
+                font-size: 18px;
+                font-weight: 600;
+                color: #333;
+                margin-bottom: 20px;
+            }
+            .logo-section {
+                display: flex;
+                align-items: center;
+                margin-bottom: 30px;
+            }
+            .logo {
+                height: 60px;
+                margin-right: 15px;
+            }
+            .logo-text {
+                font-size: 20px;
+                font-weight: 600;
+                color: #333;
+            }
+            .content {
+                padding: 0;
+            }
+            .main-heading {
+                font-size: 24px;
+                font-weight: 600;
+                color: #2c3e50;
+                margin-bottom: 20px;
+            }
+            .intro-text {
+                font-size: 16px;
+                color: #555;
+                line-height: 1.6;
+                margin-bottom: 30px;
+            }
+            .old-appointment-box {
+                background-color: #fff3cd;
+                border-radius: 8px;
+                padding: 25px;
+                margin: 20px 0;
+            }
+            .old-appointment-box h3 {
+                color: #856404;
+                margin-top: 0;
+                font-size: 18px;
+                font-weight: 600;
+                margin-bottom: 15px;
+            }
+            .old-appointment-box p {
+                margin: 8px 0;
+                color: #2c3e50;
+                font-size: 16px;
+            }
+            .new-appointment-box {
+                background-color: #e8f5e8;
+                border-radius: 8px;
+                padding: 25px;
+                margin: 20px 0;
+            }
+            .new-appointment-box h3 {
+                color: #28a745;
+                margin-top: 0;
+                font-size: 18px;
+                font-weight: 600;
+                margin-bottom: 15px;
+            }
+            .new-appointment-box p {
+                margin: 8px 0;
+                color: #2c3e50;
+                font-size: 16px;
+            }
+            .online-info {
+                background-color: #e8f5e9;
+                border-radius: 8px;
+                padding: 20px;
+                margin: 20px 0;
+            }
+            .online-info p {
+                margin: 0;
+                color: #2c3e50;
+                font-size: 16px;
+                line-height: 1.6;
+            }
+            .footer {
+                background-color: #f8f9fa;
+                padding: 20px;
+                text-align: center;
+                color: #666;
+                font-size: 12px;
+                margin-top: 30px;
+            }
+            .footer p {
+                margin: 5px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="email-title">Zmiana Terminu Wizyty - Centrum Medyczne 7</div>
+            
+            <div class="logo-section">
+                <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" class="logo" />
+                <div class="logo-text">Centrum Medyczne</div>
+            </div>
+            
+            <div class="content">
+                <div class="main-heading">Zmiana Terminu Wizyty</div>
+                
+                <div class="intro-text">
+                    Twoja wizyta została przełożona. Poniżej znajdują się szczegóły dotyczące starego i nowego terminu:
+                </div>
+                
+                <div class="old-appointment-box">
+                    <h3>Stary Termin:</h3>
+                    <p><strong>Pacjent:</strong> ${patientName}</p>
+                    <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
+                    <p><strong>Data:</strong> ${oldDate}</p>
+                    <p><strong>Godzina:</strong> ${oldTime}</p>
+                </div>
+                
+                <div class="new-appointment-box">
+                    <h3>Nowy Termin:</h3>
+                    <p><strong>Pacjent:</strong> ${patientName}</p>
+                    <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
+                    <p><strong>Data:</strong> ${newDate}</p>
+                    <p><strong>Godzina:</strong> ${newTime}</p>
+                    <p><strong>Forma konsultacji:</strong> ${mode === "online" ? "Online" : "Stacjonarna"}</p>
+                    <p><strong>Adres:</strong> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
+                </div>
+                
+                ${
+                  mode === "online"
+                    ? `
+                <div class="online-info">
+                    <p>Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
+                </div>
+                `
+                    : ``
+                }
+            </div>
+            
+            <div class="footer">
+                <p>© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone</p>
+            </div>
         </div>
-      </div>
-      
-      <div style="background-color: #d4edda; padding: 20px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #28a745;">
-        <h3 style="color: #155724; margin-top: 0;">Nowy Termin:</h3>
-        <div style="margin-bottom: 15px;">
-          <p style="margin: 5px 0;"><strong>Pacjent:</strong> ${patientName}</p>
-          <p style="margin: 5px 0;"><strong>Specjalista:</strong> ${doctorName}</p>
-          <p style="margin: 5px 0;"><strong>Data:</strong> ${newDate}</p>
-          <p style="margin: 5px 0;"><strong>Godzina:</strong> ${newTime}</p>
-          <p style="margin: 5px 0;"><strong>Typ konsultacji:</strong> ${
-            mode === "online" ? "Online" : "Stacjonarna"
-          }</p>
-        </div>
-      </div>
-      
-      ${
-        mode === "online"
-          ? `
-        <div style="background-color: #e8f5e9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-          <p style="margin: 0;">Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
-        </div>
-      `
-          : ``
-      }
-      
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
-        <p style="color: #666; margin-bottom: 10px;">W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny co najmniej 24 godziny przed planowaną wizytą.</p>
-        <p style="color: #666; margin-bottom: 10px;">Dziękujemy za zaufanie!</p>
-        <p style="color: #666; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Centrum Medyczne 7 - Wszelkie prawa zastrzeżone</p>
-      </div>
-    </div>
+    </body>
+    </html>
   `;
 };
 
@@ -345,43 +463,36 @@ const createCancellationEmailHtml = (cancellationDetails) => {
                 max-width: 600px;
                 margin: 0 auto;
                 background-color: white;
-                border-radius: 10px;
-                overflow: hidden;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                padding: 20px;
             }
-            .header {
-                background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-                color: white;
-                padding: 40px 20px;
-                text-align: center;
-            }
-            .logo-container {
+            .email-title {
+                font-size: 18px;
+                font-weight: 600;
+                color: #333;
                 margin-bottom: 20px;
+            }
+            .logo-section {
+                display: flex;
+                align-items: center;
+                margin-bottom: 30px;
             }
             .logo {
-                width: 80px;
-                height: 80px;
-                border-radius: 10px;
-                margin: 0 auto 20px;
-                display: block;
-                background-color: white;
-                padding: 10px;
+                height: 60px;
+                margin-right: 15px;
             }
-            .header h1 {
-                margin: 0;
-                font-size: 24px;
+            .logo-text {
+                font-size: 20px;
                 font-weight: 600;
-                color: white;
+                color: #333;
             }
             .content {
-                padding: 40px 30px;
+                padding: 0;
             }
-            .title {
-                font-size: 28px;
+            .main-heading {
+                font-size: 24px;
+                font-weight: 600;
                 color: #2c3e50;
                 margin-bottom: 20px;
-                font-weight: 600;
-                text-align: center;
             }
             .intro-text {
                 font-size: 16px;
@@ -389,47 +500,45 @@ const createCancellationEmailHtml = (cancellationDetails) => {
                 line-height: 1.6;
                 margin-bottom: 30px;
             }
-            .cancellation-details {
+            .cancellation-details-box {
                 background-color: #e8f5e8;
-                border-radius: 10px;
+                border-radius: 8px;
                 padding: 25px;
                 margin: 30px 0;
-                border-left: 4px solid #dc3545;
                 position: relative;
+                display: flex;
             }
-            .cancellation-details h3 {
-                color: #dc3545;
+            .details-content {
+                flex: 1;
+            }
+            .cancellation-details-box h3 {
+                color: #28a745;
                 margin-top: 0;
                 font-size: 18px;
                 font-weight: 600;
                 margin-bottom: 20px;
             }
-            .cancellation-details p {
+            .cancellation-details-box p {
                 margin: 10px 0;
                 color: #2c3e50;
                 font-size: 16px;
             }
-            .cancellation-details strong {
+            .cancellation-details-box strong {
                 color: #2c3e50;
             }
-            .red-indicator {
-                position: absolute;
-                top: 20px;
-                right: 20px;
+            .red-indicator-box {
+                width: 80px;
+                height: 80px;
                 background-color: #dc3545;
-                color: white;
-                padding: 8px 12px;
-                border-radius: 4px;
-                font-size: 12px;
-                font-weight: bold;
-                border: 2px solid white;
+                border-radius: 8px;
+                margin-left: 20px;
+                flex-shrink: 0;
             }
             .warning-info {
                 background-color: #fff3cd;
-                border-radius: 10px;
+                border-radius: 8px;
                 padding: 25px;
                 margin: 30px 0;
-                border-left: 4px solid #ffc107;
             }
             .warning-info p {
                 margin: 15px 0;
@@ -438,14 +547,13 @@ const createCancellationEmailHtml = (cancellationDetails) => {
                 line-height: 1.6;
             }
             .confidentiality-clause {
-                background-color: #f0e6ff;
-                border-radius: 10px;
+                background-color: #f8f9fa;
+                border-radius: 8px;
                 padding: 25px;
                 margin: 25px 0;
-                border-left: 4px solid #9b59b6;
             }
             .confidentiality-clause h3 {
-                color: #9b59b6;
+                color: #333;
                 margin-top: 0;
                 font-size: 16px;
                 font-weight: 600;
@@ -462,7 +570,7 @@ const createCancellationEmailHtml = (cancellationDetails) => {
                 text-align: center;
                 color: #666;
                 font-size: 12px;
-                border-top: 1px solid #e9ecef;
+                margin-top: 30px;
             }
             .footer p {
                 margin: 5px 0;
@@ -471,30 +579,31 @@ const createCancellationEmailHtml = (cancellationDetails) => {
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <div class="logo-container">
-                    <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" class="logo" />
-                </div>
-                <h1>Centrum Medyczne 7</h1>
+            <div class="email-title">Odwołanie wizyty - Centrum Medyczne 7</div>
+            
+            <div class="logo-section">
+                <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" class="logo" />
+                <div class="logo-text">Centrum Medyczne</div>
             </div>
             
             <div class="content">
-                <div class="title">Odwołanie Wizyty</div>
+                <div class="main-heading">Odwołanie Wizyty</div>
                 
                 <div class="intro-text">
-                    Wizyta została odwołana z przyczyn organizacyjnych lub na prośbę pacjenta.<br>
-                    Poniżej znajdują się szczegóły dotyczące odwołanego terminu:
+                    Wizyta została odwołana z przyczyn organizacyjnych lub na prośbę pacjenta. Poniżej znajdują się szczegóły dotyczące odwołanego terminu:
                 </div>
                 
-                <div class="cancellation-details">
-                    <div class="red-indicator">RED</div>
-                    <h3>Szczegóły Odwołanej Wizyty:</h3>
-                    <p><strong>Pacjent:</strong> ${patientName}</p>
-                    <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
-                    <p><strong>Data:</strong> ${date}</p>
-                    <p><strong>Godzina:</strong> ${time}</p>
-                    <p><strong>Forma konsultacji:</strong> ${mode === "online" ? "Online" : "Stacjonarna"}</p>
-                    <p><strong>Adres:</strong> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
+                <div class="cancellation-details-box">
+                    <div class="details-content">
+                        <h3>Szczegóły Odwołanej Wizyty:</h3>
+                        <p><strong>Pacjent:</strong> ${patientName}</p>
+                        <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
+                        <p><strong>Data:</strong> ${date}</p>
+                        <p><strong>Godzina:</strong> ${time}</p>
+                        <p><strong>Forma konsultacji:</strong> ${mode === "online" ? "Online" : "Stacjonarna"}</p>
+                        <p><strong>Adres:</strong> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
+                    </div>
+                    <div class="red-indicator-box"></div>
                 </div>
                 
                 <div class="warning-info">
@@ -504,8 +613,7 @@ const createCancellationEmailHtml = (cancellationDetails) => {
                 
                 <div class="confidentiality-clause">
                     <h3>Klauzula poufności:</h3>
-                    <p>Niniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane osobowe lub informacje medyczne objęte tajemnicą zawodową.</p>
-                    <p>Jeśli wiadomość trafiła do Państwa omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.</p>
+                    <p>Niniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane osobowe lub informacje medyczne objęte tajemnicą zawodową. Jeśli wiadomość trafiła do Ciebie omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.</p>
                 </div>
             </div>
             
