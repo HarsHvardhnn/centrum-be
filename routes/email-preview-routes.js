@@ -19,4 +19,12 @@ router.get(
   emailPreviewController.getEmailTemplatesList
 );
 
+// @route   POST /api/email-preview/send-appointment-emails
+// @desc    Send all appointment email templates (confirmation, cancellation, reschedule) to fixed email
+// @access  Public (for testing)
+router.post(
+  "/send-appointment-emails",
+  emailPreviewController.sendAppointmentEmailsToFixedAddress
+);
+
 module.exports = router;

@@ -26,6 +26,1009 @@ const { createStandardizedDocument } = require("./patientController");
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 
+// Helper function to load and process HTML email templates
+const loadEmailTemplate = (templateName, replacements) => {
+  try {
+    const templatePath = path.join(__dirname, '..', 'emails', templateName);
+    let html = fs.readFileSync(templatePath, 'utf8');
+    
+    // Replace all placeholders with actual data
+    Object.keys(replacements).forEach(key => {
+      const value = replacements[key] || '';
+      // Replace placeholder patterns like {{key}}
+      const placeholderRegex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      html = html.replace(placeholderRegex, value);
+    });
+    
+    return html;
+  } catch (error) {
+    console.error(`Error loading email template ${templateName}:`, error);
+    throw error;
+  }
+};
+
+// Helper function to replace hardcoded values in cancellation email
+const processCancellationEmail = (data) => {
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
+  
+  const {
+    patientName = 'Anna Kowalska',
+    doctorName = 'lek. Marek Nowak',
+    date = 'DD.MM.YYY',
+    time = '10:30',
+    mode = 'Stacjonarna'
+  } = data;
+  
+  const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  
+  // Full HTML template with all formatting - using regular CSS instead of Tailwind
+  let html = `<html>
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Odwołanie wizyty</title>
+    <script>
+      window.FontAwesomeConfig = {
+        autoReplaceSvg: 'nest'
+      };
+    </script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"
+      crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+      rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #0f1419;
+      }
+      
+      ::-webkit-scrollbar {
+        display: none;
+      }
+      
+      /* Utility Classes */
+      .bg-white { background-color: #ffffff; }
+      .bg-gray-50 { background-color: #f9fafb; }
+      .bg-gray-100 { background-color: #f3f4f6; }
+      .bg-emerald-50 { background-color: #ecfdf5; }
+      .bg-blue-50 { background-color: #eff6ff; }
+      .bg-yellow-50 { background-color: #fefce8; }
+      .bg-red-50 { background-color: #fef2f2; }
+      .bg-orange-50 { background-color: #fff7ed; }
+      .bg-green-50 { background-color: #f0fdf4; }
+      .bg-teal-50 { background-color: #f0fdfa; }
+      
+      .text-white { color: #ffffff; }
+      .text-gray-400 { color: #9ca3af; }
+      .text-gray-500 { color: #6b7280; }
+      .text-gray-600 { color: #4b5563; }
+      .text-gray-700 { color: #374151; }
+      .text-navy { color: #1e3a8a; }
+      .text-deep-navy { color: #0f1419; }
+      .text-teal-custom { color: #008C8C; }
+      .text-success-green { color: #16a34a; }
+      .text-warning-red { color: #dc2626; }
+      .text-warning-orange { color: #ea580c; }
+      
+      .font-inter { font-family: 'Inter', sans-serif; }
+      .font-medium { font-weight: 500; }
+      .font-semibold { font-weight: 600; }
+      .font-bold { font-weight: 700; }
+      
+      .text-xs { font-size: 0.75rem; line-height: 1rem; }
+      .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+      .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+      .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+      .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+      .text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
+      
+      .uppercase { text-transform: uppercase; }
+      .tracking-wide { letter-spacing: 0.025em; }
+      .tracking-wider { letter-spacing: 0.05em; }
+      .leading-relaxed { line-height: 1.625; }
+      .line-through { text-decoration: line-through; }
+      
+      .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+      .px-8 { padding-left: 2rem; padding-right: 2rem; }
+      .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+      .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+      .py-5 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+      .py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+      .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+      .py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+      
+      .mx-8 { margin-left: 2rem; margin-right: 2rem; }
+      .my-8 { margin-top: 2rem; margin-bottom: 2rem; }
+      .mb-2 { margin-bottom: 0.5rem; }
+      .mb-4 { margin-bottom: 1rem; }
+      .mb-6 { margin-bottom: 1.5rem; }
+      .mb-8 { margin-bottom: 2rem; }
+      .mt-1 { margin-top: 0.25rem; }
+      .mt-4 { margin-top: 1rem; }
+      
+      .flex { display: flex; }
+      .items-center { align-items: center; }
+      .items-start { align-items: flex-start; }
+      .justify-between { justify-content: space-between; }
+      .justify-center { justify-content: center; }
+      
+      .gap-3 { gap: 0.75rem; }
+      .gap-4 { gap: 1rem; }
+      .gap-6 { gap: 1.5rem; }
+      
+      .border-b { border-bottom-width: 1px; }
+      .border-t { border-top-width: 1px; }
+      .border-gray-100 { border-color: #f3f4f6; }
+      .border-teal-100 { border-color: #ccfbf1; }
+      
+      .rounded-lg { border-radius: 0.5rem; }
+      .rounded-full { border-radius: 9999px; }
+      
+      .text-center { text-align: center; }
+      
+      .max-w-680 { max-width: 680px; }
+      .mx-auto { margin-left: auto; margin-right: auto; }
+      
+      .w-5 { width: 1.25rem; }
+      .w-8 { width: 2rem; }
+      .w-32 { width: 8rem; }
+      .h-8 { height: 2rem; }
+      
+      .space-y-2 > * + * { margin-top: 0.5rem; }
+      .space-y-4 > * + * { margin-top: 1rem; }
+      .space-y-5 > * + * { margin-top: 1.25rem; }
+      
+      .grid { display: grid; }
+      .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      
+      @media (min-width: 768px) {
+        .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .max-w-md { max-width: 28rem; }
+      }
+      
+      a {
+        color: inherit;
+        text-decoration: underline;
+      }
+      
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+
+  <body class="bg-white font-inter">
+    <div id="email-container" class="max-w-680 mx-auto bg-white" style="max-width: 680px;">
+      <header id="header" class="px-8 py-4 border-b border-gray-100">
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-3">
+            <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
+            <div class="text-lg font-semibold text-navy">Centrum Medyczne 7
+            </div>
+          </div>
+          <div class="text-xs text-gray-500 uppercase tracking-wider">
+            automatyczny system powiadomień
+          </div>
+        </div>
+      </header>
+      <section id="title-section" class="px-8 py-12 text-center">
+        <div class="flex justify-center mb-6"><i
+            class="fa-solid fa-calendar-xmark text-4xl text-warning-red"></i>
+        </div>
+        <h1 class="text-3xl font-bold text-navy mb-4">Odwołanie wizyty</h1>
+        <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
+          Informujemy, że Twoja wizyta została odwołana. Poniżej znajdziesz
+          szczegóły dotyczące anulowanej konsultacji oraz dalsze instrukcje.
+        </p>
+      </section>
+      <section id="cancellation-notice"
+        class="mx-8 mb-8 px-6 py-5 bg-red-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-circle-exclamation text-lg text-warning-red mt-1"></i>
+          <div>
+            <p class="text-deep-navy font-medium mb-2">Wizyta została odwołana
+            </p>
+            <p class="text-deep-navy leading-relaxed">
+              Twoja wizyta została anulowana z przyczyn organizacyjnych lub na
+              prośbę pacjenta. W celu umówienia nowego terminu prosimy o kontakt
+              telefoniczny z recepcją.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section id="appointment-details" class="px-8 py-8">
+        <div class="flex items-center gap-3 mb-8"><i
+            class="fa-solid fa-clipboard-list text-xl text-teal-custom"></i>
+          <h2 class="text-xl font-bold text-navy">Szczegóły odwołanej wizyty
+          </h2>
+        </div>
+        <div class="space-y-5">
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-user text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span
+              class="text-deep-navy font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz
+              prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-calendar text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span
+              class="text-deep-navy font-medium line-through text-gray-500">${date}</span>
+          </div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-clock text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span
+              class="text-deep-navy font-medium line-through text-gray-500">${time}</span>
+          </div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma
+              konsultacji</span><span
+              class="text-deep-navy font-medium">${consultationType}</span></div>
+          <div class="flex items-start gap-4 py-4"><i
+              class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span
+              class="text-deep-navy font-medium">
+              Centrum Medyczne 7<br>
+              ul. Powstańców Warszawy 7/1.5<br>
+              26-110 Skarżysko-Kamienna
+            </span></div>
+        </div>
+      </section>
+      <section id="next-steps-section"
+        class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-calendar-plus text-lg text-teal-custom mt-1"></i>
+          <div>
+            <p class="text-navy font-medium mb-2">Umówienie nowego terminu</p>
+            <p class="text-deep-navy leading-relaxed">
+              Aby umówić się na nowy termin wizyty, skontaktuj się z nami
+              telefonicznie lub przez naszą stronę internetową.<br>
+              Nasz zespół pomoże Ci znaleźć dogodny termin w najbliższym
+              możliwym czasie.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section id="important-notice"
+        class="mx-8 my-8 px-6 py-6 bg-yellow-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-triangle-exclamation text-lg text-warning-orange mt-1"></i>
+          <div>
+            <p class="text-navy font-medium mb-2">Ważne informacje</p>
+            <p class="text-deep-navy leading-relaxed">
+              W przypadku gdy wizyta nie została odwołana z Państwa inicjatywy
+              ani nie przekazano wcześniej takiej informacji telefonicznie,
+              prosimy o niezwłoczny kontakt z rejestracją w celu potwierdzenia
+              statusu wizyty. Informacja o odwołaniu mogła zostać wygenerowana
+              automatycznie w wyniku błędu systemowego lub nieprawidłowej
+              synchronizacji danych.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section id="contact-section" class="px-8 py-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="flex items-center gap-3"><i
+              class="fa-solid fa-phone text-teal-custom"></i>
+            <div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon
+              </div>
+              <div class="font-medium text-deep-navy">+48 797 127 487</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3"><i
+              class="fa-solid fa-envelope text-teal-custom"></i>
+            <div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide">Email
+              </div>
+              <div class="font-medium text-deep-navy">
+                kontakt@centrummedyczne7.pl</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="privacy-section" class="px-8 py-6 border-t border-gray-100">
+        <p class="text-xs text-gray-500 leading-relaxed">
+          Niniejsza wiadomość zawiera informacje medyczne podlegające ochronie
+          prawnej. Jeśli nie jesteś właściwym odbiorcą, prosimy o niezwłoczne
+          usunięcie wiadomości i poinformowanie nadawcy. Centrum Medyczne 7
+          dołożyło wszelkich starań, aby zapewnić bezpieczeństwo transmisji
+          danych.
+        </p>
+      </section>
+      <footer id="footer" class="px-8 py-8 bg-gray-50 text-center">
+        <div class="space-y-2">
+          <div class="text-sm text-gray-600 font-medium">© 2025 Centrum Medyczne
+            7</div>
+          <div class="text-xs text-gray-400 mt-4">Ta wiadomość została
+            wygenerowana automatycznie. Prosimy nie odpowiadać na ten e-mail.<br
+              id="isjg8n" draggable="true">Administratorem danych osobowych jest
+            CM7 Sp. z o.o. Szczegółowe informacje na temat przetwarzania danych
+            osobowych znajdują się w&nbsp;<a id="ikua0g" draggable="true"
+              href="https://centrummedyczne7.pl/polityka-prywatnosci>Polityce
+              Prywatności</a>.</div>
+        </div>
+      </footer>
+    </div>
+  </body>
+
+</html>`;
+  
+  return html;
+};
+
+// Helper function to replace hardcoded values in reschedule email
+const processRescheduleEmail = (data) => {
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
+  
+  const {
+    patientName = 'Anna Kowalska',
+    doctorName = 'lek. Marek Nowak',
+    oldDate = 'DD.MM.YYYY',
+    oldTime = '10:30',
+    newDate = 'DD.MM.YYYY',
+    newTime = '14:15',
+    mode = 'Stacjonarna'
+  } = data;
+  
+  const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  
+  // Full HTML template with all formatting - using regular CSS instead of Tailwind
+  let html = `<html>
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Przełożenie wizyty</title>
+    <script>
+      window.FontAwesomeConfig = {
+        autoReplaceSvg: 'nest'
+      };
+    </script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"
+      crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+      rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #0f1419;
+      }
+      
+      ::-webkit-scrollbar {
+        display: none;
+      }
+      
+      /* Utility Classes */
+      .bg-white { background-color: #ffffff; }
+      .bg-gray-50 { background-color: #f9fafb; }
+      .bg-gray-100 { background-color: #f3f4f6; }
+      .bg-emerald-50 { background-color: #ecfdf5; }
+      .bg-blue-50 { background-color: #eff6ff; }
+      .bg-yellow-50 { background-color: #fefce8; }
+      .bg-red-50 { background-color: #fef2f2; }
+      .bg-orange-50 { background-color: #fff7ed; }
+      .bg-green-50 { background-color: #f0fdf4; }
+      .bg-teal-50 { background-color: #f0fdfa; }
+      
+      .text-white { color: #ffffff; }
+      .text-gray-400 { color: #9ca3af; }
+      .text-gray-500 { color: #6b7280; }
+      .text-gray-600 { color: #4b5563; }
+      .text-gray-700 { color: #374151; }
+      .text-navy { color: #1e3a8a; }
+      .text-deep-navy { color: #0f1419; }
+      .text-teal-custom { color: #008C8C; }
+      .text-success-green { color: #16a34a; }
+      .text-warning-red { color: #dc2626; }
+      .text-warning-orange { color: #f97316; }
+      
+      .font-inter { font-family: 'Inter', sans-serif; }
+      .font-medium { font-weight: 500; }
+      .font-semibold { font-weight: 600; }
+      .font-bold { font-weight: 700; }
+      
+      .text-xs { font-size: 0.75rem; line-height: 1rem; }
+      .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+      .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+      .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+      .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+      .text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
+      
+      .uppercase { text-transform: uppercase; }
+      .tracking-wide { letter-spacing: 0.025em; }
+      .tracking-wider { letter-spacing: 0.05em; }
+      .leading-relaxed { line-height: 1.625; }
+      .line-through { text-decoration: line-through; }
+      
+      .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+      .px-8 { padding-left: 2rem; padding-right: 2rem; }
+      .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+      .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+      .py-5 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+      .py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+      .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+      .py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+      
+      .mx-8 { margin-left: 2rem; margin-right: 2rem; }
+      .my-8 { margin-top: 2rem; margin-bottom: 2rem; }
+      .mb-2 { margin-bottom: 0.5rem; }
+      .mb-4 { margin-bottom: 1rem; }
+      .mb-6 { margin-bottom: 1.5rem; }
+      .mb-8 { margin-bottom: 2rem; }
+      .mt-1 { margin-top: 0.25rem; }
+      .mt-4 { margin-top: 1rem; }
+      
+      .flex { display: flex; }
+      .items-center { align-items: center; }
+      .items-start { align-items: flex-start; }
+      .justify-between { justify-content: space-between; }
+      .justify-center { justify-content: center; }
+      
+      .gap-3 { gap: 0.75rem; }
+      .gap-4 { gap: 1rem; }
+      .gap-6 { gap: 1.5rem; }
+      
+      .border-b { border-bottom-width: 1px; }
+      .border-t { border-top-width: 1px; }
+      .border-gray-100 { border-color: #f3f4f6; }
+      .border-teal-100 { border-color: #ccfbf1; }
+      
+      .rounded-lg { border-radius: 0.5rem; }
+      .rounded-full { border-radius: 9999px; }
+      
+      .text-center { text-align: center; }
+      
+      .max-w-680 { max-width: 680px; }
+      .mx-auto { margin-left: auto; margin-right: auto; }
+      
+      .w-5 { width: 1.25rem; }
+      .w-8 { width: 2rem; }
+      .w-32 { width: 8rem; }
+      .h-8 { height: 2rem; }
+      
+      .space-y-2 > * + * { margin-top: 0.5rem; }
+      .space-y-4 > * + * { margin-top: 1rem; }
+      .space-y-5 > * + * { margin-top: 1.25rem; }
+      
+      .grid { display: grid; }
+      .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      
+      @media (min-width: 768px) {
+        .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .max-w-md { max-width: 28rem; }
+      }
+      
+      a {
+        color: inherit;
+        text-decoration: underline;
+      }
+      
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+
+  <body class="bg-white font-inter">
+    <div id="email-container" class="max-w-680 mx-auto bg-white" style="max-width: 680px;">
+      <header id="header" class="px-8 py-4 border-b border-gray-100">
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-3">
+            <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
+            <div class="text-lg font-semibold text-navy">Centrum Medyczne 7
+            </div>
+          </div>
+          <div class="text-xs text-gray-500 uppercase tracking-wider">
+            automatyczny system powiadomień</div>
+        </div>
+      </header>
+      <section id="title-section" class="px-8 py-12 text-center">
+        <div class="flex justify-center mb-6"><i
+            class="fa-solid fa-calendar-xmark text-4xl text-warning-orange"></i>
+        </div>
+        <h1 class="text-3xl font-bold text-navy mb-4">Przełożenie wizyty</h1>
+        <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
+          Informujemy, że Twoja wizyta została przełożona na inny termin.
+          Poniżej znajdziesz szczegóły.&nbsp;</p>
+      </section>
+      <section id="postponement-notice"
+        class="mx-8 mb-8 px-6 py-5 bg-orange-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-triangle-exclamation text-lg text-warning-orange mt-1"></i>
+          <div>
+            <p class="text-deep-navy font-medium mb-2">Zmiana terminu wizyty</p>
+            <p class="text-deep-navy leading-relaxed"></p>
+            <p xmlns="http://www.w3.org/1999/xhtml" id="ivvq05">W przypadku gdy
+              wizyta nie została przełożona z Państwa inicjatywy ani nie
+              przekazano wcześniej takiej informacji telefonicznie, prosimy
+              <br>o niezwłoczny kontakt z rejestracją w celu potwierdzenia
+              statusu wizyty. Informacja o przełożeniu wizyty mogła zostać
+              wygenerowana automatycznie w wyniku błędu systemowego lub
+              nieprawidłowej synchronizacji danych.
+            </p>
+            <p></p>
+          </div>
+        </div>
+      </section>
+      <section id="original-appointment" class="px-8 py-6">
+        <div class="flex items-center gap-3 mb-6"><i
+            class="fa-solid fa-calendar-minus text-xl text-gray-400"></i>
+          <h2 class="text-xl font-bold text-navy">Pierwotny termin wizyty</h2>
+        </div>
+        <div class="bg-gray-50 rounded-lg p-6 space-y-4">
+          <div class="flex items-center gap-4 py-3"><i
+              class="fa-solid fa-user text-gray-400 w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span
+              class="text-gray-700 font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-3"><i
+              class="fa-solid fa-user-doctor text-gray-400 w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz
+              prowadzący</span><span class="text-gray-700 font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-3"><i
+              class="fa-solid fa-calendar text-gray-400 w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span
+              class="text-gray-700 font-medium line-through">${oldDate}</span>
+          </div>
+          <div class="flex items-center gap-4 py-3"><i
+              class="fa-solid fa-clock text-gray-400 w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span
+              class="text-gray-700 font-medium line-through">${oldTime}</span></div>
+        </div>
+      </section>
+      <section id="new-appointment-details" class="px-8 py-8">
+        <div class="flex items-center gap-3 mb-8"><i
+            class="fa-solid fa-calendar-plus text-xl text-teal-custom"></i>
+          <h2 class="text-xl font-bold text-navy">Nowy termin wizyty</h2>
+        </div>
+        <div class="bg-teal-50 rounded-lg p-6 space-y-5">
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
+              class="fa-solid fa-user text-teal-custom w-5"></i><span
+              class="text-sm text-gray-600 uppercase tracking-wide w-32">Pacjent</span><span
+              class="text-deep-navy font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
+              class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span
+              class="text-sm text-gray-600 uppercase tracking-wide w-32">Lekarz
+              prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
+              class="fa-solid fa-calendar text-teal-custom w-5"></i><span
+              class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa
+              data</span><span
+              class="text-deep-navy font-bold">${newDate}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
+              class="fa-solid fa-clock text-teal-custom w-5"></i><span
+              class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa
+              godzina</span><span class="text-deep-navy font-bold">${newTime}</span>
+          </div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
+              class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span
+              class="text-sm text-gray-600 uppercase tracking-wide w-32">Forma
+              konsultacji</span><span
+              class="text-deep-navy font-medium">${consultationType}</span></div>
+          <div class="flex items-start gap-4 py-4"><i
+              class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span
+              class="text-sm text-gray-600 uppercase tracking-wide w-32">Adres</span><span
+              class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul.
+              Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span>
+          </div>
+        </div>
+      </section>
+      <section id="confirmation-required"
+        class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-circle-check text-lg text-teal-custom mt-1"></i>
+          <div>
+            <p class="text-navy font-medium mb-2">Potwierdzenie nowego terminu
+            </p>
+            <p class="text-deep-navy leading-relaxed mb-4">Nowy termin został
+              automatycznie zarezerwowany. Jeśli nie jest on odpowiedni, prosimy
+              o kontakt z rejestracją w celu ustalenia innego, dogodnego terminu
+              wizyty.<br></p>
+          </div>
+        </div>
+      </section>
+      <section id="preparation-section"
+        class="mx-8 my-8 px-6 py-6 bg-green-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-list-check text-lg text-teal-custom mt-1"></i>
+          <div>
+            <p class="text-navy font-medium mb-2">Przygotowanie do wizyty</p>
+            <p class="text-deep-navy leading-relaxed">Prosimy o zabranie ze sobą
+              dokumentu tożsamości, w celu rejestracji. Dodatkową dokumentację
+              medyczną można zabrać według uznania, jeśli pacjent chce przekazać
+              ją lekarzowi.</p>
+          </div>
+        </div>
+      </section>
+      <section id="contact-section" class="px-8 py-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="flex items-center gap-3"><i
+              class="fa-solid fa-phone text-teal-custom"></i>
+            <div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon
+              </div>
+              <div class="font-medium text-deep-navy">+48 797 127 487</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3"><i
+              class="fa-solid fa-envelope text-teal-custom"></i>
+            <div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide">Email
+              </div>
+              <div class="font-medium text-deep-navy">
+                kontakt@centrummedyczne7.pl</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="privacy-section" class="px-8 py-6 border-t border-gray-100">
+        <p class="text-xs text-gray-500 leading-relaxed">
+          Niniejsza wiadomość zawiera informacje medyczne podlegające ochronie
+          prawnej. Jeśli nie jesteś właściwym odbiorcą, prosimy o niezwłoczne
+          usunięcie wiadomości i poinformowanie nadawcy. Centrum Medyczne 7
+          dołożyło wszelkich starań, aby zapewnić bezpieczeństwo transmisji
+          danych.
+        </p>
+      </section>
+      <footer id="footer" class="px-8 py-8 bg-gray-50 text-center">
+        <div class="space-y-2">
+          <div class="text-sm text-gray-600 font-medium">© 2025 Centrum Medyczne
+            7</div>
+          <div class="text-xs text-gray-400 mt-4">Ta wiadomość została
+            wygenerowana automatycznie. Prosimy nie odpowiadać na ten e-mail.<br
+              id="isjg8n" draggable="true">Administratorem danych osobowych jest
+            CM7 Sp. z o.o. Szczegółowe informacje na temat przetwarzania danych
+            osobowych znajdują się w&nbsp;<a id="ikua0g" draggable="true"
+              href="https://centrummedyczne7.pl/polityka-prywatnosci">Polityce
+              Prywatności</a>.</div>
+        </div>
+      </footer>
+    </div>
+  </body>
+
+</html>`;
+  
+  return html;
+};
+
+// Helper function to replace hardcoded values in confirmation email
+const processConfirmationEmail = (data) => {
+  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
+  
+  const {
+    patientName = 'Anna Kowalska',
+    doctorName = 'lek. Marek Nowak',
+    date = 'DD.MM.YYYY',
+    time = '10:30',
+    mode = 'Stacjonarna'
+  } = data;
+  
+  const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  
+  // Full HTML template with all formatting - using regular CSS instead of Tailwind
+  let html = `<html>
+
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Potwierdzenie wizyty</title>
+    <script>
+      window.FontAwesomeConfig = {
+        autoReplaceSvg: 'nest'
+      };
+    </script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"
+      crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+      rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #0f1419;
+      }
+      
+      ::-webkit-scrollbar {
+        display: none;
+      }
+      
+      /* Utility Classes */
+      .bg-white { background-color: #ffffff; }
+      .bg-gray-50 { background-color: #f9fafb; }
+      .bg-gray-100 { background-color: #f3f4f6; }
+      .bg-emerald-50 { background-color: #ecfdf5; }
+      .bg-blue-50 { background-color: #eff6ff; }
+      .bg-yellow-50 { background-color: #fefce8; }
+      .bg-red-50 { background-color: #fef2f2; }
+      .bg-orange-50 { background-color: #fff7ed; }
+      .bg-green-50 { background-color: #f0fdf4; }
+      .bg-teal-50 { background-color: #f0fdfa; }
+      
+      .text-white { color: #ffffff; }
+      .text-gray-400 { color: #9ca3af; }
+      .text-gray-500 { color: #6b7280; }
+      .text-gray-600 { color: #4b5563; }
+      .text-gray-700 { color: #374151; }
+      .text-navy { color: #1e3a8a; }
+      .text-deep-navy { color: #0f1419; }
+      .text-teal-custom { color: #008C8C; }
+      .text-success-green { color: #16a34a; }
+      .text-warning-red { color: #dc2626; }
+      .text-warning-orange { color: #ea580c; }
+      
+      .font-inter { font-family: 'Inter', sans-serif; }
+      .font-medium { font-weight: 500; }
+      .font-semibold { font-weight: 600; }
+      .font-bold { font-weight: 700; }
+      
+      .text-xs { font-size: 0.75rem; line-height: 1rem; }
+      .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+      .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+      .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+      .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+      .text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
+      
+      .uppercase { text-transform: uppercase; }
+      .tracking-wide { letter-spacing: 0.025em; }
+      .tracking-wider { letter-spacing: 0.05em; }
+      .leading-relaxed { line-height: 1.625; }
+      .line-through { text-decoration: line-through; }
+      
+      .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+      .px-8 { padding-left: 2rem; padding-right: 2rem; }
+      .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+      .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+      .py-5 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+      .py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+      .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+      .py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+      
+      .mx-8 { margin-left: 2rem; margin-right: 2rem; }
+      .my-8 { margin-top: 2rem; margin-bottom: 2rem; }
+      .mb-2 { margin-bottom: 0.5rem; }
+      .mb-4 { margin-bottom: 1rem; }
+      .mb-6 { margin-bottom: 1.5rem; }
+      .mb-8 { margin-bottom: 2rem; }
+      .mt-1 { margin-top: 0.25rem; }
+      .mt-4 { margin-top: 1rem; }
+      
+      .flex { display: flex; }
+      .items-center { align-items: center; }
+      .items-start { align-items: flex-start; }
+      .justify-between { justify-content: space-between; }
+      .justify-center { justify-content: center; }
+      
+      .gap-3 { gap: 0.75rem; }
+      .gap-4 { gap: 1rem; }
+      .gap-6 { gap: 1.5rem; }
+      
+      .border-b { border-bottom-width: 1px; }
+      .border-t { border-top-width: 1px; }
+      .border-gray-100 { border-color: #f3f4f6; }
+      .border-teal-100 { border-color: #ccfbf1; }
+      
+      .rounded-lg { border-radius: 0.5rem; }
+      .rounded-full { border-radius: 9999px; }
+      
+      .text-center { text-align: center; }
+      
+      .max-w-680 { max-width: 680px; }
+      .mx-auto { margin-left: auto; margin-right: auto; }
+      
+      .w-5 { width: 1.25rem; }
+      .w-8 { width: 2rem; }
+      .w-32 { width: 8rem; }
+      .h-8 { height: 2rem; }
+      
+      .space-y-2 > * + * { margin-top: 0.5rem; }
+      .space-y-4 > * + * { margin-top: 1rem; }
+      .space-y-5 > * + * { margin-top: 1.25rem; }
+      
+      .grid { display: grid; }
+      .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      
+      @media (min-width: 768px) {
+        .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .max-w-md { max-width: 28rem; }
+      }
+      
+      a {
+        color: inherit;
+        text-decoration: underline;
+      }
+      
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+
+  <body class="bg-white font-inter">
+    <div id="email-container" class="max-w-680 mx-auto bg-white" style="max-width: 680px;">
+      <header id="header" class="px-8 py-4 border-b border-gray-100">
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-3">
+            <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
+            <div class="text-lg font-semibold text-navy">Centrum Medyczne 7
+            </div>
+          </div>
+          <div class="text-xs text-gray-500 uppercase tracking-wider">
+            automatyczny system powiadomień</div>
+        </div>
+      </header>
+      <section id="title-section" class="px-8 py-12 text-center">
+        <div class="flex justify-center mb-6"><i
+            class="fa-solid fa-calendar-check text-4xl text-teal-custom"></i>
+        </div>
+        <h1 class="text-3xl font-bold text-navy mb-4">Potwierdzenie wizyty</h1>
+        <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
+          Twoja wizyta została pomyślnie zarezerwowana. Poniżej znajdziesz
+          wszystkie szczegóły dotyczące nadchodzącej konsultacji medycznej.
+        </p>
+      </section>
+      <section id="confirmation-notice"
+        class="mx-8 mb-8 px-6 py-5 bg-emerald-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-circle-check text-lg text-success-green mt-1"></i>
+          <div>
+            <p class="text-deep-navy font-medium mb-2">Wizyta potwierdzona</p>
+            <p class="text-deep-navy leading-relaxed">Twoja wizyta została
+              zarejestrowana w naszym systemie. <br>Prosimy o przybycie 10 minut
+              przed wyznaczoną godziną w celu wypełnienia niezbędnych
+              formalności.</p>
+          </div>
+        </div>
+      </section>
+      <section id="appointment-details" class="px-8 py-8">
+        <div class="flex items-center gap-3 mb-8"><i
+            class="fa-solid fa-clipboard-list text-xl text-teal-custom"></i>
+          <h2 class="text-xl font-bold text-navy">Szczegóły wizyty</h2>
+        </div>
+        <div class="space-y-5">
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-user text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span
+              class="text-deep-navy font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz
+              prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-calendar text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span
+              class="text-deep-navy font-medium">${date}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-clock text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span
+              class="text-deep-navy font-medium">${time}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
+              class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma
+              konsultacji</span><span
+              class="text-deep-navy font-medium">${consultationType}</span></div>
+          <div class="flex items-start gap-4 py-4"><i
+              class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span
+              class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span
+              class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul.
+              Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span>
+          </div>
+        </div>
+      </section>
+      <section id="preparation-section"
+        class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-list-check text-lg text-teal-custom mt-1"></i>
+          <div>
+            <p class="text-navy font-medium mb-2">Przygotowanie do wizyty</p>
+            <p class="text-deep-navy leading-relaxed">Prosimy o zabranie ze sobą
+              dokumentu tożsamości w celu rejestracji. Dodatkową dokumentację
+              medyczną można zabrać według uznania, jeśli pacjent chce przekazać
+              ją lekarzowi.</p>
+          </div>
+        </div>
+      </section>
+      <section id="cancellation-policy"
+        class="mx-8 my-8 px-6 py-6 bg-yellow-50 rounded-lg">
+        <div class="flex items-start gap-4"><i
+            class="fa-solid fa-info-circle text-lg text-teal-custom mt-1"></i>
+          <div id="i0zx4">
+            <p class="text-navy font-medium mb-2">Polityka odwoływania wizyt</p>
+            <p class="text-deep-navy leading-relaxed">W przypadku konieczności
+              odwołania wizyty prosimy o kontakt <br>z recepcją najpóźniej 24
+              godziny przed wyznaczonym terminem.&nbsp;<br>Odwołania dokonane w
+              krótszym czasie nie będą rozpatrywane, zgodnie z regulaminem
+              placówki.</p>
+          </div>
+        </div>
+      </section>
+      <section id="contact-section" class="px-8 py-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="flex items-center gap-3"><i
+              class="fa-solid fa-phone text-teal-custom"></i>
+            <div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon
+              </div>
+              <div class="font-medium text-deep-navy">+48 797 127 487</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3"><i
+              class="fa-solid fa-envelope text-teal-custom"></i>
+            <div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide">Email
+              </div>
+              <div class="font-medium text-deep-navy">
+                kontakt@centrummedyczne7.pl</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="privacy-section" class="px-8 py-6 border-t border-gray-100">
+        <p class="text-xs text-gray-500 leading-relaxed">
+          Niniejsza wiadomość zawiera informacje medyczne podlegające ochronie
+          prawnej. Jeśli nie jesteś właściwym odbiorcą, prosimy o niezwłoczne
+          usunięcie wiadomości i poinformowanie nadawcy. Centrum Medyczne 7
+          dołożyło wszelkich starań, aby zapewnić bezpieczeństwo transmisji
+          danych.
+        </p>
+      </section>
+      <footer id="footer" class="px-8 py-8 bg-gray-50 text-center">
+        <div class="space-y-2">
+          <div class="text-sm text-gray-600 font-medium">© 2025 Centrum Medyczne
+            7</div>
+          <div class="text-xs text-gray-400 mt-4">Ta wiadomość została
+            wygenerowana automatycznie. Prosimy nie
+            odpowiadać na ten e-mail.<br>Administratorem danych osobowych jest
+            CM7 Sp. z o.o. Szczegółowe informacje na temat przetwarzania danych
+            osobowych znajdują się w <a href="https://centrummedyczne7.pl/polityka-prywatnosci" id="ikua0g">Polityce
+              Prywatności</a>.</div>
+        </div>
+      </footer>
+    </div>
+  </body>
+
+</html>`;
+  
+  return html;
+};
+
 // Helper function to check if patient has consented to SMS notifications
 const hasPatientConsentedToSMS = (patientDetails) => {
   return patientDetails && patientDetails.smsConsentAgreed === true;
@@ -547,7 +1550,8 @@ exports.createReceptionAppointment = async (req, res) => {
       startTime,
       consultationType = APPOINTMENT_CONFIG.DEFAULT_CONSULTATION_TYPE,
       message,
-      smsConsentAgreed,
+      smsConsentAgreed, // Only used for this appointment's notifications (temporary)
+      persistSmsConsent = false, // New field: if true, persist consent to database; if false, only use for this appointment
       patientId,
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
@@ -646,11 +1650,11 @@ exports.createReceptionAppointment = async (req, res) => {
         });
       }
       
-      // Handle SMS consent for existing patient with patientId
-      console.log("Handling SMS consent for existing patient with patientId");
-      
-      // Only update SMS consent if smsConsentAgreed is provided
-      if (smsConsentAgreed !== undefined) {
+      // Handle SMS consent persistence for existing patient with patientId
+      // Only persist to database if persistSmsConsent is true
+      if (persistSmsConsent && smsConsentAgreed !== undefined) {
+        console.log("Persisting SMS consent for existing patient with patientId");
+        
         const SMS_CONSENT_TEXT = "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).";
         
         let existingConsents = [];
@@ -719,6 +1723,8 @@ exports.createReceptionAppointment = async (req, res) => {
         console.log("After update - Updated consents:", existingConsents);
         console.log("Verification - updated patient.smsConsentAgreed:", patient.smsConsentAgreed);
         console.log("Verification - updated patient.consents:", patient.consents);
+      } else if (!persistSmsConsent) {
+        console.log("SMS consent provided but not persisting to database (persistSmsConsent is false)");
       }
       
     } else {
@@ -770,6 +1776,17 @@ exports.createReceptionAppointment = async (req, res) => {
 
       // If patient not found, create new patient
       if (!patient) {
+        // Only persist consent if persistSmsConsent is true
+        const consentToSave = persistSmsConsent && smsConsentAgreed !== undefined
+          ? [
+              {
+                id: Date.now(),
+                text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
+                agreed: smsConsentAgreed || false,
+              },
+            ]
+          : [];
+        
         const newPatient = new user({
           name: {
             first: firstName,
@@ -782,14 +1799,8 @@ exports.createReceptionAppointment = async (req, res) => {
           signupMethod: "email",
           patientId:`P-${new Date().getTime()}`,
           dateOfBirth: dob,
-          smsConsentAgreed: smsConsentAgreed || false,
-          consents: [
-            {
-              id: Date.now(),
-              text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
-              agreed: smsConsentAgreed || false,
-            },
-          ],
+          smsConsentAgreed: persistSmsConsent && smsConsentAgreed !== undefined ? (smsConsentAgreed || false) : false,
+          consents: consentToSave,
         });
 
         patient = await newPatient.save();
@@ -797,9 +1808,10 @@ exports.createReceptionAppointment = async (req, res) => {
       }
 
       console.log("is new user",isNewUser);
-      // Handle consents for existing user
-      if (!isNewUser) {
-        console.log("ntoi a new uyser")
+      // Handle consents for existing user - only persist if persistSmsConsent is true
+      if (!isNewUser && persistSmsConsent && smsConsentAgreed !== undefined) {
+        console.log("Updating consent for existing user - persisting to database");
+        
         let existingConsents = [];
         try {
           existingConsents = patient.consents
@@ -828,11 +1840,13 @@ exports.createReceptionAppointment = async (req, res) => {
           // Update existing consent's agreed status
           existingConsents[consentIndex].agreed = smsConsentAgreed;
         }
-        console.log("consnet to be",smsConsentAgreed)
+        console.log("consent to be",smsConsentAgreed)
 
         patient.smsConsentAgreed = smsConsentAgreed;
         patient.consents = JSON.stringify(existingConsents);
         await patient.save();
+      } else if (!isNewUser && !persistSmsConsent) {
+        console.log("SMS consent provided for existing user but not persisting to database (persistSmsConsent is false)");
       }
     }
 
@@ -862,9 +1876,10 @@ exports.createReceptionAppointment = async (req, res) => {
     await appointment.save();
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    // Send email and SMS together only if SMS consent is given AND both channels are available
+    // Send email and SMS together only if SMS consent is given (from smsConsentAgreed parameter) AND both channels are available
+    // Use smsConsentAgreed from request (not from database) for this appointment's notifications
     let emailSent = false;
-    const hasSmsConsent = Boolean(patient.smsConsentAgreed);
+    const hasSmsConsent = Boolean(smsConsentAgreed); // Use the parameter value, not database value
     const hasPhone = Boolean(patient.phone);
     const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
     const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
@@ -929,7 +1944,7 @@ exports.createReceptionAppointment = async (req, res) => {
     } else {
       // Do not send either if consent not given or a channel is unavailable
       if (!hasSmsConsent) {
-        console.log("Skipping notifications: SMS consent not given.");
+        console.log(`Skipping notifications: SMS consent not given for this appointment (smsConsentAgreed: ${smsConsentAgreed}).`);
       } else if (!hasPhone) {
         console.log("Skipping notifications: phone number missing, enforcing both-or-neither policy.");
       } else if (!hasValidEmail) {
@@ -982,109 +1997,20 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
     temporaryPassword,
   } = appointmentDetails;
 
-  // Use the Cloudinary logo URL
-  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
+  // Format doctor name to match template format (lek. FirstName LastName)
+  const formattedDoctorName = doctorName.startsWith('Dr.') 
+    ? doctorName.replace('Dr.', 'lek.')
+    : doctorName.startsWith('lek.') 
+      ? doctorName 
+      : `lek. ${doctorName}`;
 
-  return `
-    <!DOCTYPE html>
-    <html lang="pl">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Potwierdzenie wizyty – Centrum Medyczne 7</title>
-      <style>
-        body {
-          font-family: 'Helvetica Neue', Arial, sans-serif;
-          background-color: #ffffff;
-          color: #333333;
-          margin: 0;
-          padding: 0;
-        }
-        .container {
-          max-width: 600px;
-          margin: 0 auto;
-          padding: 40px 20px;
-        }
-        .logo {
-          text-align: center;
-          margin-bottom: 30px;
-        }
-        .logo img {
-          width: 110px;
-          height: auto;
-        }
-        h1 {
-          font-size: 20px;
-          color: #222222;
-          text-align: left;
-        }
-        p {
-          font-size: 15px;
-          line-height: 1.5;
-          color: #444444;
-        }
-        .details {
-          background-color: #f8f9fa;
-          padding: 18px 20px;
-          border-radius: 10px;
-          margin: 25px 0;
-        }
-        .details b {
-          color: #000000;
-        }
-        .footer {
-          font-size: 12px;
-          color: #777777;
-          text-align: center;
-          margin-top: 30px;
-        }
-        .confidential {
-          font-size: 11.5px;
-          color: #777777;
-          margin-top: 25px;
-          line-height: 1.5;
-          text-align: justify;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="logo">
-          <img src="${logoUrl}" alt="Centrum Medyczne 7" />
-        </div>
-        
-        <h1>Potwierdzenie wizyty</h1>
-        <p>Twoja wizyta została pomyślnie umówiona. Poniżej znajdziesz szczegóły rezerwacji:</p>
-        
-        <div class="details">
-          <p><b>Pacjent:</b> ${patientName}<br>
-          <b>Lekarz prowadzący:</b> ${doctorName}<br>
-          <b>Data:</b> ${date}<br>
-          <b>Godzina:</b> ${time}<br>
-          <b>Forma konsultacji:</b> ${mode === "online" ? "online" : "stacjonarna"}<br>
-          <b>Adres:</b> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
-        </div>
-        
-        <p>W przypadku potrzeby zmiany terminu lub odwołania wizyty prosimy o kontakt telefoniczny 
-        <b>najpóźniej na 24 godziny przed planowaną wizytą</b>.<br>
-        Odwołania dokonane w krótszym czasie <b>nie będą uwzględniane</b>.</p>
-        
-        <p>Dziękujemy za zrozumienie i poszanowanie czasu naszych specjalistów.</p>
-        
-        <div class="footer">
-          © 2025 <b>Centrum Medyczne 7</b> – Wszelkie prawa zastrzeżone
-        </div>
-        
-        <div class="confidential">
-          <b>Klauzula poufności:</b><br>
-          Niniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane
-          osobowe lub informacje medyczne objęte tajemnicą zawodową.
-          Jeśli wiadomość trafiła do Ciebie omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
+  return processConfirmationEmail({
+    patientName,
+    doctorName: formattedDoctorName,
+    date,
+    time,
+    mode: mode || 'stacjonarna'
+  });
 };
 
 // Function to create HTML email for appointment cancellation
@@ -1097,188 +2023,20 @@ const createCancellationEmailHtml = (cancellationDetails) => {
     mode,
   } = cancellationDetails;
 
-  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
+  // Format doctor name to match template format (lek. FirstName LastName)
+  const formattedDoctorName = doctorName.startsWith('Dr.') 
+    ? doctorName.replace('Dr.', 'lek.')
+    : doctorName.startsWith('lek.') 
+      ? doctorName 
+      : `lek. ${doctorName}`;
 
-  return `
-    <!DOCTYPE html>
-    <html lang="pl">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Odwołanie wizyty – Centrum Medyczne 7</title>
-        <style>
-            body {
-                font-family: 'Helvetica Neue', Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                background-color: #f8f9fa;
-                color: #333333;
-            }
-            .container {
-                max-width: 600px;
-                margin: 0 auto;
-                background-color: white;
-                padding: 20px;
-            }
-            .email-title {
-                font-size: 18px;
-                font-weight: 600;
-                color: #333;
-                margin-bottom: 20px;
-            }
-            .logo-section {
-                display: flex;
-                align-items: center;
-                margin-bottom: 30px;
-            }
-            .logo {
-                height: 60px;
-                margin-right: 15px;
-            }
-            .logo-text {
-                font-size: 20px;
-                font-weight: 600;
-                color: #333;
-            }
-            .content {
-                padding: 0;
-            }
-            .main-heading {
-                font-size: 24px;
-                font-weight: 600;
-                color: #2c3e50;
-                margin-bottom: 20px;
-            }
-            .intro-text {
-                font-size: 16px;
-                color: #555;
-                line-height: 1.6;
-                margin-bottom: 30px;
-            }
-            .cancellation-details-box {
-                background-color: #e8f5e8;
-                border-radius: 8px;
-                padding: 25px;
-                margin: 30px 0;
-                position: relative;
-                display: flex;
-            }
-            .details-content {
-                flex: 1;
-            }
-            .cancellation-details-box h3 {
-                color: #28a745;
-                margin-top: 0;
-                font-size: 18px;
-                font-weight: 600;
-                margin-bottom: 20px;
-            }
-            .cancellation-details-box p {
-                margin: 10px 0;
-                color: #2c3e50;
-                font-size: 16px;
-            }
-            .cancellation-details-box strong {
-                color: #2c3e50;
-            }
-            .red-indicator-box {
-                width: 80px;
-                height: 80px;
-                background-color: #dc3545;
-                border-radius: 8px;
-                margin-left: 20px;
-                flex-shrink: 0;
-            }
-            .warning-info {
-                background-color: #fff3cd;
-                border-radius: 8px;
-                padding: 25px;
-                margin: 30px 0;
-            }
-            .warning-info p {
-                margin: 15px 0;
-                color: #856404;
-                font-size: 16px;
-                line-height: 1.6;
-            }
-            .confidentiality-clause {
-                background-color: #f8f9fa;
-                border-radius: 8px;
-                padding: 25px;
-                margin: 25px 0;
-            }
-            .confidentiality-clause h3 {
-                color: #333;
-                margin-top: 0;
-                font-size: 16px;
-                font-weight: 600;
-            }
-            .confidentiality-clause p {
-                color: #2c3e50;
-                margin: 10px 0;
-                font-size: 14px;
-                line-height: 1.5;
-            }
-            .footer {
-                background-color: #f8f9fa;
-                padding: 20px;
-                text-align: center;
-                color: #666;
-                font-size: 12px;
-                margin-top: 30px;
-            }
-            .footer p {
-                margin: 5px 0;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="email-title">Odwołanie wizyty - Centrum Medyczne 7</div>
-            
-            <div class="logo-section">
-                <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" class="logo" />
-                <div class="logo-text">Centrum Medyczne</div>
-            </div>
-            
-            <div class="content">
-                <div class="main-heading">Odwołanie Wizyty</div>
-                
-                <div class="intro-text">
-                    Wizyta została odwołana z przyczyn organizacyjnych lub na prośbę pacjenta. Poniżej znajdują się szczegóły dotyczące odwołanego terminu:
-                </div>
-                
-                <div class="cancellation-details-box">
-                    <div class="details-content">
-                        <h3>Szczegóły Odwołanej Wizyty:</h3>
-                        <p><strong>Pacjent:</strong> ${patientName}</p>
-                        <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
-                        <p><strong>Data:</strong> ${date}</p>
-                        <p><strong>Godzina:</strong> ${time}</p>
-                        <p><strong>Forma konsultacji:</strong> ${mode === "online" ? "Online" : "Stacjonarna"}</p>
-                        <p><strong>Adres:</strong> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
-                    </div>
-                    <div class="red-indicator-box"></div>
-                </div>
-                
-                <div class="warning-info">
-                    <p>W przypadku gdy wizyta nie została odwołana z Państwa inicjatywy ani nie przekazano wcześniej takiej informacji telefonicznie, prosimy o niezwłoczny kontakt z rejestracją w celu potwierdzenia statusu wizyty.</p>
-                    <p>Informacja o odwołaniu mogła zostać wygenerowana automatycznie w wyniku błędu systemowego lub nieprawidłowej synchronizacji danych.</p>
-                </div>
-                
-                <div class="confidentiality-clause">
-                    <h3>Klauzula poufności:</h3>
-                    <p>Niniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane osobowe lub informacje medyczne objęte tajemnicą zawodową. Jeśli wiadomość trafiła do Ciebie omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.</p>
-                </div>
-            </div>
-            
-            <div class="footer">
-                <p>© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone</p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
+  return processCancellationEmail({
+    patientName,
+    doctorName: formattedDoctorName,
+    date,
+    time,
+    mode: mode || 'stacjonarna'
+  });
 };
 
 // Function to create HTML email for appointment reschedule
@@ -1294,178 +2052,22 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
     mode,
   } = rescheduleDetails;
 
-  // Use the Cloudinary logo URL
-  const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
+  // Format doctor name to match template format (lek. FirstName LastName)
+  const formattedDoctorName = doctorName.startsWith('Dr.') 
+    ? doctorName.replace('Dr.', 'lek.')
+    : doctorName.startsWith('lek.') 
+      ? doctorName 
+      : `lek. ${doctorName}`;
 
-  return `
-    <!DOCTYPE html>
-    <html lang="pl">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Zmiana Terminu Wizyty – Centrum Medyczne 7</title>
-        <style>
-            body {
-                font-family: 'Helvetica Neue', Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                background-color: #f8f9fa;
-                color: #333333;
-            }
-            .container {
-                max-width: 600px;
-                margin: 0 auto;
-                background-color: white;
-                padding: 20px;
-            }
-            .email-title {
-                font-size: 18px;
-                font-weight: 600;
-                color: #333;
-                margin-bottom: 20px;
-            }
-            .logo-section {
-                display: flex;
-                align-items: center;
-                margin-bottom: 30px;
-            }
-            .logo {
-                height: 60px;
-                margin-right: 15px;
-            }
-            .logo-text {
-                font-size: 20px;
-                font-weight: 600;
-                color: #333;
-            }
-            .content {
-                padding: 0;
-            }
-            .main-heading {
-                font-size: 24px;
-                font-weight: 600;
-                color: #2c3e50;
-                margin-bottom: 20px;
-            }
-            .intro-text {
-                font-size: 16px;
-                color: #555;
-                line-height: 1.6;
-                margin-bottom: 30px;
-            }
-            .old-appointment-box {
-                background-color: #fff3cd;
-                border-radius: 8px;
-                padding: 25px;
-                margin: 20px 0;
-            }
-            .old-appointment-box h3 {
-                color: #856404;
-                margin-top: 0;
-                font-size: 18px;
-                font-weight: 600;
-                margin-bottom: 15px;
-            }
-            .old-appointment-box p {
-                margin: 8px 0;
-                color: #2c3e50;
-                font-size: 16px;
-            }
-            .new-appointment-box {
-                background-color: #e8f5e8;
-                border-radius: 8px;
-                padding: 25px;
-                margin: 20px 0;
-            }
-            .new-appointment-box h3 {
-                color: #28a745;
-                margin-top: 0;
-                font-size: 18px;
-                font-weight: 600;
-                margin-bottom: 15px;
-            }
-            .new-appointment-box p {
-                margin: 8px 0;
-                color: #2c3e50;
-                font-size: 16px;
-            }
-            .online-info {
-                background-color: #e8f5e9;
-                border-radius: 8px;
-                padding: 20px;
-                margin: 20px 0;
-            }
-            .online-info p {
-                margin: 0;
-                color: #2c3e50;
-                font-size: 16px;
-                line-height: 1.6;
-            }
-            .footer {
-                background-color: #f8f9fa;
-                padding: 20px;
-                text-align: center;
-                color: #666;
-                font-size: 12px;
-                margin-top: 30px;
-            }
-            .footer p {
-                margin: 5px 0;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="email-title">Zmiana Terminu Wizyty - Centrum Medyczne 7</div>
-            
-            <div class="logo-section">
-                <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" class="logo" />
-                <div class="logo-text">Centrum Medyczne</div>
-            </div>
-            
-            <div class="content">
-                <div class="main-heading">Zmiana Terminu Wizyty</div>
-                
-                <div class="intro-text">
-                    Twoja wizyta została przełożona. Poniżej znajdują się szczegóły dotyczące starego i nowego terminu:
-                </div>
-                
-                <div class="old-appointment-box">
-                    <h3>Stary Termin:</h3>
-                    <p><strong>Pacjent:</strong> ${patientName}</p>
-                    <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
-                    <p><strong>Data:</strong> ${oldDate}</p>
-                    <p><strong>Godzina:</strong> ${oldTime}</p>
-                </div>
-                
-                <div class="new-appointment-box">
-                    <h3>Nowy Termin:</h3>
-                    <p><strong>Pacjent:</strong> ${patientName}</p>
-                    <p><strong>Lekarz prowadzący:</strong> ${doctorName}</p>
-                    <p><strong>Data:</strong> ${newDate}</p>
-                    <p><strong>Godzina:</strong> ${newTime}</p>
-                    <p><strong>Forma konsultacji:</strong> ${mode === "online" ? "Online" : "Stacjonarna"}</p>
-                    <p><strong>Adres:</strong> ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna</p>
-                </div>
-                
-                ${
-                  mode === "online"
-                    ? `
-                <div class="online-info">
-                    <p>Link do spotkania zostanie przesłany w osobnej wiadomości e-mail. Jeśli nie otrzymasz wiadomości najpóźniej godzinę przed planowanym spotkaniem, skontaktuj się z Recepcją – nasz zespół udzieli Ci niezbędnych instrukcji i pomoże w dostępie do konsultacji.</p>
-                </div>
-                `
-                    : ``
-                }
-            </div>
-            
-            <div class="footer">
-                <p>© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone</p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
+  return processRescheduleEmail({
+    patientName,
+    doctorName: formattedDoctorName,
+    oldDate,
+    oldTime,
+    newDate,
+    newTime,
+    mode: mode || 'stacjonarna'
+  });
 };
 
 const calculateAge = (dob) => {
@@ -1672,7 +2274,14 @@ exports.updateAppointmentStatus = async (req, res) => {
 exports.rescheduleAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
-    const { newDate, newStartTime, newEndTime, consultationType, smsToBeSent } = req.body;
+    const { 
+      newDate, 
+      newStartTime, 
+      newEndTime, 
+      consultationType, 
+      smsToBeSent, // Used for this reschedule's notifications (one-time use)
+      persistSmsConsent = false, // New: if true, persist smsToBeSent value to database; if false, only use for this reschedule
+    } = req.body;
 
     // Validate required fields
     if (!newDate || !newStartTime) {
@@ -1723,13 +2332,67 @@ exports.rescheduleAppointment = async (req, res) => {
 
     // Get doctor and patient details
     const doctorDetails = await doctor.findById(appointment.doctor._id);
-    const patientDetails = await user.findById(appointment.patient._id);
+    let patientDetails = await user.findById(appointment.patient._id);
 
     if (!doctorDetails || !patientDetails) {
       return res.status(404).json({
         success: false,
         message: "Nie znaleziono szczegółów lekarza lub pacjenta",
       });
+    }
+
+    // Handle SMS consent persistence - only persist if persistSmsConsent is true
+    if (persistSmsConsent && smsToBeSent !== undefined) {
+      console.log("Persisting SMS consent for rescheduled appointment");
+      
+      const SMS_CONSENT_TEXT = "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).";
+      
+      let existingConsents = [];
+      try {
+        existingConsents = patientDetails.consents
+          ? Array.isArray(patientDetails.consents) ? patientDetails.consents : JSON.parse(patientDetails.consents)
+          : [];
+      } catch (e) {
+        console.log("Error parsing consents:", e);
+        existingConsents = [];
+      }
+
+      // Find the SMS consent
+      const consentIndex = existingConsents.findIndex(
+        (c) => c.text === SMS_CONSENT_TEXT
+      );
+
+      if (consentIndex === -1) {
+        // Consent doesn't exist, add it
+        existingConsents.push({
+          id: Date.now(),
+          text: SMS_CONSENT_TEXT,
+          agreed: smsToBeSent,
+        });
+      } else {
+        // Update existing consent's agreed status
+        existingConsents[consentIndex].agreed = smsToBeSent;
+      }
+
+      // Update patient's smsConsentAgreed field and consents
+      const updatedPatient = await user.findByIdAndUpdate(
+        appointment.patient._id,
+        {
+          smsConsentAgreed: smsToBeSent,
+          consents: existingConsents
+        },
+        { 
+          new: true, 
+          runValidators: true 
+        }
+      );
+      
+      if (updatedPatient) {
+        patientDetails = updatedPatient;
+        console.log("SMS consent persisted successfully");
+      }
+    } else if (!persistSmsConsent && smsToBeSent !== undefined) {
+      console.log("SMS consent provided for reschedule but not persisting to database (persistSmsConsent is false)");
     }
 
     // Use provided newEndTime or calculate based on existing duration
@@ -1817,11 +2480,24 @@ exports.rescheduleAppointment = async (req, res) => {
       }
     }
 
-    // Send SMS notification if smsToBeSent is true and patient has consented
+    // Send SMS notification based on smsToBeSent (one-time use for this reschedule)
+    // If persistSmsConsent is true, the consent has already been persisted above
     let smsResult = null;
-    console.log("SMS sending check - smsToBeSent:", smsToBeSent, "patientConsent:", patientDetails.smsConsentAgreed);
     
-    if (smsToBeSent && patientDetails.smsConsentAgreed) {
+    // Use smsToBeSent if provided, otherwise fall back to patient's database consent
+    const shouldSendSMS = smsToBeSent !== undefined 
+      ? Boolean(smsToBeSent) 
+      : Boolean(patientDetails.smsConsentAgreed);
+    
+    const hasPhone = Boolean(patientDetails.phone);
+    const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email);
+    
+    // For reschedule, send both email and SMS if consent is given and both channels are available
+    const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
+    
+    console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
+    
+    if (shouldSendBoth) {
       console.log("Sending SMS notification for rescheduled appointment");
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
@@ -1848,7 +2524,13 @@ exports.rescheduleAppointment = async (req, res) => {
         );
       }
     } else {
-      console.log("SMS not sent - smsToBeSent:", smsToBeSent, "or patient consent:", patientDetails.smsConsentAgreed);
+      if (!shouldSendSMS) {
+        console.log(`SMS not sent - consent not given for this reschedule (smsToBeSent: ${smsToBeSent}).`);
+      } else if (!hasPhone) {
+        console.log("SMS not sent - phone number missing.");
+      } else if (!hasValidEmail) {
+        console.log("SMS not sent - email invalid/missing, enforcing both-or-neither policy.");
+      }
     }
 
     res.status(200).json({
@@ -2042,7 +2724,7 @@ exports.cancelAppointment = async (req, res) => {
           to: appointment.patient.email,
           subject: "Odwołanie wizyty – Centrum Medyczne 7",
           html: createCancellationEmailHtml(emailData),
-          text: `Odwołanie Wizyty\n\nWizyta została odwołana z przyczyn organizacyjnych lub na prośbę pacjenta.\n\nSzczegóły Odwołanej Wizyty:\nPacjent: ${patientName}\nLekarz prowadzący: ${doctorName}\nData: ${formattedDate}\nGodzina: ${formattedTime}\nForma konsultacji: ${appointment.mode === "online" ? "Online" : "Stacjonarna"}\nAdres: ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna\n\nW przypadku gdy wizyta nie została odwołana z Państwa inicjatywy ani nie przekazano wcześniej takiej informacji telefonicznie, prosimy o niezwłoczny kontakt z rejestracją w celu potwierdzenia statusu wizyty.\n\n© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone`
+          text: `Odwołanie Wizyty\n\nWizyta została odwołana z przyczyn organizacyjnych lub na prośbę pacjenta.\n\nSzczegóły Odwołanej Wizyty:\nPacjent: ${patientName}\nLekarz prowadzący: ${doctorName}\nData: ${formattedDate}\nGodzina: ${formattedTime}\nForma konsultacji: ${appointment.mode === "online" ? "Online" : "Stacjonarna"}\nAdres: ul. Powstańców Warszawy 7/1.5, 26-110 Skarżysko-Kamienna\n\nW przypadku gdy wizyta nie została odwołana z Państwa inicjatywy ani nie przekazano wcześniej takiej informacji telefonicznie, prosimy o niezwłoczny kontakt z rejestracją w celu potwierdzenia statusu wizyty.\n\nInformacja o odwołaniu mogła zostać wygenerowana automatycznie w wyniku błędu systemowego lub nieprawidłowej synchronizacji danych.\n\nKlauzula poufności:\nNiniejsza wiadomość oraz wszelkie załączone informacje są przeznaczone wyłącznie dla adresata i mogą zawierać dane osobowe lub informacje medyczne objęte tajemnicą zawodową.\nJeśli wiadomość trafiła do Państwa omyłkowo, prosimy o niezwłoczne usunięcie jej treści i poinformowanie nadawcy.\n\n© 2025 Centrum Medyczne 7 – Wszelkie prawa zastrzeżone`
         });
 
         emailResult = { success: true };
