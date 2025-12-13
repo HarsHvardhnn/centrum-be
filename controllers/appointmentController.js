@@ -216,8 +216,6 @@ const processCancellationEmail = (data) => {
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-3">
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
-            <div class="text-lg font-semibold text-navy">Centrum Medyczne 7
-            </div>
           </div>
           <div class="text-xs text-gray-500 uppercase tracking-wider">
             automatyczny system powiadomień
@@ -543,8 +541,6 @@ const processRescheduleEmail = (data) => {
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-3">
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
-            <div class="text-lg font-semibold text-navy">Centrum Medyczne 7
-            </div>
           </div>
           <div class="text-xs text-gray-500 uppercase tracking-wider">
             automatyczny system powiadomień</div>
@@ -887,8 +883,6 @@ const processConfirmationEmail = (data) => {
         <div class="flex justify-between items-center">
           <div class="flex items-center gap-3">
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
-            <div class="text-lg font-semibold text-navy">Centrum Medyczne 7
-            </div>
           </div>
           <div class="text-xs text-gray-500 uppercase tracking-wider">
             automatyczny system powiadomień</div>
@@ -1551,7 +1545,7 @@ exports.createReceptionAppointment = async (req, res) => {
       consultationType = APPOINTMENT_CONFIG.DEFAULT_CONSULTATION_TYPE,
       message,
       smsConsentAgreed, // Only used for this appointment's notifications (temporary)
-      persistSmsConsent = false, // New field: if true, persist consent to database; if false, only use for this appointment
+      persistSmsConsent = false, // If true, skip sending all notifications (email and SMS); if false, send notifications based on smsConsentAgreed
       patientId,
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
@@ -1650,82 +1644,8 @@ exports.createReceptionAppointment = async (req, res) => {
         });
       }
       
-      // Handle SMS consent persistence for existing patient with patientId
-      // Only persist to database if persistSmsConsent is true
-      if (persistSmsConsent && smsConsentAgreed !== undefined) {
-        console.log("Persisting SMS consent for existing patient with patientId");
-        
-        const SMS_CONSENT_TEXT = "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).";
-        
-        let existingConsents = [];
-        try {
-          existingConsents = patient.consents
-            ? Array.isArray(patient.consents) ? patient.consents : JSON.parse(patient.consents)
-            : [];
-        } catch (e) {
-          console.log("Error parsing consents:", e);
-          existingConsents = [];
-        }
-
-        console.log("Current smsConsentAgreed value:", smsConsentAgreed);
-        console.log("Existing consents:", existingConsents);
-
-        // Find the SMS consent
-        const consentIndex = existingConsents.findIndex(
-          (c) => c.text === SMS_CONSENT_TEXT
-        );
-
-        console.log("Consent index found:", consentIndex);
-        console.log("SMS consent text to match:", SMS_CONSENT_TEXT);
-
-        if (consentIndex === -1) {
-          // Consent doesn't exist, add it
-          console.log("Adding new SMS consent");
-          existingConsents.push({
-            id: Date.now(),
-            text: SMS_CONSENT_TEXT,
-            agreed: smsConsentAgreed,
-          });
-        } else {
-          // Update existing consent's agreed status
-          console.log("Updating existing SMS consent at index:", consentIndex);
-          console.log("Before update - consent:", existingConsents[consentIndex]);
-          existingConsents[consentIndex].agreed = smsConsentAgreed;
-          console.log("After update - consent:", existingConsents[consentIndex]);
-        }
-
-        // Update patient's smsConsentAgreed field and consents using findByIdAndUpdate
-        // This avoids potential issues with object modification and duplicate key errors
-        console.log("Before update - patient.smsConsentAgreed:", patient.smsConsentAgreed);
-        console.log("Before update - patient.consents:", patient.consents);
-        console.log("Before update - patient.phone:", patient.phone);
-        console.log("Before update - patient._id:", patient._id);
-        
-        const updatedPatient = await user.findByIdAndUpdate(
-          patientId,
-          {
-            smsConsentAgreed: smsConsentAgreed,
-            consents: existingConsents
-          },
-          { 
-            new: true, 
-            runValidators: true 
-          }
-        );
-        
-        if (!updatedPatient) {
-          throw new Error("Failed to update patient consent information");
-        }
-        
-        // Update the patient reference for the rest of the function
-        patient = updatedPatient;
-        
-        console.log("After update - Updated consents:", existingConsents);
-        console.log("Verification - updated patient.smsConsentAgreed:", patient.smsConsentAgreed);
-        console.log("Verification - updated patient.consents:", patient.consents);
-      } else if (!persistSmsConsent) {
-        console.log("SMS consent provided but not persisting to database (persistSmsConsent is false)");
-      }
+        // Note: persistSmsConsent field is now used to skip sending notifications
+      // If persistSmsConsent is true, no notifications will be sent (handled later in the code)
       
     } else {
       // Handle new patient creation
@@ -1776,17 +1696,6 @@ exports.createReceptionAppointment = async (req, res) => {
 
       // If patient not found, create new patient
       if (!patient) {
-        // Only persist consent if persistSmsConsent is true
-        const consentToSave = persistSmsConsent && smsConsentAgreed !== undefined
-          ? [
-              {
-                id: Date.now(),
-                text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
-                agreed: smsConsentAgreed || false,
-              },
-            ]
-          : [];
-        
         const newPatient = new user({
           name: {
             first: firstName,
@@ -1799,8 +1708,8 @@ exports.createReceptionAppointment = async (req, res) => {
           signupMethod: "email",
           patientId:`P-${new Date().getTime()}`,
           dateOfBirth: dob,
-          smsConsentAgreed: persistSmsConsent && smsConsentAgreed !== undefined ? (smsConsentAgreed || false) : false,
-          consents: consentToSave,
+          smsConsentAgreed: smsConsentAgreed || false,
+          consents: [],
         });
 
         patient = await newPatient.save();
@@ -1808,46 +1717,8 @@ exports.createReceptionAppointment = async (req, res) => {
       }
 
       console.log("is new user",isNewUser);
-      // Handle consents for existing user - only persist if persistSmsConsent is true
-      if (!isNewUser && persistSmsConsent && smsConsentAgreed !== undefined) {
-        console.log("Updating consent for existing user - persisting to database");
-        
-        let existingConsents = [];
-        try {
-          existingConsents = patient.consents
-            ? JSON.parse(patient.consents)
-            : [];
-        } catch (e) {
-          existingConsents = [];
-        }
-
-        const smsConsent = {
-          id: Date.now(),
-          text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
-          agreed: smsConsentAgreed,
-        };
-
-        console.log("consent to be created",smsConsent )
-
-        const consentIndex = existingConsents.findIndex(
-          (c) => c.text === smsConsent.text
-        );
-
-        if (consentIndex === -1) {
-          // Consent doesn't exist, add it
-          existingConsents.push(smsConsent);
-        } else {
-          // Update existing consent's agreed status
-          existingConsents[consentIndex].agreed = smsConsentAgreed;
-        }
-        console.log("consent to be",smsConsentAgreed)
-
-        patient.smsConsentAgreed = smsConsentAgreed;
-        patient.consents = JSON.stringify(existingConsents);
-        await patient.save();
-      } else if (!isNewUser && !persistSmsConsent) {
-        console.log("SMS consent provided for existing user but not persisting to database (persistSmsConsent is false)");
-      }
+      // Note: persistSmsConsent field is now used to skip sending notifications
+      // If persistSmsConsent is true, no notifications will be sent (handled later in the code)
     }
 
     // Determine who created the appointment
@@ -1876,15 +1747,21 @@ exports.createReceptionAppointment = async (req, res) => {
     await appointment.save();
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    // Send email and SMS together only if SMS consent is given (from smsConsentAgreed parameter) AND both channels are available
-    // Use smsConsentAgreed from request (not from database) for this appointment's notifications
+    // If persistSmsConsent is true, do NOT send any notifications (email or SMS)
     let emailSent = false;
-    const hasSmsConsent = Boolean(smsConsentAgreed); // Use the parameter value, not database value
-    const hasPhone = Boolean(patient.phone);
-    const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
-    const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
+    
+    // Skip all notifications if persistSmsConsent is true
+    if (persistSmsConsent) {
+      console.log("Skipping all notifications: persistSmsConsent is true");
+    } else {
+      // Send email and SMS together only if SMS consent is given (from smsConsentAgreed parameter) AND both channels are available
+      // Use smsConsentAgreed from request (not from database) for this appointment's notifications
+      const hasSmsConsent = Boolean(smsConsentAgreed); // Use the parameter value, not database value
+      const hasPhone = Boolean(patient.phone);
+      const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
+      const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
  
-    if (shouldSendBoth) {
+      if (shouldSendBoth) {
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
         const formattedTime = formatTimeForSMS(time);
@@ -1941,14 +1818,15 @@ exports.createReceptionAppointment = async (req, res) => {
       } catch (notifyError) {
         console.error("Failed to send reception notifications (email/SMS):", notifyError);
       }
-    } else {
-      // Do not send either if consent not given or a channel is unavailable
-      if (!hasSmsConsent) {
-        console.log(`Skipping notifications: SMS consent not given for this appointment (smsConsentAgreed: ${smsConsentAgreed}).`);
-      } else if (!hasPhone) {
-        console.log("Skipping notifications: phone number missing, enforcing both-or-neither policy.");
-      } else if (!hasValidEmail) {
-        console.log("Skipping notifications: email invalid/missing, enforcing both-or-neither policy.");
+      } else {
+        // Do not send either if consent not given or a channel is unavailable
+        if (!hasSmsConsent) {
+          console.log(`Skipping notifications: SMS consent not given for this appointment (smsConsentAgreed: ${smsConsentAgreed}).`);
+        } else if (!hasPhone) {
+          console.log("Skipping notifications: phone number missing, enforcing both-or-neither policy.");
+        } else if (!hasValidEmail) {
+          console.log("Skipping notifications: email invalid/missing, enforcing both-or-neither policy.");
+        }
       }
     }
 
@@ -1998,11 +1876,16 @@ const createAppointmentEmailHtml = (appointmentDetails) => {
   } = appointmentDetails;
 
   // Format doctor name to match template format (lek. FirstName LastName)
-  const formattedDoctorName = doctorName.startsWith('Dr.') 
-    ? doctorName.replace('Dr.', 'lek.')
-    : doctorName.startsWith('lek.') 
-      ? doctorName 
-      : `lek. ${doctorName}`;
+  // Remove any "Dr." or "Dr " prefix (case insensitive) before adding "lek."
+  let cleanedName = doctorName.trim();
+  if (cleanedName.match(/^(Dr\.|Dr\s+|dr\.|dr\s+)/i)) {
+    cleanedName = cleanedName.replace(/^(Dr\.|Dr\s+|dr\.|dr\s+)/i, '').trim();
+  }
+  // Remove "lek." if already present to avoid duplication
+  if (cleanedName.match(/^(lek\.|lek\s+)/i)) {
+    cleanedName = cleanedName.replace(/^(lek\.|lek\s+)/i, '').trim();
+  }
+  const formattedDoctorName = `lek. ${cleanedName}`;
 
   return processConfirmationEmail({
     patientName,
@@ -2024,11 +1907,16 @@ const createCancellationEmailHtml = (cancellationDetails) => {
   } = cancellationDetails;
 
   // Format doctor name to match template format (lek. FirstName LastName)
-  const formattedDoctorName = doctorName.startsWith('Dr.') 
-    ? doctorName.replace('Dr.', 'lek.')
-    : doctorName.startsWith('lek.') 
-      ? doctorName 
-      : `lek. ${doctorName}`;
+  // Remove any "Dr." or "Dr " prefix (case insensitive) before adding "lek."
+  let cleanedName = doctorName.trim();
+  if (cleanedName.match(/^(Dr\.|Dr\s+|dr\.|dr\s+)/i)) {
+    cleanedName = cleanedName.replace(/^(Dr\.|Dr\s+|dr\.|dr\s+)/i, '').trim();
+  }
+  // Remove "lek." if already present to avoid duplication
+  if (cleanedName.match(/^(lek\.|lek\s+)/i)) {
+    cleanedName = cleanedName.replace(/^(lek\.|lek\s+)/i, '').trim();
+  }
+  const formattedDoctorName = `lek. ${cleanedName}`;
 
   return processCancellationEmail({
     patientName,
@@ -2053,11 +1941,16 @@ const createRescheduleEmailHtml = (rescheduleDetails) => {
   } = rescheduleDetails;
 
   // Format doctor name to match template format (lek. FirstName LastName)
-  const formattedDoctorName = doctorName.startsWith('Dr.') 
-    ? doctorName.replace('Dr.', 'lek.')
-    : doctorName.startsWith('lek.') 
-      ? doctorName 
-      : `lek. ${doctorName}`;
+  // Remove any "Dr." or "Dr " prefix (case insensitive) before adding "lek."
+  let cleanedName = doctorName.trim();
+  if (cleanedName.match(/^(Dr\.|Dr\s+|dr\.|dr\s+)/i)) {
+    cleanedName = cleanedName.replace(/^(Dr\.|Dr\s+|dr\.|dr\s+)/i, '').trim();
+  }
+  // Remove "lek." if already present to avoid duplication
+  if (cleanedName.match(/^(lek\.|lek\s+)/i)) {
+    cleanedName = cleanedName.replace(/^(lek\.|lek\s+)/i, '').trim();
+  }
+  const formattedDoctorName = `lek. ${cleanedName}`;
 
   return processRescheduleEmail({
     patientName,
@@ -2280,7 +2173,7 @@ exports.rescheduleAppointment = async (req, res) => {
       newEndTime, 
       consultationType, 
       smsToBeSent, // Used for this reschedule's notifications (one-time use)
-      persistSmsConsent = false, // New: if true, persist smsToBeSent value to database; if false, only use for this reschedule
+      persistSmsConsent = false, // If true, skip sending all notifications (email and SMS); if false, send notifications based on smsToBeSent
     } = req.body;
 
     // Validate required fields
@@ -2341,59 +2234,8 @@ exports.rescheduleAppointment = async (req, res) => {
       });
     }
 
-    // Handle SMS consent persistence - only persist if persistSmsConsent is true
-    if (persistSmsConsent && smsToBeSent !== undefined) {
-      console.log("Persisting SMS consent for rescheduled appointment");
-      
-      const SMS_CONSENT_TEXT = "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).";
-      
-      let existingConsents = [];
-      try {
-        existingConsents = patientDetails.consents
-          ? Array.isArray(patientDetails.consents) ? patientDetails.consents : JSON.parse(patientDetails.consents)
-          : [];
-      } catch (e) {
-        console.log("Error parsing consents:", e);
-        existingConsents = [];
-      }
-
-      // Find the SMS consent
-      const consentIndex = existingConsents.findIndex(
-        (c) => c.text === SMS_CONSENT_TEXT
-      );
-
-      if (consentIndex === -1) {
-        // Consent doesn't exist, add it
-        existingConsents.push({
-          id: Date.now(),
-          text: SMS_CONSENT_TEXT,
-          agreed: smsToBeSent,
-        });
-      } else {
-        // Update existing consent's agreed status
-        existingConsents[consentIndex].agreed = smsToBeSent;
-      }
-
-      // Update patient's smsConsentAgreed field and consents
-      const updatedPatient = await user.findByIdAndUpdate(
-        appointment.patient._id,
-        {
-          smsConsentAgreed: smsToBeSent,
-          consents: existingConsents
-        },
-        { 
-          new: true, 
-          runValidators: true 
-        }
-      );
-      
-      if (updatedPatient) {
-        patientDetails = updatedPatient;
-        console.log("SMS consent persisted successfully");
-      }
-    } else if (!persistSmsConsent && smsToBeSent !== undefined) {
-      console.log("SMS consent provided for reschedule but not persisting to database (persistSmsConsent is false)");
-    }
+    // Note: persistSmsConsent field is now used to skip sending notifications
+    // If persistSmsConsent is true, no notifications will be sent (handled later in the code)
 
     // Use provided newEndTime or calculate based on existing duration
     let finalNewEndTime;
@@ -2447,9 +2289,13 @@ exports.rescheduleAppointment = async (req, res) => {
     await appointment.save();
 
     // Send email notification if patient has email
+    // If persistSmsConsent is true, skip all notifications
     let emailSent = false;
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (patientDetails.email && emailRegex.test(patientDetails.email)) {
+    
+    if (persistSmsConsent) {
+      console.log("Skipping all notifications for reschedule: persistSmsConsent is true");
+    } else if (patientDetails.email && emailRegex.test(patientDetails.email)) {
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
         const formattedTime = formatTimeForSMS(newStartTime);
@@ -2481,23 +2327,26 @@ exports.rescheduleAppointment = async (req, res) => {
     }
 
     // Send SMS notification based on smsToBeSent (one-time use for this reschedule)
-    // If persistSmsConsent is true, the consent has already been persisted above
+    // If persistSmsConsent is true, skip all notifications
     let smsResult = null;
     
-    // Use smsToBeSent if provided, otherwise fall back to patient's database consent
-    const shouldSendSMS = smsToBeSent !== undefined 
-      ? Boolean(smsToBeSent) 
-      : Boolean(patientDetails.smsConsentAgreed);
-    
-    const hasPhone = Boolean(patientDetails.phone);
-    const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email);
-    
-    // For reschedule, send both email and SMS if consent is given and both channels are available
-    const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
-    
-    console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
-    
-    if (shouldSendBoth) {
+    if (persistSmsConsent) {
+      console.log("Skipping SMS notification: persistSmsConsent is true");
+    } else {
+      // Use smsToBeSent if provided, otherwise fall back to patient's database consent
+      const shouldSendSMS = smsToBeSent !== undefined 
+        ? Boolean(smsToBeSent) 
+        : Boolean(patientDetails.smsConsentAgreed);
+      
+      const hasPhone = Boolean(patientDetails.phone);
+      const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email);
+      
+      // For reschedule, send both email and SMS if consent is given and both channels are available
+      const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
+      
+      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
+      
+      if (shouldSendBoth) {
       console.log("Sending SMS notification for rescheduled appointment");
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
@@ -2523,13 +2372,14 @@ exports.rescheduleAppointment = async (req, res) => {
           smsError
         );
       }
-    } else {
-      if (!shouldSendSMS) {
-        console.log(`SMS not sent - consent not given for this reschedule (smsToBeSent: ${smsToBeSent}).`);
-      } else if (!hasPhone) {
-        console.log("SMS not sent - phone number missing.");
-      } else if (!hasValidEmail) {
-        console.log("SMS not sent - email invalid/missing, enforcing both-or-neither policy.");
+      } else {
+        if (!shouldSendSMS) {
+          console.log(`SMS not sent - consent not given for this reschedule (smsToBeSent: ${smsToBeSent}).`);
+        } else if (!hasPhone) {
+          console.log("SMS not sent - phone number missing.");
+        } else if (!hasValidEmail) {
+          console.log("SMS not sent - email invalid/missing, enforcing both-or-neither policy.");
+        }
       }
     }
 
