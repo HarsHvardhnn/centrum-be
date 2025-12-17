@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('../models/user-entity/user');
+const Patient = require('../models/user-entity/patient');
 require('dotenv').config();
 
 /**
@@ -13,9 +14,8 @@ async function addPatientIds() {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ Connected to database');
     
-    // Find all patients without patientId
-    const patients = await User.find({ 
-      role: 'patient',
+    // Find all patients without patientId using Patient model (discriminator)
+    const patients = await Patient.find({ 
       $or: [
         { patientId: { $exists: false } },
         { patientId: null },
@@ -35,8 +35,7 @@ async function addPatientIds() {
     const usedIds = new Set();
     
     // Get all existing patientIds to avoid duplicates
-    const existingPatients = await User.find({ 
-      role: 'patient',
+    const existingPatients = await Patient.find({ 
       patientId: { $exists: true, $ne: null, $ne: '' }
     }).select('patientId');
     
@@ -72,11 +71,22 @@ async function addPatientIds() {
         // Add to used set
         usedIds.add(patientId);
         
-        // Update patient with patientId (bypass pre-save middleware)
-        await User.findByIdAndUpdate(patient._id, { patientId }, { 
-          runValidators: false, // Skip validation to avoid issues
-          timestamps: false // Don't update timestamps
-        });
+        // Update patient with patientId using direct MongoDB update
+        // This bypasses Mongoose validation and hooks to avoid constraint issues
+        const updateResult = await Patient.updateOne(
+          { _id: patient._id },
+          { $set: { patientId: patientId } }
+        );
+        
+        if (updateResult.modifiedCount !== 1 && updateResult.matchedCount !== 1) {
+          throw new Error(`Update failed: matchedCount=${updateResult.matchedCount}, modifiedCount=${updateResult.modifiedCount}`);
+        }
+        
+        // Verify by reading back the document
+        const verifyPatient = await Patient.findById(patient._id).select('patientId');
+        if (!verifyPatient || verifyPatient.patientId !== patientId) {
+          throw new Error('Update did not persist correctly - verification failed');
+        }
         
         const patientName = `${patient.name?.first || ''} ${patient.name?.last || ''}`.trim() || 'Unknown';
         console.log(`✅ Generated patientId for ${patientName} (${patient.phone || 'no phone'}): ${patientId}`);
@@ -119,8 +129,8 @@ async function verifyUniquePatientIds() {
       await mongoose.connect(process.env.MONGO_URI);
     }
     
-    const duplicateIds = await User.aggregate([
-      { $match: { role: 'patient', patientId: { $exists: true, $ne: null, $ne: '' } } },
+    const duplicateIds = await Patient.aggregate([
+      { $match: { patientId: { $exists: true, $ne: null, $ne: '' } } },
       { $group: { _id: '$patientId', count: { $sum: 1 }, patients: { $push: '$_id' } } },
       { $match: { count: { $gt: 1 } } }
     ]);
@@ -135,8 +145,7 @@ async function verifyUniquePatientIds() {
     }
     
     // Count patients without patientId
-    const patientsWithoutId = await User.countDocuments({
-      role: 'patient',
+    const patientsWithoutId = await Patient.countDocuments({
       $or: [
         { patientId: { $exists: false } },
         { patientId: null },

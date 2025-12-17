@@ -26,6 +26,17 @@ The following settings can be managed through the API:
    - Default temporary password for new patients
    - Default value: "centrum123"
 
+5. **JWT_EXPIRY_TIME** (string)
+   - JWT access token expiry time
+   - Format: string like "1h", "30m", "2d", etc. (see https://github.com/vercel/ms for format)
+   - Default value: "1h"
+   - Examples: "30m" (30 minutes), "1h" (1 hour), "2h" (2 hours), "1d" (1 day)
+
+6. **REFRESH_TOKEN_EXPIRY_DAYS** (number)
+   - Refresh token expiry time in days
+   - Default value: 30
+   - Range: 1-365 days
+
 ## API Endpoints
 
 ### Get All Configuration Settings
@@ -73,7 +84,9 @@ GET /api/appointment-config/object
     "DEFAULT_DURATION": 15,
     "DEFAULT_SLOT_DURATION": 15,
     "BOOKING_BUFFER_MINUTES": 15,
-    "DEFAULT_TEMPORARY_PASSWORD": "centrum123"
+    "DEFAULT_TEMPORARY_PASSWORD": "centrum123",
+    "JWT_EXPIRY_TIME": "1h",
+    "REFRESH_TOKEN_EXPIRY_DAYS": 30
   }
 }
 ```
@@ -184,14 +197,24 @@ The appointment configuration is automatically loaded from the database on serve
 
 ```javascript
 const appointmentConfig = require("../config/appointmentConfig");
+const jwtConfig = require("../config/jwtConfig");
 
-// Access a configuration value
+// Access appointment configuration values
 const defaultDuration = appointmentConfig.DEFAULT_DURATION;
+
+// Access JWT configuration values
+const jwtExpiryTime = jwtConfig.JWT_EXPIRY_TIME; // e.g., "1h"
+const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS; // e.g., 30
 
 // Or use the async getter for real-time values
 const getDuration = async () => {
   const duration = await appointmentConfig.getConfigValue("DEFAULT_DURATION");
   return duration;
+};
+
+const getJwtExpiry = async () => {
+  const expiry = await jwtConfig.getConfigValue("JWT_EXPIRY_TIME");
+  return expiry;
 };
 ```
 

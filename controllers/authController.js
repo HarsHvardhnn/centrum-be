@@ -9,6 +9,7 @@ const sendEmail = require("../utils/mailer");
 const createChatRoom = require("../utils/createChatroom");
 const user = require("../models/user-entity/user");
 const { sendSMS } = require("../utils/smsapi");
+const jwtConfig = require("../config/jwtConfig");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -28,19 +29,23 @@ const generateTokens = (
   shouldSave = true,
   enforceSingleSession = false
 ) => {
-  // Access token - short lived (15 minutes)
+  // Get JWT expiry time from config (defaults to "1h" if not set)
+  const jwtExpiryTime = jwtConfig.JWT_EXPIRY_TIME || "1h";
+  const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
+  
+  // Access token - expiry time from config
   const accessToken = jwt.sign(
     { id: user._id, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: "1h" }
+    { expiresIn: jwtExpiryTime }
   );
 
-  // Refresh token - longer lived (30 days)
+  // Refresh token - longer lived (expiry from config)
   const refreshToken = crypto.randomBytes(40).toString("hex");
 
-  // Calculate expiry date for refresh token (30 days)
+  // Calculate expiry date for refresh token (from config)
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 30);
+  expiresAt.setDate(expiresAt.getDate() + refreshTokenExpiryDays);
 
   // For single session mode, remove all existing tokens if that feature is enabled
   if (user.singleSessionMode || enforceSingleSession) {
@@ -225,11 +230,12 @@ const verifyOTP = async (req, res) => {
       await OTP.deleteOne({ _id: otpRecord._id });
 
       // Set refresh token cookie
+      const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
       });
 
       // Return success with user data and access token
@@ -373,11 +379,12 @@ const login = async (req, res) => {
     await user.save();
 
     // Set HTTP-only cookie
+    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
     // Send response
@@ -463,11 +470,12 @@ const googleLogin = async (req, res) => {
     await createChatRoom(user._id);
 
     // Set HTTP-only cookie with refresh token
+    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
     // Send access token in response body
@@ -755,11 +763,12 @@ const refreshToken = async (req, res) => {
     await user.save();
 
     // Set HTTP-only cookie with new refresh token
+    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
     res.cookie("refreshToken", tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
     // Send new access token
@@ -1351,11 +1360,12 @@ const complete2FALogin = async (user, ipAddress, device, res, message = "Logowan
     await user.save();
 
     // Set HTTP-only cookie
+    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
     // Send successful response
