@@ -37,6 +37,13 @@ The following settings can be managed through the API:
    - Default value: 30
    - Range: 1-365 days
 
+7. **INACTIVITY_TIMEOUT** (number)
+   - Inactivity timeout in minutes
+   - Time period of user inactivity before automatic logout
+   - Default value: 30
+   - Range: 1-1440 minutes (1 minute to 24 hours)
+   - Frontend should fetch this from `/api/auth/config` endpoint
+
 ## API Endpoints
 
 ### Get All Configuration Settings
@@ -86,7 +93,8 @@ GET /api/appointment-config/object
     "BOOKING_BUFFER_MINUTES": 15,
     "DEFAULT_TEMPORARY_PASSWORD": "centrum123",
     "JWT_EXPIRY_TIME": "1h",
-    "REFRESH_TOKEN_EXPIRY_DAYS": 30
+    "REFRESH_TOKEN_EXPIRY_DAYS": 30,
+    "INACTIVITY_TIMEOUT": 30
   }
 }
 ```

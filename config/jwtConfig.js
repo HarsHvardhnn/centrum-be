@@ -9,7 +9,11 @@ const DEFAULT_CONFIG = {
   JWT_EXPIRY_TIME: "1h",
   
   // Refresh Token Expiry (in days)
-  REFRESH_TOKEN_EXPIRY_DAYS: 30
+  REFRESH_TOKEN_EXPIRY_DAYS: 30,
+  
+  // Inactivity Timeout (in minutes)
+  // Time of inactivity before user should be logged out
+  INACTIVITY_TIMEOUT: 30
 };
 
 // Create a mutable copy of the default config that will be updated with DB values
@@ -21,6 +25,7 @@ const seedInitialConfig = async () => {
     // Check if JWT config exists
     const jwtExpiryConfig = await AppointmentConfigModel.findOne({ key: "JWT_EXPIRY_TIME" });
     const refreshExpiryConfig = await AppointmentConfigModel.findOne({ key: "REFRESH_TOKEN_EXPIRY_DAYS" });
+    const inactivityTimeoutConfig = await AppointmentConfigModel.findOne({ key: "INACTIVITY_TIMEOUT" });
     
     if (!jwtExpiryConfig) {
       console.log("No JWT_EXPIRY_TIME configuration found in database. Creating initial configuration...");
@@ -61,7 +66,27 @@ const seedInitialConfig = async () => {
       console.log("Created initial configuration: REFRESH_TOKEN_EXPIRY_DAYS");
     }
     
-    if (!jwtExpiryConfig || !refreshExpiryConfig) {
+    if (!inactivityTimeoutConfig) {
+      console.log("No INACTIVITY_TIMEOUT configuration found in database. Creating initial configuration...");
+      
+      await AppointmentConfigModel.create({
+        key: "INACTIVITY_TIMEOUT",
+        value: DEFAULT_CONFIG.INACTIVITY_TIMEOUT,
+        valueType: "number",
+        description: "Inactivity timeout in minutes. User will be logged out after this period of inactivity",
+        displayName: "Inactivity Timeout (Minutes)",
+        category: "authentication",
+        validation: {
+          min: 1,
+          max: 1440 // 24 hours in minutes
+        },
+        editable: true
+      });
+      
+      console.log("Created initial configuration: INACTIVITY_TIMEOUT");
+    }
+    
+    if (!jwtExpiryConfig || !refreshExpiryConfig || !inactivityTimeoutConfig) {
       console.log("Initial JWT configuration created successfully");
     }
   } catch (error) {
@@ -78,6 +103,7 @@ const loadConfigFromDatabase = async () => {
     // Get JWT configuration values from database
     const jwtExpiry = await AppointmentConfigModel.getConfigValue("JWT_EXPIRY_TIME");
     const refreshExpiryDays = await AppointmentConfigModel.getConfigValue("REFRESH_TOKEN_EXPIRY_DAYS");
+    const inactivityTimeout = await AppointmentConfigModel.getConfigValue("INACTIVITY_TIMEOUT");
     
     // Create a fresh copy of default config
     const freshConfig = { ...DEFAULT_CONFIG };
@@ -91,12 +117,17 @@ const loadConfigFromDatabase = async () => {
       freshConfig.REFRESH_TOKEN_EXPIRY_DAYS = refreshExpiryDays;
     }
     
+    if (inactivityTimeout !== null) {
+      freshConfig.INACTIVITY_TIMEOUT = inactivityTimeout;
+    }
+    
     // Replace the entire config object with our updated version
     JWT_CONFIG = { ...freshConfig };
     
     console.log("Updated JWT configuration:", {
       JWT_EXPIRY_TIME: JWT_CONFIG.JWT_EXPIRY_TIME,
-      REFRESH_TOKEN_EXPIRY_DAYS: JWT_CONFIG.REFRESH_TOKEN_EXPIRY_DAYS
+      REFRESH_TOKEN_EXPIRY_DAYS: JWT_CONFIG.REFRESH_TOKEN_EXPIRY_DAYS,
+      INACTIVITY_TIMEOUT: JWT_CONFIG.INACTIVITY_TIMEOUT
     });
     
     console.log("JWT configuration loaded from database");
@@ -135,7 +166,8 @@ const getConfigValue = async (key) => {
     
     console.log("Initial JWT configuration loaded and exported:", {
       JWT_EXPIRY_TIME: module.exports.JWT_EXPIRY_TIME,
-      REFRESH_TOKEN_EXPIRY_DAYS: module.exports.REFRESH_TOKEN_EXPIRY_DAYS
+      REFRESH_TOKEN_EXPIRY_DAYS: module.exports.REFRESH_TOKEN_EXPIRY_DAYS,
+      INACTIVITY_TIMEOUT: module.exports.INACTIVITY_TIMEOUT
     });
   } catch (err) {
     console.error("Failed to load JWT configuration:", err);
@@ -161,11 +193,29 @@ setInterval(async () => {
 // Export the configuration directly
 module.exports = JWT_CONFIG;
 
+// Helper function to get current JWT expiry time (always returns latest value)
+const getJwtExpiryTime = () => {
+  return JWT_CONFIG.JWT_EXPIRY_TIME || DEFAULT_CONFIG.JWT_EXPIRY_TIME;
+};
+
+// Helper function to get current refresh token expiry days (always returns latest value)
+const getRefreshTokenExpiryDays = () => {
+  return JWT_CONFIG.REFRESH_TOKEN_EXPIRY_DAYS || DEFAULT_CONFIG.REFRESH_TOKEN_EXPIRY_DAYS;
+};
+
+// Helper function to get current inactivity timeout (always returns latest value)
+const getInactivityTimeout = () => {
+  return JWT_CONFIG.INACTIVITY_TIMEOUT || DEFAULT_CONFIG.INACTIVITY_TIMEOUT;
+};
+
 // Add helper methods to the exported object
 module.exports.getConfigValue = getConfigValue;
 module.exports.loadConfigFromDatabase = loadConfigFromDatabase;
 module.exports.seedInitialConfig = seedInitialConfig;
 module.exports.DEFAULT_CONFIG = DEFAULT_CONFIG;
+module.exports.getJwtExpiryTime = getJwtExpiryTime;
+module.exports.getRefreshTokenExpiryDays = getRefreshTokenExpiryDays;
+module.exports.getInactivityTimeout = getInactivityTimeout;
 
 // Add a method to force reload configuration
 module.exports.reloadConfig = async () => {

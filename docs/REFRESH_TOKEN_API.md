@@ -7,6 +7,7 @@ This document describes the refresh token mechanism for authentication in the ap
 The authentication system uses a dual-token approach:
 - **Access Token (JWT)**: Short-lived token used for API requests (default: 1 hour, configurable)
 - **Refresh Token**: Long-lived token stored in HTTP-only cookie (default: 30 days, configurable)
+- **Inactivity Timeout**: Time period of inactivity before user should be logged out (default: 30 minutes, configurable)
 
 ## How It Works
 
@@ -16,6 +17,40 @@ The authentication system uses a dual-token approach:
 4. **Refresh Flow**: Refresh token is automatically sent via HTTP-only cookie
 
 ## API Endpoints
+
+### 0. Get Auth Configuration (Public)
+
+**Endpoint:** `GET /api/auth/config`
+
+**Description:** Public endpoint to get authentication configuration values for frontend. No authentication required.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "jwtExpiryTime": "1h",
+    "refreshTokenExpiryDays": 30,
+    "inactivityTimeout": 30
+  }
+}
+```
+
+**Usage Example:**
+```javascript
+// Fetch auth config on app initialization
+const fetchAuthConfig = async () => {
+  const response = await fetch('/api/auth/config');
+  const { data } = await response.json();
+  
+  // Use these values for token management and inactivity handling
+  const { jwtExpiryTime, refreshTokenExpiryDays, inactivityTimeout } = data;
+  
+  // inactivityTimeout is in minutes
+  // Set up inactivity timer based on this value
+  setupInactivityTimer(inactivityTimeout * 60 * 1000); // Convert to milliseconds
+};
+```
 
 ### 1. Login
 
@@ -425,6 +460,160 @@ const setupTokenRefresh = () => {
 setupTokenRefresh();
 ```
 
+### 7. Inactivity Timeout Handling
+
+```javascript
+let inactivityTimer = null;
+let inactivityTimeout = 30 * 60 * 1000; // Default: 30 minutes in milliseconds
+
+// Fetch inactivity timeout from server
+const initializeInactivityTimeout = async () => {
+  try {
+    const response = await fetch('/api/auth/config');
+    const { data } = await response.json();
+    inactivityTimeout = data.inactivityTimeout * 60 * 1000; // Convert minutes to milliseconds
+    setupInactivityTimer();
+  } catch (error) {
+    console.error('Error fetching auth config:', error);
+    // Use default value
+    setupInactivityTimer();
+  }
+};
+
+// Setup inactivity timer
+const setupInactivityTimer = () => {
+  // Clear existing timer
+  if (inactivityTimer) {
+    clearTimeout(inactivityTimer);
+  }
+  
+  // Set new timer
+  inactivityTimer = setTimeout(() => {
+    handleInactivity();
+  }, inactivityTimeout);
+};
+
+// Reset timer on user activity
+const resetInactivityTimer = () => {
+  setupInactivityTimer();
+};
+
+// Handle inactivity - logout user
+const handleInactivity = async () => {
+  console.log('User inactive, logging out...');
+  
+  try {
+    // Call logout endpoint
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (error) {
+    console.error('Error during logout:', error);
+  } finally {
+    // Clear tokens and redirect
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  }
+};
+
+// Listen for user activity events
+const setupActivityListeners = () => {
+  const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+  
+  events.forEach(event => {
+    document.addEventListener(event, resetInactivityTimer, true);
+  });
+};
+
+// Initialize on app load
+const initInactivityHandling = () => {
+  initializeInactivityTimeout();
+  setupActivityListeners();
+};
+
+// Call on app initialization
+initInactivityHandling();
+```
+
+### 8. React Hook for Inactivity Handling
+
+```javascript
+import { useEffect, useRef, useCallback } from 'react';
+
+export const useInactivityTimeout = (onInactive, timeoutMinutes = 30) => {
+  const timeoutRef = useRef(null);
+  const timeoutMs = timeoutMinutes * 60 * 1000;
+
+  const resetTimer = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    
+    timeoutRef.current = setTimeout(() => {
+      onInactive();
+    }, timeoutMs);
+  }, [onInactive, timeoutMs]);
+
+  useEffect(() => {
+    // Fetch timeout from server
+    const fetchTimeout = async () => {
+      try {
+        const response = await fetch('/api/auth/config');
+        const { data } = await response.json();
+        const serverTimeout = data.inactivityTimeout;
+        
+        // Use server timeout or fallback to prop
+        const finalTimeout = serverTimeout || timeoutMinutes;
+        
+        timeoutRef.current = setTimeout(() => {
+          onInactive();
+        }, finalTimeout * 60 * 1000);
+      } catch (error) {
+        console.error('Error fetching inactivity timeout:', error);
+        // Fallback to prop value
+        timeoutRef.current = setTimeout(() => {
+          onInactive();
+        }, timeoutMs);
+      }
+    };
+
+    fetchTimeout();
+
+    // Activity events
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    
+    events.forEach(event => {
+      window.addEventListener(event, resetTimer, true);
+    });
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      events.forEach(event => {
+        window.removeEventListener(event, resetTimer, true);
+      });
+    };
+  }, [onInactive, resetTimer, timeoutMinutes, timeoutMs]);
+
+  return { resetTimer };
+};
+
+// Usage in component
+const MyComponent = () => {
+  const handleInactive = useCallback(async () => {
+    await logout();
+    window.location.href = '/login';
+  }, []);
+
+  useInactivityTimeout(handleInactive);
+
+  return <div>Your component</div>;
+};
+```
+
 ## Configuration
 
 ### JWT Expiry Time
@@ -473,6 +662,28 @@ Authorization: Bearer <admin_token>
   "value": 60  // Number of days (1-365)
 }
 ```
+
+### Inactivity Timeout
+
+The inactivity timeout (in minutes) can be configured:
+
+**Get Current Value:**
+```
+GET /api/appointment-config/INACTIVITY_TIMEOUT
+```
+
+**Update Value:**
+```
+PUT /api/appointment-config/INACTIVITY_TIMEOUT
+Content-Type: application/json
+Authorization: Bearer <admin_token>
+
+{
+  "value": 60  // Number of minutes (1-1440, i.e., 1 minute to 24 hours)
+}
+```
+
+**Note:** The frontend should fetch this value from `/api/auth/config` endpoint and use it to implement inactivity logout functionality.
 
 ## Security Considerations
 

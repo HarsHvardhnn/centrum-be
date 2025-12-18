@@ -29,9 +29,9 @@ const generateTokens = (
   shouldSave = true,
   enforceSingleSession = false
 ) => {
-  // Get JWT expiry time from config (defaults to "1h" if not set)
-  const jwtExpiryTime = jwtConfig.JWT_EXPIRY_TIME || "1h";
-  const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
+  // Get JWT expiry time from config (always gets latest value)
+  const jwtExpiryTime = jwtConfig.getJwtExpiryTime();
+  const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
   
   // Access token - expiry time from config
   const accessToken = jwt.sign(
@@ -230,7 +230,7 @@ const verifyOTP = async (req, res) => {
       await OTP.deleteOne({ _id: otpRecord._id });
 
       // Set refresh token cookie
-      const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
+      const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -379,7 +379,7 @@ const login = async (req, res) => {
     await user.save();
 
     // Set HTTP-only cookie
-    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
+    const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -470,7 +470,7 @@ const googleLogin = async (req, res) => {
     await createChatRoom(user._id);
 
     // Set HTTP-only cookie with refresh token
-    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
+    const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -763,7 +763,7 @@ const refreshToken = async (req, res) => {
     await user.save();
 
     // Set HTTP-only cookie with new refresh token
-    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
+    const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -1360,7 +1360,7 @@ const complete2FALogin = async (user, ipAddress, device, res, message = "Logowan
     await user.save();
 
     // Set HTTP-only cookie
-    const refreshTokenExpiryDays = jwtConfig.REFRESH_TOKEN_EXPIRY_DAYS || 30;
+    const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -1681,6 +1681,32 @@ const get2FAStatus = async (req, res) => {
   }
 };
 
+// Get authentication configuration for frontend (public endpoint)
+const getAuthConfig = async (req, res) => {
+  try {
+    const jwtConfig = require("../config/jwtConfig");
+    
+    // Get current config values (always returns latest)
+    const config = {
+      jwtExpiryTime: jwtConfig.getJwtExpiryTime(),
+      refreshTokenExpiryDays: jwtConfig.getRefreshTokenExpiryDays(),
+      inactivityTimeout: jwtConfig.getInactivityTimeout() // in minutes
+    };
+    
+    return res.status(200).json({
+      success: true,
+      data: config
+    });
+  } catch (error) {
+    console.error("Error fetching auth config:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch authentication configuration",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifyOTP,
@@ -1696,6 +1722,7 @@ module.exports = {
   getUserPublicInfo,
   getProfile,
   updateProfile,
+  getAuthConfig,
   // 2FA functions
   verify2FA,
   resend2FACode,

@@ -15,6 +15,7 @@ const {
   getUserPublicInfo,
   getProfile,
   updateProfile,
+  getAuthConfig,
   // 2FA functions
   verify2FA,
   resend2FACode,
@@ -36,6 +37,9 @@ router.post("/verify-otp", verifyOTP);
 router.post("/login", login);
 router.post("/google", googleLogin);
 router.post("/refresh-token", refreshToken);
+
+// Public endpoint to get auth configuration (for frontend)
+router.get("/config", getAuthConfig);
 router.post("/logout", logout);
 router.post("/logout-all", authorizeRoles, logoutAll);
 router.post("/toggle-single-session", authorizeRoles, toggleSingleSessionMode);

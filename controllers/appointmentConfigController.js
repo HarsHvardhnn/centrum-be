@@ -108,6 +108,14 @@ exports.updateConfig = async (req, res) => {
     const appointmentConfig = require("../config/appointmentConfig");
     await appointmentConfig.reloadConfig();
     
+    // Also reload JWT config if JWT-related configs are updated
+    const upperKey = key.toUpperCase();
+    if (upperKey === "JWT_EXPIRY_TIME" || upperKey === "REFRESH_TOKEN_EXPIRY_DAYS" || upperKey === "INACTIVITY_TIMEOUT") {
+      const jwtConfig = require("../config/jwtConfig");
+      await jwtConfig.reloadConfig();
+      console.log(`JWT configuration reloaded after ${key} update`);
+    }
+    
     console.log(`Configuration ${key} updated and in-memory config refreshed`);
     
     return res.status(200).json({
@@ -188,6 +196,13 @@ exports.resetConfig = async (req, res) => {
     
     // Immediately refresh the in-memory configuration
     await appointmentConfig.reloadConfig();
+    
+    // Also reload JWT config if JWT-related configs are reset
+    if (upperKey === "JWT_EXPIRY_TIME" || upperKey === "REFRESH_TOKEN_EXPIRY_DAYS" || upperKey === "INACTIVITY_TIMEOUT") {
+      const jwtConfig = require("../config/jwtConfig");
+      await jwtConfig.reloadConfig();
+      console.log(`JWT configuration reloaded after ${key} reset`);
+    }
     
     console.log(`Configuration ${key} reset to default value and in-memory config refreshed`);
     
