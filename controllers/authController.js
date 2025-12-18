@@ -233,8 +233,8 @@ const verifyOTP = async (req, res) => {
       const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
       res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: process.env.NODE_ENV === "production", // Required for sameSite: "none"
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict", // "none" for cross-origin, "strict" for same-origin
         maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
       });
 
@@ -382,8 +382,8 @@ const login = async (req, res) => {
     const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production", // Required for sameSite: "none"
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict", // "none" for cross-origin, "strict" for same-origin
       maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
@@ -473,8 +473,8 @@ const googleLogin = async (req, res) => {
     const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production", // Required for sameSite: "none"
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict", // "none" for cross-origin, "strict" for same-origin
       maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
@@ -731,13 +731,22 @@ const resetPassword = async (req, res) => {
 
 // 7. Refresh token endpoint
 const refreshToken = async (req, res) => {
-  // Get refresh token from cookie
-  const refreshToken = req.cookies.refreshToken;
+  // Get refresh token from cookie (preferred for same-origin), or request body (for cross-origin)
+  let refreshToken = req.cookies.refreshToken;
+  
+  // Fallback to request body if cookie not available (for cross-origin requests)
+  if (!refreshToken) {
+    refreshToken = req.body.refreshToken;
+  }
+  
   const ipAddress = req.ip;
   const device = req.headers["user-agent"] || "unknown";
 
   if (!refreshToken) {
-    return res.status(401).json({ message: "Wymagany token odświeżania" });
+    return res.status(401).json({ 
+      message: "Wymagany token odświeżania",
+      hint: "Refresh token must be provided either in cookie (refreshToken) or request body (refreshToken field)"
+    });
   }
 
   try {
@@ -766,8 +775,8 @@ const refreshToken = async (req, res) => {
     const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", tokens.refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production", // Required for sameSite: "none"
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict", // "none" for cross-origin, "strict" for same-origin
       maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
@@ -1363,8 +1372,8 @@ const complete2FALogin = async (user, ipAddress, device, res, message = "Logowan
     const refreshTokenExpiryDays = jwtConfig.getRefreshTokenExpiryDays();
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production", // Required for sameSite: "none"
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict", // "none" for cross-origin, "strict" for same-origin
       maxAge: refreshTokenExpiryDays * 24 * 60 * 60 * 1000, // From config
     });
 
