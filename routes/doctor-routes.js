@@ -10,6 +10,7 @@ const {
   removeOffTime,
   addOffTime,
   getAvailableSlots,
+  getWeekAvailability,
   getDoctorProfile,
   getNextAvailableDate,
   getDoctorDetails,
@@ -82,6 +83,13 @@ router.get(
   "/schedule/available-slots/:id",
   // authorizeRoles(["doctor","admin"]),
   getAvailableSlots
+);
+
+// Get week slot availability
+router.get(
+  "/schedule/week-availability/:doctorId",
+  // authorizeRoles(["doctor","admin"]),
+  getWeekAvailability
 );
 
 // Get next available date

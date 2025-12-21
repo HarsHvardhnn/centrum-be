@@ -712,6 +712,218 @@ const removeOffTime = async (req, res) => {
   }
 };
 
+// Helper function to generate slots for a specific date (reusable)
+const generateSlotsForDate = async (doctorId, requestedDate) => {
+  // Import the new schedule models
+  const DoctorSchedule = require("../models/doctorSchedule");
+  const ScheduleException = require("../models/scheduleException");
+  
+  // Check for schedule exception first
+  const exception = await ScheduleException.findOne({
+    doctorId,
+    date: {
+      $gte: startOfDay(requestedDate),
+      $lte: endOfDay(requestedDate)
+    },
+    isActive: true
+  });
+
+  if (exception && exception.isFullDay) {
+    return {
+      hasException: true,
+      exceptionTitle: exception.title,
+      slots: []
+    };
+  }
+
+  // Get doctor's schedule for the requested date
+  const schedule = await DoctorSchedule.findOne({
+    doctorId,
+    date: {
+      $gte: startOfDay(requestedDate),
+      $lte: endOfDay(requestedDate)
+    },
+    isActive: true
+  });
+
+  if (!schedule || !schedule.timeBlocks || schedule.timeBlocks.length === 0) {
+    return {
+      hasSchedule: false,
+      slots: []
+    };
+  }
+
+  // Get booked appointments for the requested date
+  const appointments = await appointment
+    .find({
+      doctor: doctorId,
+      date: {
+        $gte: startOfDay(requestedDate),
+        $lte: endOfDay(requestedDate),
+      },
+      status: "booked",
+    })
+    .sort({ startTime: 1 });
+
+  // Generate slots based on time blocks
+  const slotDuration = APPOINTMENT_CONFIG.DEFAULT_SLOT_DURATION; // in minutes
+  const slots = [];
+
+  // Generate slots for each time block
+  for (let timeBlock of schedule.timeBlocks) {
+    if (!timeBlock.isActive) continue;
+
+    // Parse time block times
+    const [blockStartHour, blockStartMinute] = timeBlock.startTime
+      .split(":")
+      .map(Number);
+    const [blockEndHour, blockEndMinute] = timeBlock.endTime.split(":").map(Number);
+
+    // Convert to minutes since midnight
+    const blockStartMinutes = blockStartHour * 60 + blockStartMinute;
+    const blockEndMinutes = blockEndHour * 60 + blockEndMinute;
+
+    // Generate slots for this time block
+    for (
+      let time = blockStartMinutes;
+      time < blockEndMinutes;
+      time += slotDuration
+    ) {
+      const hour = Math.floor(time / 60);
+      const minute = time % 60;
+
+      const slotStartTime = `${hour.toString().padStart(2, "0")}:${minute
+        .toString()
+        .padStart(2, "0")}`;
+
+      const slotEndMinutes = time + slotDuration;
+      const endHour = Math.floor(slotEndMinutes / 60);
+      const endMinute = slotEndMinutes % 60;
+
+      const slotEndTime = `${endHour.toString().padStart(2, "0")}:${endMinute
+        .toString()
+        .padStart(2, "0")}`;
+
+      if (slotEndMinutes <= blockEndMinutes) {
+        slots.push({
+          startTime: slotStartTime,
+          endTime: slotEndTime,
+          available: true,
+        });
+      }
+    }
+  }
+
+  // Mark slots as unavailable if they overlap with an appointment
+  appointments.forEach((appointment) => {
+    const [appStartHour, appStartMinute] = appointment.startTime
+      .split(":")
+      .map(Number);
+    const [appEndHour, appEndMinute] = appointment.endTime
+      .split(":")
+      .map(Number);
+
+    const appStartMinutes = appStartHour * 60 + appStartMinute;
+    const appEndMinutes = appEndHour * 60 + appEndMinute;
+
+    slots.forEach((slot) => {
+      const [slotStartHour, slotStartMinute] = slot.startTime
+        .split(":")
+        .map(Number);
+      const [slotEndHour, slotEndMinute] = slot.endTime
+        .split(":")
+        .map(Number);
+
+      const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
+      const slotEndMinutes = slotEndHour * 60 + slotEndMinute;
+
+      // Check if there's an overlap
+      if (
+        (slotStartMinutes < appEndMinutes &&
+          slotEndMinutes > appStartMinutes) ||
+        (slotStartMinutes === appStartMinutes &&
+          slotEndMinutes === appEndMinutes)
+      ) {
+        slot.available = false;
+      }
+    });
+  });
+
+  // Mark slots as unavailable if they overlap with schedule exceptions
+  if (exception && !exception.isFullDay && exception.timeRanges && exception.timeRanges.length > 0) {
+    exception.timeRanges.forEach((range) => {
+      const [rangeStartHour, rangeStartMinute] = range.startTime
+        .split(":")
+        .map(Number);
+      const [rangeEndHour, rangeEndMinute] = range.endTime
+        .split(":")
+        .map(Number);
+
+      const rangeStartMinutes = rangeStartHour * 60 + rangeStartMinute;
+      const rangeEndMinutes = rangeEndHour * 60 + rangeEndMinute;
+
+      slots.forEach((slot) => {
+        const [slotStartHour, slotStartMinute] = slot.startTime
+          .split(":")
+          .map(Number);
+        const [slotEndHour, slotEndMinute] = slot.endTime
+          .split(":")
+          .map(Number);
+
+        const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
+        const slotEndMinutes = slotEndHour * 60 + slotEndMinute;
+
+        // Check if there's an overlap
+        if (
+          (slotStartMinutes < rangeEndMinutes &&
+            slotEndMinutes > rangeStartMinutes) ||
+          (slotStartMinutes === rangeStartMinutes &&
+            slotEndMinutes === rangeEndMinutes)
+        ) {
+          slot.available = false;
+        }
+      });
+    });
+  }
+
+  // Filter out past slots based on current time in Poland timezone
+  const currentTimeUTC = new Date();
+  const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
+  const requestedDateOnly = new Date(requestedDate);
+  
+  // Check if the requested date is today (in Poland timezone)
+  const isToday = currentTimeInPoland.toDateString() === requestedDateOnly.toDateString();
+  
+  if (isToday) {
+    // Get current time in minutes since midnight (Poland timezone)
+    const currentHour = currentTimeInPoland.getHours();
+    const currentMinute = currentTimeInPoland.getMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    
+    // Add buffer time from configuration to allow for booking
+    const bufferMinutes = APPOINTMENT_CONFIG.BOOKING_BUFFER_MINUTES;
+    const minimumBookingTime = currentTimeInMinutes + bufferMinutes;
+    
+    // Filter out slots that are in the past or too close to current time
+    slots.forEach((slot) => {
+      const [slotStartHour, slotStartMinute] = slot.startTime
+        .split(":")
+        .map(Number);
+      const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
+      
+      if (slotStartMinutes < minimumBookingTime) {
+        slot.available = false;
+      }
+    });
+  }
+
+  return {
+    hasSchedule: true,
+    hasException: false,
+    slots: slots.filter(slot => slot.available)
+  };
+};
+
 // Get available slots for a specific date
 const getAvailableSlots = async (req, res) => {
   try {
@@ -735,41 +947,17 @@ const getAvailableSlots = async (req, res) => {
 
     const requestedDate = new Date(date);
     
-    // Import the new schedule models
-    const DoctorSchedule = require("../models/doctorSchedule");
-    const ScheduleException = require("../models/scheduleException");
+    const result = await generateSlotsForDate(doctorId, requestedDate);
     
-    // Check for schedule exception first
-    const exception = await ScheduleException.findOne({
-      doctorId,
-      date: {
-        $gte: startOfDay(requestedDate),
-        $lte: endOfDay(requestedDate)
-      },
-      isActive: true
-    });
-
-    if (exception) {
-      if (exception.isFullDay) {
-        return res.status(200).json({
-          success: true,
-          message: `Lekarz nie jest dostępny w tym dniu: ${exception.title}`,
-          data: [],
-        });
-      }
+    if (result.hasException) {
+      return res.status(200).json({
+        success: true,
+        message: `Lekarz nie jest dostępny w tym dniu: ${result.exceptionTitle}`,
+        data: [],
+      });
     }
-
-    // Get doctor's schedule for the requested date
-    const schedule = await DoctorSchedule.findOne({
-      doctorId,
-      date: {
-        $gte: startOfDay(requestedDate),
-        $lte: endOfDay(requestedDate)
-      },
-      isActive: true
-    });
-
-    if (!schedule || !schedule.timeBlocks || schedule.timeBlocks.length === 0) {
+    
+    if (!result.hasSchedule) {
       return res.status(200).json({
         success: true,
         message: "Lekarz nie ma zaplanowanych godzin pracy w tym dniu",
@@ -777,174 +965,9 @@ const getAvailableSlots = async (req, res) => {
       });
     }
 
-    // Get booked appointments for the requested date
-    const appointments = await appointment
-      .find({
-        doctor: doctorId,
-        date: {
-          $gte: startOfDay(requestedDate),
-          $lte: endOfDay(requestedDate),
-        },
-        status: "booked",
-      })
-      .sort({ startTime: 1 });
-
-    // Generate slots based on time blocks
-    const slotDuration = APPOINTMENT_CONFIG.DEFAULT_SLOT_DURATION; // in minutes
-    console.log("slotDuration", slotDuration);
-    const slots = [];
-
-    // Generate slots for each time block
-    for (let timeBlock of schedule.timeBlocks) {
-      if (!timeBlock.isActive) continue;
-
-      // Parse time block times
-      const [blockStartHour, blockStartMinute] = timeBlock.startTime
-        .split(":")
-        .map(Number);
-      const [blockEndHour, blockEndMinute] = timeBlock.endTime.split(":").map(Number);
-
-      // Convert to minutes since midnight
-      const blockStartMinutes = blockStartHour * 60 + blockStartMinute;
-      const blockEndMinutes = blockEndHour * 60 + blockEndMinute;
-
-      // Generate slots for this time block
-      for (
-        let time = blockStartMinutes;
-        time < blockEndMinutes;
-        time += slotDuration
-      ) {
-        const hour = Math.floor(time / 60);
-        const minute = time % 60;
-
-        const slotStartTime = `${hour.toString().padStart(2, "0")}:${minute
-          .toString()
-          .padStart(2, "0")}`;
-
-        const slotEndMinutes = time + slotDuration;
-        const endHour = Math.floor(slotEndMinutes / 60);
-        const endMinute = slotEndMinutes % 60;
-
-        const slotEndTime = `${endHour.toString().padStart(2, "0")}:${endMinute
-          .toString()
-          .padStart(2, "0")}`;
-
-        if (slotEndMinutes <= blockEndMinutes) {
-          slots.push({
-            startTime: slotStartTime,
-            endTime: slotEndTime,
-            available: true,
-          });
-        }
-      }
-    }
-
-    // Mark slots as unavailable if they overlap with an appointment
-    appointments.forEach((appointment) => {
-      const [appStartHour, appStartMinute] = appointment.startTime
-        .split(":")
-        .map(Number);
-      const [appEndHour, appEndMinute] = appointment.endTime
-        .split(":")
-        .map(Number);
-
-      const appStartMinutes = appStartHour * 60 + appStartMinute;
-      const appEndMinutes = appEndHour * 60 + appEndMinute;
-
-      slots.forEach((slot) => {
-        const [slotStartHour, slotStartMinute] = slot.startTime
-          .split(":")
-          .map(Number);
-        const [slotEndHour, slotEndMinute] = slot.endTime
-          .split(":")
-          .map(Number);
-
-        const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
-        const slotEndMinutes = slotEndHour * 60 + slotEndMinute;
-
-        // Check if there's an overlap
-        if (
-          (slotStartMinutes < appEndMinutes &&
-            slotEndMinutes > appStartMinutes) ||
-          (slotStartMinutes === appStartMinutes &&
-            slotEndMinutes === appEndMinutes)
-        ) {
-          slot.available = false;
-        }
-      });
-    });
-
-    // Mark slots as unavailable if they overlap with schedule exceptions
-    if (exception && !exception.isFullDay && exception.timeRanges.length > 0) {
-      exception.timeRanges.forEach((range) => {
-        const [rangeStartHour, rangeStartMinute] = range.startTime
-          .split(":")
-          .map(Number);
-        const [rangeEndHour, rangeEndMinute] = range.endTime
-          .split(":")
-          .map(Number);
-
-        const rangeStartMinutes = rangeStartHour * 60 + rangeStartMinute;
-        const rangeEndMinutes = rangeEndHour * 60 + rangeEndMinute;
-
-        slots.forEach((slot) => {
-          const [slotStartHour, slotStartMinute] = slot.startTime
-            .split(":")
-            .map(Number);
-          const [slotEndHour, slotEndMinute] = slot.endTime
-            .split(":")
-            .map(Number);
-
-          const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
-          const slotEndMinutes = slotEndHour * 60 + slotEndMinute;
-
-          // Check if there's an overlap
-          if (
-            (slotStartMinutes < rangeEndMinutes &&
-              slotEndMinutes > rangeStartMinutes) ||
-            (slotStartMinutes === rangeStartMinutes &&
-              slotEndMinutes === rangeEndMinutes)
-          ) {
-            slot.available = false;
-          }
-        });
-      });
-    }
-
-    // Filter out past slots based on current time in Poland timezone
-    const currentTimeUTC = new Date();
-    const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
-    const requestedDateOnly = new Date(requestedDate);
-    
-    // Check if the requested date is today (in Poland timezone)
-    const isToday = currentTimeInPoland.toDateString() === requestedDateOnly.toDateString();
-    
-    if (isToday) {
-      // Get current time in minutes since midnight (Poland timezone)
-      const currentHour = currentTimeInPoland.getHours();
-      const currentMinute = currentTimeInPoland.getMinutes();
-      const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      
-      // Add buffer time from configuration to allow for booking
-      const bufferMinutes = APPOINTMENT_CONFIG.BOOKING_BUFFER_MINUTES;
-      const minimumBookingTime = currentTimeInMinutes + bufferMinutes;
-      
-      // Filter out slots that are in the past or too close to current time
-      slots.forEach((slot) => {
-        const [slotStartHour, slotStartMinute] = slot.startTime
-          .split(":")
-          .map(Number);
-        const slotStartMinutes = slotStartHour * 60 + slotStartMinute;
-        
-        if (slotStartMinutes < minimumBookingTime) {
-          slot.available = false;
-        }
-      });
-    }
-
     return res.status(200).json({
       success: true,
-      data: slots?.filter(slot => slot.available),
+      data: result.slots,
     });
   } catch (error) {
     console.error("Error generating available slots:", error);
@@ -952,6 +975,131 @@ const getAvailableSlots = async (req, res) => {
       success: false,
       message: "Błąd podczas generowania dostępnych slotów",
       error: error.message,
+    });
+  }
+};
+
+// Get week slot availability for a doctor
+const getWeekAvailability = async (req, res) => {
+  try {
+    const doctorId = req.params.doctorId;
+    const { startDate, endDate } = req.query;
+
+    // Validate required parameters
+    if (!startDate) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_DATE_RANGE",
+        message: "startDate query parameter is required (format: YYYY-MM-DD)",
+      });
+    }
+
+    // Validate doctor exists
+    const doctor = await user.findById(doctorId);
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        error: "DOCTOR_NOT_FOUND",
+        message: "Doctor not found",
+      });
+    }
+
+    // Parse and validate dates
+    const start = new Date(startDate);
+    if (isNaN(start.getTime())) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_DATE_RANGE",
+        message: "Invalid startDate format. Use YYYY-MM-DD",
+      });
+    }
+
+    let end;
+    if (endDate) {
+      end = new Date(endDate);
+      if (isNaN(end.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: "INVALID_DATE_RANGE",
+          message: "Invalid endDate format. Use YYYY-MM-DD",
+        });
+      }
+    } else {
+      // Default to 7 days from startDate if endDate not provided
+      end = new Date(start);
+      end.setDate(end.getDate() + 6); // 7 days total (including start date)
+    }
+
+    // Validate date range (end should be after start)
+    if (end < start) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_DATE_RANGE",
+        message: "endDate must be after or equal to startDate",
+      });
+    }
+
+    // Limit maximum date range to 30 days for performance
+    const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    if (daysDiff > 30) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_DATE_RANGE",
+        message: "Date range cannot exceed 30 days",
+      });
+    }
+
+    // Generate date array for the range
+    const dates = [];
+    const currentDate = new Date(start);
+    while (currentDate <= end) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Get availability for each date in the range
+    const availability = [];
+    for (const date of dates) {
+      const result = await generateSlotsForDate(doctorId, date);
+      
+      // Format date as YYYY-MM-DD
+      const dateStr = format(date, "yyyy-MM-dd");
+      
+      const availableSlots = result.slots || [];
+      const hasSlots = availableSlots.length > 0 && result.hasSchedule && !result.hasException;
+      
+      availability.push({
+        date: dateStr,
+        hasSlots: hasSlots,
+        slotCount: availableSlots.length,
+        availableSlots: hasSlots ? availableSlots.map(slot => ({
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          available: slot.available
+        })) : []
+      });
+    }
+
+    // Format response dates
+    const weekStartStr = format(start, "yyyy-MM-dd");
+    const weekEndStr = format(end, "yyyy-MM-dd");
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        doctorId: doctorId,
+        weekStart: weekStartStr,
+        weekEnd: weekEndStr,
+        availability: availability,
+      },
+    });
+  } catch (error) {
+    console.error("Error generating week availability:", error);
+    return res.status(500).json({
+      success: false,
+      error: "SERVER_ERROR",
+      message: "Internal server error",
+      details: error.message,
     });
   }
 };
@@ -1838,6 +1986,7 @@ module.exports = {
   getAllDoctors,
   getDoctorById,
   getAvailableSlots,
+  getWeekAvailability,
   removeOffTime,
   addOffTime,
   getOffSchedule,
