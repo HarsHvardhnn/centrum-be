@@ -22,6 +22,7 @@ const serviceSchema = new mongoose.Schema({
     type: String,
     default:0
   },
+  redirectionUrl: { type: String, required: false },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   isDeleted: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },

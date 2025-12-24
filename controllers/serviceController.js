@@ -5,9 +5,9 @@ const { deleteServiceFromRelatedModels } = require("../utils/deleteServiceFromRe
 
 exports.createService = async (req, res) => {
   try {
-    const { title, price, shortDescription, description, bulletPoints } =
+    const { title, price, shortDescription, description, bulletPoints, redirectionUrl } =
       req.body;
-    const images = req.files.map((file) => file.path);
+    const images = req.files ? req.files.map((file) => file.path) : [];
 
     // Generate unique slug from title
     const baseSlug = generateSlug(title);
@@ -20,7 +20,8 @@ exports.createService = async (req, res) => {
       price,
       shortDescription,
       description,
-      bulletPoints: JSON.parse(bulletPoints),
+      bulletPoints: bulletPoints ? JSON.parse(bulletPoints) : [],
+      redirectionUrl,
       images,
       createdBy: req.user.id,
     });
@@ -47,7 +48,7 @@ exports.createService = async (req, res) => {
 exports.getAllServices = async (req, res) => {
   try {
     const services = await Service.find({ isDeleted: false })
-      .select('title slug description shortDescription images price bulletPoints createdAt updatedAt');
+      .select('title slug description shortDescription images price bulletPoints redirectionUrl createdAt updatedAt');
     res.json(services);
   } catch (error) {
     console.error('Error getting services:', error);
@@ -91,7 +92,7 @@ exports.getServiceById = async (req, res) => {
 
 exports.updateService = async (req, res) => {
   try {
-    const { title, icon, shortDescription, description, bulletPoints, price } =
+    const { title, icon, shortDescription, description, bulletPoints, price, redirectionUrl } =
       req.body;
     
     // Get the current service to check if price is being updated
@@ -105,10 +106,11 @@ exports.updateService = async (req, res) => {
       icon,
       shortDescription,
       description,
-      bulletPoints: JSON.parse(bulletPoints),
+      bulletPoints: bulletPoints ? JSON.parse(bulletPoints) : currentService.bulletPoints,
       updatedBy: req.user.id,
       updatedAt: new Date(),
       price,
+      redirectionUrl,
     };
 
     // If title is being updated, regenerate slug
