@@ -402,11 +402,126 @@ exports.permanentlyDeleteContact = async (req, res) => {
 /**
  * Permanently delete user account
  * This will also delete related records
+ * Can delete single user or bulk delete by IDs
  */
 exports.permanentlyDeleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
+    const { ids } = req.body; // Array of user IDs for bulk delete
 
+    // Bulk delete by multiple IDs
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // Validate all IDs
+      const validIds = ids.filter(id => mongoose.Types.ObjectId.isValid(id));
+      
+      if (validIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No valid user IDs provided"
+        });
+      }
+
+      if (validIds.length !== ids.length) {
+        return res.status(400).json({
+          success: false,
+          message: `Some IDs are invalid. ${ids.length - validIds.length} invalid ID(s) found`,
+          validIds,
+          invalidIds: ids.filter(id => !mongoose.Types.ObjectId.isValid(id))
+        });
+      }
+
+      // Find all users (including admins to check)
+      const allUsers = await User.find({ _id: { $in: validIds } });
+
+      if (allUsers.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No users found with the provided IDs"
+        });
+      }
+
+      // Check for admin users
+      const adminUsers = allUsers.filter(u => u.role === "admin");
+      if (adminUsers.length > 0) {
+        return res.status(403).json({
+          success: false,
+          message: `Cannot delete admin users. ${adminUsers.length} admin user(s) found in the list`,
+          adminIds: adminUsers.map(u => u._id.toString())
+        });
+      }
+
+      // Filter out admins (should be none, but just in case)
+      const users = allUsers.filter(u => u.role !== "admin");
+
+      // Group users by role for efficient deletion
+      const patients = users.filter(u => u.role === "patient");
+      const doctors = users.filter(u => u.role === "doctor");
+      const receptionists = users.filter(u => u.role === "receptionist");
+
+      let deletedRecords = {
+        users: users.length,
+        appointments: 0,
+        bills: 0,
+        services: 0
+      };
+
+      // Delete patient-related records
+      if (patients.length > 0) {
+        const patientIds = patients.map(p => p._id);
+        deletedRecords.appointments += await Appointment.countDocuments({ patient: { $in: patientIds } });
+        deletedRecords.bills += await PatientBill.countDocuments({ patient: { $in: patientIds } });
+        deletedRecords.services += await PatientService.countDocuments({ patient: { $in: patientIds } });
+
+        await Appointment.deleteMany({ patient: { $in: patientIds } });
+        await PatientBill.deleteMany({ patient: { $in: patientIds } });
+        await PatientService.deleteMany({ patient: { $in: patientIds } });
+        await UserService.deleteMany({ user: { $in: patientIds }, userType: "patient" });
+
+        // Delete patient profiles and photos
+        const patientProfiles = await Patient.find({ _id: { $in: patientIds } });
+        for (const profile of patientProfiles) {
+          if (profile.photo) {
+            try {
+              await deleteFromCloudinary(profile.photo);
+            } catch (cloudError) {
+              console.error("Error deleting patient photo from Cloudinary:", cloudError);
+            }
+          }
+        }
+        await Patient.deleteMany({ _id: { $in: patientIds } });
+      }
+
+      // Delete doctor-related records
+      if (doctors.length > 0) {
+        const doctorIds = doctors.map(d => d._id);
+        deletedRecords.appointments += await Appointment.countDocuments({ doctor: { $in: doctorIds } });
+        await Appointment.deleteMany({ doctor: { $in: doctorIds } });
+        await UserService.deleteMany({ user: { $in: doctorIds }, userType: "doctor" });
+      }
+
+      // Delete receptionist-related records (bills they created)
+      if (receptionists.length > 0) {
+        const receptionistIds = receptionists.map(r => r._id);
+        deletedRecords.bills += await PatientBill.countDocuments({ billedBy: { $in: receptionistIds } });
+        await PatientBill.updateMany(
+          { billedBy: { $in: receptionistIds } },
+          { $unset: { billedBy: "" } }
+        );
+      }
+
+      // Delete user accounts
+      const userIdsToDelete = users.map(u => u._id);
+      const deleteResult = await User.deleteMany({ _id: { $in: userIdsToDelete } });
+
+      return res.status(200).json({
+        success: true,
+        message: `Permanently deleted ${deleteResult.deletedCount} user(s) and all related records`,
+        deletedRecords,
+        requestedCount: ids.length
+      });
+    }
+
+    // Single user delete (existing logic)
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
         success: false,
@@ -498,14 +613,69 @@ exports.permanentlyDeleteUser = async (req, res) => {
 
 /**
  * Permanently delete invoice/bill
- * Can delete single invoice or bulk delete
+ * Can delete single invoice, bulk delete by IDs, or bulk delete by status
  */
 exports.permanentlyDeleteInvoice = async (req, res) => {
   try {
     const { invoiceId } = req.params;
     const { bulk, status } = req.query;
+    const { ids } = req.body; // Array of invoice IDs for bulk delete by IDs
 
-    if (bulk === "true" && status) {
+    // Bulk delete by multiple IDs
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // Validate all IDs
+      const validIds = ids.filter(id => mongoose.Types.ObjectId.isValid(id));
+      
+      if (validIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No valid invoice IDs provided"
+        });
+      }
+
+      if (validIds.length !== ids.length) {
+        return res.status(400).json({
+          success: false,
+          message: `Some IDs are invalid. ${ids.length - validIds.length} invalid ID(s) found`,
+          validIds,
+          invalidIds: ids.filter(id => !mongoose.Types.ObjectId.isValid(id))
+        });
+      }
+
+      // Find invoices to get their URLs for Cloudinary cleanup
+      const bills = await PatientBill.find({ _id: { $in: validIds } });
+
+      if (bills.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No invoices found with the provided IDs"
+        });
+      }
+
+      // Delete invoice PDFs from Cloudinary if any
+      for (const bill of bills) {
+        if (bill.invoiceUrl) {
+          try {
+            // Extract public ID from Cloudinary URL if possible
+            const urlParts = bill.invoiceUrl.split('/');
+            const publicId = urlParts[urlParts.length - 1].split('.')[0];
+            await deleteFromCloudinary(publicId);
+          } catch (cloudError) {
+            console.error("Error deleting invoice from Cloudinary:", cloudError);
+          }
+        }
+      }
+
+      // Delete invoices
+      const deleteResult = await PatientBill.deleteMany({ _id: { $in: validIds } });
+
+      return res.status(200).json({
+        success: true,
+        message: `Permanently deleted ${deleteResult.deletedCount} invoice(s)`,
+        deletedCount: deleteResult.deletedCount,
+        requestedCount: ids.length
+      });
+    } else if (bulk === "true" && status) {
       // Bulk delete invoices by payment status
       if (!["cancelled", "paid"].includes(status)) {
         return res.status(400).json({
@@ -617,6 +787,13 @@ exports.getDeletionStats = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
 
 
 

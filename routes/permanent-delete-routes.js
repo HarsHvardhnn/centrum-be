@@ -24,14 +24,23 @@ router.delete("/contacts/bulk", authorizeRoles(["admin"]), permanentDeleteContro
 router.delete("/contacts/:contactId", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteContact); // Single delete
 router.delete("/contacts", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteContact); // Bulk delete all soft-deleted
 
-// Permanently delete user account
-router.delete("/users/:userId", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteUser);
+// Permanently delete user account(s)
+router.delete("/users/bulk", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteUser); // Bulk delete by IDs
+router.delete("/users/:userId", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteUser); // Single delete
 
 // Permanently delete invoices
-router.delete("/invoices/:invoiceId", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteInvoice);
-router.delete("/invoices", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteInvoice); // For bulk delete
+router.delete("/invoices/bulk", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteInvoice); // Bulk delete by IDs
+router.delete("/invoices/:invoiceId", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteInvoice); // Single delete
+router.delete("/invoices", authorizeRoles(["admin"]), permanentDeleteController.permanentlyDeleteInvoice); // Bulk delete by status
 
 module.exports = router;
+
+
+
+
+
+
+
 
 
 
