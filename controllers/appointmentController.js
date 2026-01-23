@@ -198,6 +198,24 @@ const processCancellationEmail = (data) => {
         .max-w-md { max-width: 28rem; }
       }
       
+      /* Mobile Responsive Styles */
+      @media (max-width: 600px) {
+        .px-8 { padding-left: 1rem; padding-right: 1rem; }
+        .px-6 { padding-left: 1rem; padding-right: 1rem; }
+        .py-12 { padding-top: 2rem; padding-bottom: 2rem; }
+        .py-8 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+        .py-6 { padding-top: 1rem; padding-bottom: 1rem; }
+        .mx-8 { margin-left: 1rem; margin-right: 1rem; }
+        .text-3xl { font-size: 1.5rem; line-height: 2rem; }
+        .text-xl { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-lg { font-size: 1rem; line-height: 1.5rem; }
+        .w-32 { width: 6rem; min-width: 6rem; }
+        .gap-4 { gap: 0.75rem; }
+        .flex { flex-wrap: wrap; }
+        #email-container { max-width: 100% !important; }
+        .space-y-5 > * + * { margin-top: 0.75rem; }
+      }
+      
       a {
         color: inherit;
         text-decoration: underline;
@@ -523,6 +541,24 @@ const processRescheduleEmail = (data) => {
         .max-w-md { max-width: 28rem; }
       }
       
+      /* Mobile Responsive Styles */
+      @media (max-width: 600px) {
+        .px-8 { padding-left: 1rem; padding-right: 1rem; }
+        .px-6 { padding-left: 1rem; padding-right: 1rem; }
+        .py-12 { padding-top: 2rem; padding-bottom: 2rem; }
+        .py-8 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+        .py-6 { padding-top: 1rem; padding-bottom: 1rem; }
+        .mx-8 { margin-left: 1rem; margin-right: 1rem; }
+        .text-3xl { font-size: 1.5rem; line-height: 2rem; }
+        .text-xl { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-lg { font-size: 1rem; line-height: 1.5rem; }
+        .w-32 { width: 6rem; min-width: 6rem; }
+        .gap-4 { gap: 0.75rem; }
+        .flex { flex-wrap: wrap; }
+        #email-container { max-width: 100% !important; }
+        .space-y-5 > * + * { margin-top: 0.75rem; }
+      }
+      
       a {
         color: inherit;
         text-decoration: underline;
@@ -560,17 +596,14 @@ const processRescheduleEmail = (data) => {
         <div class="flex items-start gap-4"><i
             class="fa-solid fa-triangle-exclamation text-lg text-warning-orange mt-1"></i>
           <div>
-            <p class="text-deep-navy font-medium mb-2">Zmiana terminu wizyty</p>
-            <p class="text-deep-navy leading-relaxed"></p>
-            <p xmlns="http://www.w3.org/1999/xhtml" id="ivvq05">W przypadku gdy
+            <p class="text-deep-navy leading-relaxed">W przypadku gdy
               wizyta nie została przełożona z Państwa inicjatywy ani nie
               przekazano wcześniej takiej informacji telefonicznie, prosimy
-              <br>o niezwłoczny kontakt z rejestracją w celu potwierdzenia
+              o niezwłoczny kontakt z rejestracją w celu potwierdzenia
               statusu wizyty. Informacja o przełożeniu wizyty mogła zostać
               wygenerowana automatycznie w wyniku błędu systemowego lub
               nieprawidłowej synchronizacji danych.
             </p>
-            <p></p>
           </div>
         </div>
       </section>
@@ -863,6 +896,24 @@ const processConfirmationEmail = (data) => {
       @media (min-width: 768px) {
         .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .max-w-md { max-width: 28rem; }
+      }
+      
+      /* Mobile Responsive Styles */
+      @media (max-width: 600px) {
+        .px-8 { padding-left: 1rem; padding-right: 1rem; }
+        .px-6 { padding-left: 1rem; padding-right: 1rem; }
+        .py-12 { padding-top: 2rem; padding-bottom: 2rem; }
+        .py-8 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+        .py-6 { padding-top: 1rem; padding-bottom: 1rem; }
+        .mx-8 { margin-left: 1rem; margin-right: 1rem; }
+        .text-3xl { font-size: 1.5rem; line-height: 2rem; }
+        .text-xl { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-lg { font-size: 1rem; line-height: 1.5rem; }
+        .w-32 { width: 6rem; min-width: 6rem; }
+        .gap-4 { gap: 0.75rem; }
+        .flex { flex-wrap: wrap; }
+        #email-container { max-width: 100% !important; }
+        .space-y-5 > * + * { margin-top: 0.75rem; }
       }
       
       a {

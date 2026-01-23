@@ -17,6 +17,26 @@ const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 // Poland timezone
 const POLAND_TIMEZONE = "Europe/Warsaw";
 
+// Helper function to get start of day in Poland timezone
+const getStartOfDayPoland = (date) => {
+  const dateInPoland = toZonedTime(date, POLAND_TIMEZONE);
+  const startOfDayPoland = startOfDay(dateInPoland);
+  return zonedTimeToUtc(startOfDayPoland, POLAND_TIMEZONE);
+};
+
+// Helper function to get end of day in Poland timezone
+const getEndOfDayPoland = (date) => {
+  const dateInPoland = toZonedTime(date, POLAND_TIMEZONE);
+  const endOfDayPoland = endOfDay(dateInPoland);
+  return zonedTimeToUtc(endOfDayPoland, POLAND_TIMEZONE);
+};
+
+// Helper function to get current date in Poland timezone
+const getCurrentDatePoland = () => {
+  const now = new Date();
+  return toZonedTime(now, POLAND_TIMEZONE);
+};
+
 // Helper function to generate default weekly schedule pattern
 const generateDefaultWeeklyPattern = () => {
   const defaultStartTime = "09:00";
@@ -389,10 +409,10 @@ const getWeeklyShifts = async (req, res) => {
         .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
-    // Get current week's schedule from new system
-    const currentDate = new Date();
-    const startDate = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday start
-    const endDate = endOfWeek(currentDate, { weekStartsOn: 1 }); // Sunday end
+    // Get current week's schedule from new system (using Poland timezone)
+    const currentDatePoland = getCurrentDatePoland();
+    const startDate = startOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Monday start
+    const endDate = endOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Sunday end
 
     const schedules = await DoctorSchedule.find({
       doctorId: doctor._id,
@@ -473,10 +493,10 @@ const updateWeeklyShifts = async (req, res) => {
       });
     });
 
-    // Get current week dates
-    const currentDate = new Date();
-    const startDate = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday start
-    const endDate = endOfWeek(currentDate, { weekStartsOn: 1 }); // Sunday end
+    // Get current week dates (using Poland timezone)
+    const currentDatePoland = getCurrentDatePoland();
+    const startDate = startOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Monday start
+    const endDate = endOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Sunday end
 
     // Update or create schedules for each day
     for (let date = new Date(startDate); date <= endDate; date = addDays(date, 1)) {
@@ -718,12 +738,12 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
   const DoctorSchedule = require("../models/doctorSchedule");
   const ScheduleException = require("../models/scheduleException");
   
-  // Check for schedule exception first
+  // Check for schedule exception first (using Poland timezone)
   const exception = await ScheduleException.findOne({
     doctorId,
     date: {
-      $gte: startOfDay(requestedDate),
-      $lte: endOfDay(requestedDate)
+      $gte: getStartOfDayPoland(requestedDate),
+      $lte: getEndOfDayPoland(requestedDate)
     },
     isActive: true
   });
@@ -736,12 +756,12 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
     };
   }
 
-  // Get doctor's schedule for the requested date
+  // Get doctor's schedule for the requested date (using Poland timezone)
   const schedule = await DoctorSchedule.findOne({
     doctorId,
     date: {
-      $gte: startOfDay(requestedDate),
-      $lte: endOfDay(requestedDate)
+      $gte: getStartOfDayPoland(requestedDate),
+      $lte: getEndOfDayPoland(requestedDate)
     },
     isActive: true
   });
@@ -753,13 +773,13 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
     };
   }
 
-  // Get booked appointments for the requested date
+  // Get booked appointments for the requested date (using Poland timezone)
   const appointments = await appointment
     .find({
       doctor: doctorId,
       date: {
-        $gte: startOfDay(requestedDate),
-        $lte: endOfDay(requestedDate),
+        $gte: getStartOfDayPoland(requestedDate),
+        $lte: getEndOfDayPoland(requestedDate),
       },
       status: "booked",
     })
@@ -889,10 +909,10 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
   // Filter out past slots based on current time in Poland timezone
   const currentTimeUTC = new Date();
   const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
-  const requestedDateOnly = new Date(requestedDate);
+  const requestedDateInPoland = toZonedTime(requestedDate, POLAND_TIMEZONE);
   
   // Check if the requested date is today (in Poland timezone)
-  const isToday = currentTimeInPoland.toDateString() === requestedDateOnly.toDateString();
+  const isToday = currentTimeInPoland.toDateString() === requestedDateInPoland.toDateString();
   
   if (isToday) {
     // Get current time in minutes since midnight (Poland timezone)
@@ -929,7 +949,7 @@ const getAvailableSlots = async (req, res) => {
   try {
     const doctorId = req.params.id;
     console.log("doctor", doctorId);
-    const date = req.query.date || new Date();
+    const date = req.query.date;
 
     if (!date) {
       return res.status(400).json({
@@ -945,7 +965,18 @@ const getAvailableSlots = async (req, res) => {
         .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
-    const requestedDate = new Date(date);
+    // Parse date and convert to Poland timezone context
+    // If date is in YYYY-MM-DD format, create date at midnight in Poland timezone
+    let requestedDate;
+    if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      // Date string in YYYY-MM-DD format - create at midnight Poland time
+      const [year, month, day] = date.split('-').map(Number);
+      const dateInPoland = new Date(year, month - 1, day);
+      requestedDate = zonedTimeToUtc(dateInPoland, POLAND_TIMEZONE);
+    } else {
+      // Parse as date and convert to Poland timezone context
+      requestedDate = toZonedTime(new Date(date), POLAND_TIMEZONE);
+    }
     
     const result = await generateSlotsForDate(doctorId, requestedDate);
     
@@ -1004,8 +1035,17 @@ const getWeekAvailability = async (req, res) => {
       });
     }
 
-    // Parse and validate dates
-    const start = new Date(startDate);
+    // Parse and validate dates (using Poland timezone)
+    let start;
+    if (startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      // Date string in YYYY-MM-DD format - create at midnight Poland time
+      const [year, month, day] = startDate.split('-').map(Number);
+      const dateInPoland = new Date(year, month - 1, day);
+      start = zonedTimeToUtc(dateInPoland, POLAND_TIMEZONE);
+    } else {
+      start = toZonedTime(new Date(startDate), POLAND_TIMEZONE);
+    }
+    
     if (isNaN(start.getTime())) {
       return res.status(400).json({
         success: false,
@@ -1016,7 +1056,15 @@ const getWeekAvailability = async (req, res) => {
 
     let end;
     if (endDate) {
-      end = new Date(endDate);
+      if (endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // Date string in YYYY-MM-DD format - create at midnight Poland time
+        const [year, month, day] = endDate.split('-').map(Number);
+        const dateInPoland = new Date(year, month - 1, day);
+        end = zonedTimeToUtc(dateInPoland, POLAND_TIMEZONE);
+      } else {
+        end = toZonedTime(new Date(endDate), POLAND_TIMEZONE);
+      }
+      
       if (isNaN(end.getTime())) {
         return res.status(400).json({
           success: false,
@@ -1192,8 +1240,9 @@ const getNextAvailableDate = async (req, res) => {
     const DoctorSchedule = require("../models/doctorSchedule");
     const ScheduleException = require("../models/scheduleException");
 
-    // Start checking from today
-    let currentDate = new Date();
+    // Start checking from today (in Poland timezone)
+    const currentDatePoland = getCurrentDatePoland();
+    let currentDate = new Date(currentDatePoland.getFullYear(), currentDatePoland.getMonth(), currentDatePoland.getDate());
     
     // Maximum number of days to check
     const maxDaysToCheck = 30;
@@ -1206,12 +1255,12 @@ const getNextAvailableDate = async (req, res) => {
       console.log(`\n[DEBUG] === Day ${daysChecked + 1} ===`);
       console.log(`[DEBUG] Checking date: ${currentDate.toISOString().split('T')[0]}`);
       
-      // Check for schedule exception first
+      // Check for schedule exception first (using Poland timezone)
       const exception = await ScheduleException.findOne({
         doctorId,
         date: {
-          $gte: startOfDay(currentDate),
-          $lte: endOfDay(currentDate)
+          $gte: getStartOfDayPoland(currentDate),
+          $lte: getEndOfDayPoland(currentDate)
         },
         isActive: true
       });
@@ -1225,12 +1274,12 @@ const getNextAvailableDate = async (req, res) => {
         }
       }
 
-      // Get doctor's schedule for the current date
+      // Get doctor's schedule for the current date (using Poland timezone)
       const schedule = await DoctorSchedule.findOne({
         doctorId,
         date: {
-          $gte: startOfDay(currentDate),
-          $lte: endOfDay(currentDate)
+          $gte: getStartOfDayPoland(currentDate),
+          $lte: getEndOfDayPoland(currentDate)
         },
         isActive: true
       });
@@ -1244,12 +1293,12 @@ const getNextAvailableDate = async (req, res) => {
 
       console.log(`[DEBUG] Found schedule with ${schedule.timeBlocks.length} time blocks`);
 
-      // Get booked appointments for this date
+      // Get booked appointments for this date (using Poland timezone)
       const appointments = await appointment.find({
         doctor: doctorId,
         date: {
-          $gte: startOfDay(currentDate),
-          $lte: endOfDay(currentDate),
+          $gte: getStartOfDayPoland(currentDate),
+          $lte: getEndOfDayPoland(currentDate),
         },
         status: "booked",
       }).sort({ startTime: 1 });
