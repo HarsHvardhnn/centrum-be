@@ -2,7 +2,7 @@
 const User = require("../models/user-entity/user");
 const Doctor = require("../models/user-entity/doctor"); // This is the discriminator model
 const { format, startOfDay, endOfDay, addDays, startOfWeek, endOfWeek } = require("date-fns");
-const { zonedTimeToUtc, toZonedTime } = require("date-fns-tz");
+const { fromZonedTime, toZonedTime } = require("date-fns-tz");
 const appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const mongoose = require("mongoose");
@@ -21,14 +21,14 @@ const POLAND_TIMEZONE = "Europe/Warsaw";
 const getStartOfDayPoland = (date) => {
   const dateInPoland = toZonedTime(date, POLAND_TIMEZONE);
   const startOfDayPoland = startOfDay(dateInPoland);
-  return zonedTimeToUtc(startOfDayPoland, POLAND_TIMEZONE);
+  return fromZonedTime(startOfDayPoland, POLAND_TIMEZONE);
 };
 
 // Helper function to get end of day in Poland timezone
 const getEndOfDayPoland = (date) => {
   const dateInPoland = toZonedTime(date, POLAND_TIMEZONE);
   const endOfDayPoland = endOfDay(dateInPoland);
-  return zonedTimeToUtc(endOfDayPoland, POLAND_TIMEZONE);
+  return fromZonedTime(endOfDayPoland, POLAND_TIMEZONE);
 };
 
 // Helper function to get current date in Poland timezone
@@ -972,7 +972,7 @@ const getAvailableSlots = async (req, res) => {
       // Date string in YYYY-MM-DD format - create at midnight Poland time
       const [year, month, day] = date.split('-').map(Number);
       const dateInPoland = new Date(year, month - 1, day);
-      requestedDate = zonedTimeToUtc(dateInPoland, POLAND_TIMEZONE);
+      requestedDate = fromZonedTime(dateInPoland, POLAND_TIMEZONE);
     } else {
       // Parse as date and convert to Poland timezone context
       requestedDate = toZonedTime(new Date(date), POLAND_TIMEZONE);
@@ -1041,7 +1041,7 @@ const getWeekAvailability = async (req, res) => {
       // Date string in YYYY-MM-DD format - create at midnight Poland time
       const [year, month, day] = startDate.split('-').map(Number);
       const dateInPoland = new Date(year, month - 1, day);
-      start = zonedTimeToUtc(dateInPoland, POLAND_TIMEZONE);
+      start = fromZonedTime(dateInPoland, POLAND_TIMEZONE);
     } else {
       start = toZonedTime(new Date(startDate), POLAND_TIMEZONE);
     }
@@ -1060,7 +1060,7 @@ const getWeekAvailability = async (req, res) => {
         // Date string in YYYY-MM-DD format - create at midnight Poland time
         const [year, month, day] = endDate.split('-').map(Number);
         const dateInPoland = new Date(year, month - 1, day);
-        end = zonedTimeToUtc(dateInPoland, POLAND_TIMEZONE);
+        end = fromZonedTime(dateInPoland, POLAND_TIMEZONE);
       } else {
         end = toZonedTime(new Date(endDate), POLAND_TIMEZONE);
       }
