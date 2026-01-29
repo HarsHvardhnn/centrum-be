@@ -1,4 +1,5 @@
 // controllers/doctorController.js
+const bcrypt = require("bcrypt");
 const User = require("../models/user-entity/user");
 const Doctor = require("../models/user-entity/doctor"); // This is the discriminator model
 const { format, startOfDay, endOfDay, addDays, startOfWeek, endOfWeek } = require("date-fns");
@@ -1609,6 +1610,13 @@ const updateDoctor = async (req, res) => {
     // Only add profilePicture to updates if a new file was uploaded
     if (req.file?.path) {
       filteredUpdates.profilePicture = req.file.path;
+    }
+
+    // Only update password if a new non-empty password is received (skip if empty, null, or undefined)
+    const newPassword = updateData.password;
+    if (newPassword != null && newPassword !== "") {
+      const saltRounds = 10;
+      filteredUpdates.password = await bcrypt.hash(String(newPassword).trim(), saltRounds);
     }
 
     // Update the doctor
