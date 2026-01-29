@@ -87,7 +87,7 @@ const normalizeOrigin = (url) => {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 
-// Get production URLs
+// Get production URLs (temporarily including localhost:5173 for local dev against prod backend)
 const frontendOrigins = process.env.NODE_ENV === 'production'
   ? [
       normalizeOrigin(process.env.FRONTEND_URL),
@@ -95,6 +95,8 @@ const frontendOrigins = process.env.NODE_ENV === 'production'
       normalizeOrigin(process.env.FROTEND_ADMIN_1),
       normalizeOrigin(process.env.FRONTEND_URL_WWW),
       normalizeOrigin(process.env.FRONTEND_ADMIN_2),
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
     ].filter(Boolean) // Remove any undefined/null values
   : ["http://localhost:5173"];
 
@@ -130,7 +132,7 @@ app.use(cors({
       }
     }
     
-    // In production, check against both frontend URLs
+    // In production, check against both frontend URLs (includes localhost:5173 temporarily)
     if (frontendOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
