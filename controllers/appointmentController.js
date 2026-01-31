@@ -26,6 +26,9 @@ const { createStandardizedDocument } = require("./patientController");
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 
+// Email icons as inline SVG (Font Awesome 6 style) for visibility in all email clients
+const { getIconImg } = require("../utils/emailIcons");
+
 // Helper function to load and process HTML email templates
 const loadEmailTemplate = (templateName, replacements) => {
   try {
@@ -760,8 +763,11 @@ const processConfirmationEmail = (data) => {
   } = data;
   
   const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  const teal = '#008C8C';
+  const green = '#16a34a';
   
   // Full HTML template with all formatting - using regular CSS instead of Tailwind
+  // Icons: Font Awesome 6 solid as inline SVG data URIs (visible in all email clients)
   let html = `<html>
 
   <head>
@@ -932,7 +938,7 @@ const processConfirmationEmail = (data) => {
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
-        <div class="flex justify-center mb-6"><span style="display:inline-block;color:#008C8C;font-size:2.25rem;line-height:1;" aria-hidden="true">&#128197;</span><span style="display:inline-block;color:#008C8C;font-size:1.5rem;margin-left:2px;vertical-align:super;line-height:1;" aria-hidden="true">&#10004;</span>
+        <div class="flex justify-center mb-6">${getIconImg('calendar-check', teal, 40)}
         </div>
         <h1 class="text-3xl font-bold text-navy mb-4">Potwierdzenie wizyty</h1>
         <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
@@ -942,7 +948,7 @@ const processConfirmationEmail = (data) => {
       </section>
       <section id="confirmation-notice"
         class="mx-8 mb-8 px-6 py-5 bg-emerald-50 rounded-lg">
-        <div class="flex items-start gap-4"><span style="display:inline-block;color:#16a34a;font-size:1.125rem;line-height:1.75rem;margin-top:0.25rem;" aria-hidden="true">&#10004;</span>
+        <div class="flex items-start gap-4">${getIconImg('circle-check', green, 22)}
           <div>
             <p class="text-deep-navy font-medium mb-2">Wizyta potwierdzona</p>
             <p class="text-deep-navy leading-relaxed">Twoja wizyta została
@@ -953,27 +959,27 @@ const processConfirmationEmail = (data) => {
         </div>
       </section>
       <section id="appointment-details" class="px-8 py-8">
-        <div class="flex items-center gap-3 mb-8"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128203;</span>
+        <div class="flex items-center gap-3 mb-8">${getIconImg('clipboard-list', teal, 22)}
           <h2 class="text-xl font-bold text-navy">Szczegóły wizyty</h2>
         </div>
         <div class="space-y-5">
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128100;</span><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span
               class="text-deep-navy font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#9877;</span><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user-doctor', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz
               prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128197;</span><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('calendar', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span
               class="text-deep-navy font-medium">${date}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128336;</span><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('clock', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span
               class="text-deep-navy font-medium">${time}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#129498;</span><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('stethoscope', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma
               konsultacji</span><span
               class="text-deep-navy font-medium">${consultationType}</span></div>
-          <div class="flex items-start gap-4 py-4"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;margin-top:0.25rem;" aria-hidden="true">&#128205;</span><span
+          <div class="flex items-start gap-4 py-4">${getIconImg('location-dot', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span
               class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul.
               Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span>
@@ -982,7 +988,7 @@ const processConfirmationEmail = (data) => {
       </section>
       <section id="preparation-section"
         class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
-        <div class="flex items-start gap-4"><span style="display:inline-block;color:#008C8C;font-size:1.125rem;line-height:1.75rem;margin-top:0.25rem;" aria-hidden="true">&#9989;</span>
+        <div class="flex items-start gap-4">${getIconImg('list-check', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Przygotowanie do wizyty</p>
             <p class="text-deep-navy leading-relaxed">Prosimy o zabranie ze sobą
@@ -994,7 +1000,7 @@ const processConfirmationEmail = (data) => {
       </section>
       <section id="cancellation-policy"
         class="mx-8 my-8 px-6 py-6 bg-yellow-50 rounded-lg">
-        <div class="flex items-start gap-4"><span style="display:inline-block;color:#008C8C;font-size:1.125rem;line-height:1.75rem;margin-top:0.25rem;" aria-hidden="true">&#8505;</span>
+        <div class="flex items-start gap-4">${getIconImg('info-circle', teal, 22)}
           <div id="i0zx4">
             <p class="text-navy font-medium mb-2">Polityka odwoływania wizyt</p>
             <p class="text-deep-navy leading-relaxed">W przypadku konieczności
@@ -1007,14 +1013,14 @@ const processConfirmationEmail = (data) => {
       </section>
       <section id="contact-section" class="px-8 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="flex items-center gap-3"><span style="display:inline-block;color:#008C8C;font-size:1rem;line-height:1;" aria-hidden="true">&#128222;</span>
+          <div class="flex items-center gap-3">${getIconImg('phone', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon
               </div>
               <div class="font-medium text-deep-navy">+48 797 127 487</div>
             </div>
           </div>
-          <div class="flex items-center gap-3"><span style="display:inline-block;color:#008C8C;font-size:1rem;line-height:1;" aria-hidden="true">&#9993;</span>
+          <div class="flex items-center gap-3">${getIconImg('envelope', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Email
               </div>
