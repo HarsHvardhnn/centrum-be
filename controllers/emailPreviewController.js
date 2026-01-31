@@ -406,26 +406,8 @@ const processConfirmationEmail = (data) => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Potwierdzenie wizyty</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <style>::-webkit-scrollbar { display: none; }</style>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: { 'inter': ['Inter', 'sans-serif'] },
-            colors: {
-              'teal-custom': '#008C8C',
-              'navy': '#1e3a8a',
-              'deep-navy': '#0f1419',
-              'success-green': '#16a34a'
-            }
-          }
-        }
-      }
-    </script>
+    <style>${emailCSS}</style>
   </head>
   <body class="bg-white font-inter">
     <div id="email-container" class="max-w-680 mx-auto bg-white" style="max-width: 680px;">
@@ -439,14 +421,14 @@ const processConfirmationEmail = (data) => {
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
-        <div class="flex justify-center mb-6"><i class="fa-solid fa-calendar-check text-4xl text-teal-custom"></i></div>
+        <div class="flex justify-center mb-6"><span style="display:inline-block;color:#008C8C;font-size:2.25rem;line-height:1;" aria-hidden="true">&#128197;</span><span style="display:inline-block;color:#008C8C;font-size:1.5rem;margin-left:2px;vertical-align:super;line-height:1;" aria-hidden="true">&#10004;</span></div>
         <h1 class="text-3xl font-bold text-navy mb-4">Potwierdzenie wizyty</h1>
         <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
           Twoja wizyta została pomyślnie zarezerwowana. Poniżej znajdziesz wszystkie szczegóły dotyczące nadchodzącej konsultacji medycznej.
         </p>
       </section>
       <section id="confirmation-notice" class="mx-8 mb-8 px-6 py-5 bg-emerald-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-circle-check text-lg text-success-green mt-1"></i>
+        <div class="flex items-start gap-4"><span style="display:inline-block;color:#16a34a;font-size:1.125rem;line-height:1.75rem;margin-top:0.25rem;" aria-hidden="true">&#10004;</span>
           <div>
             <p class="text-deep-navy font-medium mb-2">Wizyta potwierdzona</p>
             <p class="text-deep-navy leading-relaxed">Twoja wizyta została zarejestrowana w naszym systemie. <br>Prosimy o przybycie 10 minut przed wyznaczoną godziną w celu wypełnienia niezbędnych formalności.</p>
@@ -454,20 +436,20 @@ const processConfirmationEmail = (data) => {
         </div>
       </section>
       <section id="appointment-details" class="px-8 py-8">
-        <div class="flex items-center gap-3 mb-8"><i class="fa-solid fa-clipboard-list text-xl text-teal-custom"></i>
+        <div class="flex items-center gap-3 mb-8"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128203;</span>
           <h2 class="text-xl font-bold text-navy">Szczegóły wizyty</h2>
         </div>
         <div class="space-y-5">
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-user text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-calendar text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-deep-navy font-medium">${date}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-clock text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-deep-navy font-medium">${time}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
-          <div class="flex items-start gap-4 py-4"><i class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128100;</span><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#9877;</span><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128197;</span><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-deep-navy font-medium">${date}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#128336;</span><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-deep-navy font-medium">${time}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;" aria-hidden="true">&#129498;</span><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
+          <div class="flex items-start gap-4 py-4"><span style="display:inline-block;color:#008C8C;font-size:1.25rem;line-height:1;width:1.25rem;margin-top:0.25rem;" aria-hidden="true">&#128205;</span><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
         </div>
       </section>
       <section id="preparation-section" class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-list-check text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4"><span style="display:inline-block;color:#008C8C;font-size:1.125rem;line-height:1.75rem;margin-top:0.25rem;" aria-hidden="true">&#9989;</span>
           <div>
             <p class="text-navy font-medium mb-2">Przygotowanie do wizyty</p>
             <p class="text-deep-navy leading-relaxed">Prosimy o zabranie ze sobą dokumentu tożsamości w celu rejestracji. Dodatkową dokumentację medyczną można zabrać według uznania, jeśli pacjent chce przekazać ją lekarzowi.</p>
@@ -475,7 +457,7 @@ const processConfirmationEmail = (data) => {
         </div>
       </section>
       <section id="cancellation-policy" class="mx-8 my-8 px-6 py-6 bg-yellow-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-info-circle text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4"><span style="display:inline-block;color:#008C8C;font-size:1.125rem;line-height:1.75rem;margin-top:0.25rem;" aria-hidden="true">&#8505;</span>
           <div>
             <p class="text-navy font-medium mb-2">Polityka odwoływania wizyt</p>
             <p class="text-deep-navy leading-relaxed">W przypadku konieczności odwołania wizyty prosimy o kontakt <br>z recepcją najpóźniej 24 godziny przed wyznaczonym terminem.&nbsp;<br>Odwołania dokonane w krótszym czasie nie będą rozpatrywane, zgodnie z regulaminem placówki.</p>
@@ -484,13 +466,13 @@ const processConfirmationEmail = (data) => {
       </section>
       <section id="contact-section" class="px-8 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="flex items-center gap-3"><i class="fa-solid fa-phone text-teal-custom"></i>
+          <div class="flex items-center gap-3"><span style="display:inline-block;color:#008C8C;font-size:1rem;line-height:1;" aria-hidden="true">&#128222;</span>
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon</div>
               <div class="font-medium text-deep-navy">+48 797 127 487</div>
             </div>
           </div>
-          <div class="flex items-center gap-3"><i class="fa-solid fa-envelope text-teal-custom"></i>
+          <div class="flex items-center gap-3"><span style="display:inline-block;color:#008C8C;font-size:1rem;line-height:1;" aria-hidden="true">&#9993;</span>
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Email</div>
               <div class="font-medium text-deep-navy">kontakt@centrummedyczne7.pl</div>
@@ -1142,6 +1124,69 @@ exports.sendAppointmentEmailsToFixedAddress = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to send appointment email previews",
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Send only the "Potwierdzenie wizyty" (Visit confirmation) email with hardcoded test data to a given email.
+ * Use this to test the confirmation template.
+ * @route POST /api/email-preview/send-confirmation
+ * @access Public (for testing)
+ */
+exports.sendConfirmationEmailTest = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address is required. Provide it in the request body: { \"email\": \"your@email.com\" }"
+      });
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format"
+      });
+    }
+
+    // Hardcoded test data for the confirmation template
+    const testData = {
+      patientName: "Anna Kowalska",
+      doctorName: "lek. Marek Nowak",
+      date: "15.02.2025",
+      time: "10:30 - 11:00",
+      mode: "stacjonarna"
+    };
+
+    const html = createAppointmentEmailHtml(testData);
+    const subject = "[TEST] Potwierdzenie wizyty – Centrum Medyczne 7";
+
+    await sendEmail({
+      to: email,
+      subject,
+      html,
+      text: `Potwierdzenie Wizyty (test)\n\nPacjent: ${testData.patientName}\nLekarz: ${testData.doctorName}\nData: ${testData.date}\nGodzina: ${testData.time}\nForma: ${testData.mode === "online" ? "Online" : "Stacjonarna"}`
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Confirmation email sent successfully",
+      data: {
+        to: email,
+        subject,
+        testData
+      }
+    });
+  } catch (error) {
+    console.error("Error sending confirmation email test:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send confirmation email",
       error: error.message
     });
   }
