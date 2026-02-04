@@ -15,7 +15,12 @@ const icons = [
   { key: 'list-check', name: 'list-check' },
   { key: 'info-circle', name: 'circle-info' },
   { key: 'phone', name: 'phone' },
-  { key: 'envelope', name: 'envelope' }
+  { key: 'envelope', name: 'envelope' },
+  { key: 'calendar-xmark', name: 'calendar-xmark' },
+  { key: 'circle-exclamation', name: 'circle-exclamation' },
+  { key: 'calendar-plus', name: 'calendar-plus' },
+  { key: 'triangle-exclamation', name: 'triangle-exclamation' },
+  { key: 'calendar-minus', name: 'calendar-minus' }
 ];
 
 function fetch(url) {

@@ -63,22 +63,17 @@ const processCancellationEmail = (data) => {
   } = data;
   
   const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  const teal = '#008C8C';
+  const red = '#dc2626';
+  const orange = '#ea580c';
   
-  // Full HTML template with all formatting - using regular CSS instead of Tailwind
+  // Full HTML template - Font Awesome 6 icons as inline SVG (visible in all email clients)
   let html = `<html>
 
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Odwołanie wizyty</title>
-    <script>
-      window.FontAwesomeConfig = {
-        autoReplaceSvg: 'nest'
-      };
-    </script>
-    <script
-      src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"
-      crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
       rel="stylesheet">
@@ -244,8 +239,7 @@ const processCancellationEmail = (data) => {
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
-        <div class="flex justify-center mb-6"><i
-            class="fa-solid fa-calendar-xmark text-4xl text-warning-red"></i>
+        <div class="flex justify-center mb-6">${getIconImg('calendar-xmark', red, 40)}
         </div>
         <h1 class="text-3xl font-bold text-navy mb-4">Odwołanie wizyty</h1>
         <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
@@ -255,8 +249,7 @@ const processCancellationEmail = (data) => {
       </section>
       <section id="cancellation-notice"
         class="mx-8 mb-8 px-6 py-5 bg-red-50 rounded-lg">
-        <div class="flex items-start gap-4"><i
-            class="fa-solid fa-circle-exclamation text-lg text-warning-red mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('circle-exclamation', red, 22)}
           <div>
             <p class="text-deep-navy font-medium mb-2">Wizyta została odwołana
             </p>
@@ -269,37 +262,30 @@ const processCancellationEmail = (data) => {
         </div>
       </section>
       <section id="appointment-details" class="px-8 py-8">
-        <div class="flex items-center gap-3 mb-8"><i
-            class="fa-solid fa-clipboard-list text-xl text-teal-custom"></i>
+        <div class="flex items-center gap-3 mb-8">${getIconImg('clipboard-list', teal, 22)}
           <h2 class="text-xl font-bold text-navy">Szczegóły odwołanej wizyty
           </h2>
         </div>
         <div class="space-y-5">
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
-              class="fa-solid fa-user text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span
               class="text-deep-navy font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
-              class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user-doctor', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz
               prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
-              class="fa-solid fa-calendar text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('calendar', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span
               class="text-deep-navy font-medium line-through text-gray-500">${date}</span>
           </div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
-              class="fa-solid fa-clock text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('clock', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span
               class="text-deep-navy font-medium line-through text-gray-500">${time}</span>
           </div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i
-              class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('stethoscope', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma
               konsultacji</span><span
               class="text-deep-navy font-medium">${consultationType}</span></div>
-          <div class="flex items-start gap-4 py-4"><i
-              class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span
+          <div class="flex items-start gap-4 py-4">${getIconImg('location-dot', teal, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span
               class="text-deep-navy font-medium">
               Centrum Medyczne 7<br>
@@ -310,8 +296,7 @@ const processCancellationEmail = (data) => {
       </section>
       <section id="next-steps-section"
         class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
-        <div class="flex items-start gap-4"><i
-            class="fa-solid fa-calendar-plus text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('calendar-plus', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Umówienie nowego terminu</p>
             <p class="text-deep-navy leading-relaxed">
@@ -325,8 +310,7 @@ const processCancellationEmail = (data) => {
       </section>
       <section id="important-notice"
         class="mx-8 my-8 px-6 py-6 bg-yellow-50 rounded-lg">
-        <div class="flex items-start gap-4"><i
-            class="fa-solid fa-triangle-exclamation text-lg text-warning-orange mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('triangle-exclamation', orange, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Ważne informacje</p>
             <p class="text-deep-navy leading-relaxed">
@@ -342,16 +326,14 @@ const processCancellationEmail = (data) => {
       </section>
       <section id="contact-section" class="px-8 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="flex items-center gap-3"><i
-              class="fa-solid fa-phone text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('phone', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon
               </div>
               <div class="font-medium text-deep-navy">+48 797 127 487</div>
             </div>
           </div>
-          <div class="flex items-center gap-3"><i
-              class="fa-solid fa-envelope text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('envelope', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Email
               </div>
@@ -406,22 +388,17 @@ const processRescheduleEmail = (data) => {
   } = data;
   
   const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  const teal = '#008C8C';
+  const orange = '#f97316';
+  const gray = '#9ca3af';
   
-  // Full HTML template with all formatting - using regular CSS instead of Tailwind
+  // Full HTML template - Font Awesome 6 icons as inline SVG (visible in all email clients)
   let html = `<html>
 
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Przełożenie wizyty</title>
-    <script>
-      window.FontAwesomeConfig = {
-        autoReplaceSvg: 'nest'
-      };
-    </script>
-    <script
-      src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"
-      crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
       rel="stylesheet">
@@ -586,8 +563,7 @@ const processRescheduleEmail = (data) => {
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
-        <div class="flex justify-center mb-6"><i
-            class="fa-solid fa-calendar-xmark text-4xl text-warning-orange"></i>
+        <div class="flex justify-center mb-6">${getIconImg('calendar-xmark', orange, 40)}
         </div>
         <h1 class="text-3xl font-bold text-navy mb-4">Przełożenie wizyty</h1>
         <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
@@ -596,8 +572,7 @@ const processRescheduleEmail = (data) => {
       </section>
       <section id="postponement-notice"
         class="mx-8 mb-8 px-6 py-5 bg-orange-50 rounded-lg">
-        <div class="flex items-start gap-4"><i
-            class="fa-solid fa-triangle-exclamation text-lg text-warning-orange mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('triangle-exclamation', orange, 22)}
           <div>
             <p class="text-deep-navy leading-relaxed">W przypadku gdy
               wizyta nie została przełożona z Państwa inicjatywy ani nie
@@ -611,61 +586,49 @@ const processRescheduleEmail = (data) => {
         </div>
       </section>
       <section id="original-appointment" class="px-8 py-6">
-        <div class="flex items-center gap-3 mb-6"><i
-            class="fa-solid fa-calendar-minus text-xl text-gray-400"></i>
+        <div class="flex items-center gap-3 mb-6">${getIconImg('calendar-minus', gray, 22)}
           <h2 class="text-xl font-bold text-navy">Pierwotny termin wizyty</h2>
         </div>
         <div class="bg-gray-50 rounded-lg p-6 space-y-4">
-          <div class="flex items-center gap-4 py-3"><i
-              class="fa-solid fa-user text-gray-400 w-5"></i><span
+          <div class="flex items-center gap-4 py-3">${getIconImg('user', gray, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span
               class="text-gray-700 font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-3"><i
-              class="fa-solid fa-user-doctor text-gray-400 w-5"></i><span
+          <div class="flex items-center gap-4 py-3">${getIconImg('user-doctor', gray, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz
               prowadzący</span><span class="text-gray-700 font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-3"><i
-              class="fa-solid fa-calendar text-gray-400 w-5"></i><span
+          <div class="flex items-center gap-4 py-3">${getIconImg('calendar', gray, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span
               class="text-gray-700 font-medium line-through">${oldDate}</span>
           </div>
-          <div class="flex items-center gap-4 py-3"><i
-              class="fa-solid fa-clock text-gray-400 w-5"></i><span
+          <div class="flex items-center gap-4 py-3">${getIconImg('clock', gray, 20)}<span
               class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span
               class="text-gray-700 font-medium line-through">${oldTime}</span></div>
         </div>
       </section>
       <section id="new-appointment-details" class="px-8 py-8">
-        <div class="flex items-center gap-3 mb-8"><i
-            class="fa-solid fa-calendar-plus text-xl text-teal-custom"></i>
+        <div class="flex items-center gap-3 mb-8">${getIconImg('calendar-plus', teal, 22)}
           <h2 class="text-xl font-bold text-navy">Nowy termin wizyty</h2>
         </div>
         <div class="bg-teal-50 rounded-lg p-6 space-y-5">
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
-              class="fa-solid fa-user text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('user', teal, 20)}<span
               class="text-sm text-gray-600 uppercase tracking-wide w-32">Pacjent</span><span
               class="text-deep-navy font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
-              class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('user-doctor', teal, 20)}<span
               class="text-sm text-gray-600 uppercase tracking-wide w-32">Lekarz
               prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
-              class="fa-solid fa-calendar text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('calendar', teal, 20)}<span
               class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa
               data</span><span
               class="text-deep-navy font-bold">${newDate}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
-              class="fa-solid fa-clock text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('clock', teal, 20)}<span
               class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa
               godzina</span><span class="text-deep-navy font-bold">${newTime}</span>
           </div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i
-              class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('stethoscope', teal, 20)}<span
               class="text-sm text-gray-600 uppercase tracking-wide w-32">Forma
               konsultacji</span><span
               class="text-deep-navy font-medium">${consultationType}</span></div>
-          <div class="flex items-start gap-4 py-4"><i
-              class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span
+          <div class="flex items-start gap-4 py-4">${getIconImg('location-dot', teal, 20)}<span
               class="text-sm text-gray-600 uppercase tracking-wide w-32">Adres</span><span
               class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul.
               Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span>
@@ -674,8 +637,7 @@ const processRescheduleEmail = (data) => {
       </section>
       <section id="confirmation-required"
         class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
-        <div class="flex items-start gap-4"><i
-            class="fa-solid fa-circle-check text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('circle-check', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Potwierdzenie nowego terminu
             </p>
@@ -688,8 +650,7 @@ const processRescheduleEmail = (data) => {
       </section>
       <section id="preparation-section"
         class="mx-8 my-8 px-6 py-6 bg-green-50 rounded-lg">
-        <div class="flex items-start gap-4"><i
-            class="fa-solid fa-list-check text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('list-check', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Przygotowanie do wizyty</p>
             <p class="text-deep-navy leading-relaxed">Prosimy o zabranie ze sobą
@@ -701,16 +662,14 @@ const processRescheduleEmail = (data) => {
       </section>
       <section id="contact-section" class="px-8 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="flex items-center gap-3"><i
-              class="fa-solid fa-phone text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('phone', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon
               </div>
               <div class="font-medium text-deep-navy">+48 797 127 487</div>
             </div>
           </div>
-          <div class="flex items-center gap-3"><i
-              class="fa-solid fa-envelope text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('envelope', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Email
               </div>
