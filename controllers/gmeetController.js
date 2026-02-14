@@ -190,8 +190,6 @@ const processConfirmationEmail = (data) => {
             <div class="text-lg font-semibold text-navy">Centrum Medyczne 7
             </div>
           </div>
-          <div class="text-xs text-gray-500 uppercase tracking-wider">
-            automatyczny system powiadomień</div>
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
