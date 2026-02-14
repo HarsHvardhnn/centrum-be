@@ -233,9 +233,6 @@ const processCancellationEmail = (data) => {
           <div class="flex items-center gap-3">
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
           </div>
-          <div class="text-xs text-gray-500 uppercase tracking-wider">
-            automatyczny system powiadomień
-          </div>
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
@@ -558,8 +555,6 @@ const processRescheduleEmail = (data) => {
           <div class="flex items-center gap-3">
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
           </div>
-          <div class="text-xs text-gray-500 uppercase tracking-wider">
-            automatyczny system powiadomień</div>
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
@@ -892,8 +887,6 @@ const processConfirmationEmail = (data) => {
           <div class="flex items-center gap-3">
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
           </div>
-          <div class="text-xs text-gray-500 uppercase tracking-wider">
-            automatyczny system powiadomień</div>
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">

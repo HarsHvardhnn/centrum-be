@@ -171,6 +171,36 @@ function replaceIcons(html) {
 }
 
 /**
+ * Remove "automatic" disclaimer lines from email templates (Polish: automatyczny system powiadomień,
+ * "wygenerowana automatycznie", "prosimy nie odpowiadać"). Applies to both mobile and desktop view.
+ */
+function removeAutomaticDisclaimerLines(html) {
+  let result = html;
+
+  // Remove the "automatyczny system powiadomień" label div (header/footer badge)
+  result = result.replace(/<div[^>]*>\s*automatyczny system powiadomień\s*<\/div>/gi, '');
+
+  // Remove the "Ta wiadomość została wygenerowana automatycznie. Prosimy nie odpowiadać na ten e-mail." sentence (with optional <br> after)
+  result = result.replace(/\s*Ta wiadomość została\s+wygenerowana automatycznie\.\s*Prosimy nie\s+odpowiadać na ten e-mail\.\s*(?:<br\s*\/?>)?/gi, ' ');
+  result = result.replace(/\s*Ta wiadomość została wygenerowana automatycznie\. Prosimy nie odpowiadać na ten e-mail\.\s*(?:<br\s*\/?>)?/gi, ' ');
+
+  // Remove "Niniejsza wiadomość została wygenerowana automatycznie — prosimy na nią nie odpowiadać."
+  result = result.replace(/\s*Niniejsza wiadomość została wygenerowana automatycznie\s*—\s*prosimy na nią nie odpowiadać\.?\s*(?:<br\s*\/?>)?/gi, ' ');
+  result = result.replace(/\s*<p>Niniejsza wiadomość została wygenerowana automatycznie\s*—\s*prosimy na nią nie odpowiadać\.<\/p>\s*/gi, ' ');
+
+  // Remove "Ten e-mail został wygenerowany automatycznie" / "Ten email został wygenerowany automatycznie"
+  result = result.replace(/\s*Ten e-mail został wygenerowany automatycznie\s*—\s*prosimy na niego nie odpowiadać\.?\s*(?:<br\s*\/?>)?/gi, ' ');
+  result = result.replace(/\s*Ten email został wygenerowany automatycznie\.?\s*Prosimy nie odpowiadać na tę wiadomość\.?\s*(?:<br\s*\/?>)?/gi, ' ');
+  result = result.replace(/\s*<p>Ten e-mail został wygenerowany automatycznie[^<]*<\/p>\s*/gi, ' ');
+  result = result.replace(/\s*<p>Ten email został wygenerowany automatycznie[^<]*<\/p>\s*/gi, ' ');
+
+  // Remove "Nie odpowiadaj na ten email - jest wysyłany automatycznie."
+  result = result.replace(/\s*<p>Nie odpowiadaj na ten email\s*-\s*jest wysyłany automatycznie\.<\/p>\s*/gi, ' ');
+
+  return result;
+}
+
+/**
  * Process email template to make it email-client compatible
  */
 function processEmailTemplate(html) {
@@ -251,6 +281,9 @@ function processEmailTemplate(html) {
   // Replace Font Awesome icons
   processed = replaceIcons(processed);
   
+  // Remove automatic disclaimer lines (Polish) from mobile and desktop view
+  processed = removeAutomaticDisclaimerLines(processed);
+  
   // Ensure all elements have inline styles as fallback
   // This is a basic implementation - for production, consider using a library like juice
   
@@ -285,7 +318,8 @@ module.exports = {
   processEmailTemplate,
   loadAndProcessTemplate,
   convertClassesToInline,
-  replaceIcons
+  replaceIcons,
+  removeAutomaticDisclaimerLines
 };
 
 

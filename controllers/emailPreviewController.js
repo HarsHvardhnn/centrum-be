@@ -199,7 +199,6 @@ const createCancellationEmailDirect = (data) => {
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
             <div class="text-lg font-semibold text-navy">Centrum Medyczne 7</div>
           </div>
-          <div class="text-xs text-gray-500 uppercase tracking-wider">automatyczny system powiadomień</div>
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
@@ -310,7 +309,6 @@ const processRescheduleEmail = (data) => {
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
             <div class="text-lg font-semibold text-navy">Centrum Medyczne 7</div>
           </div>
-          <div class="text-xs text-gray-500 uppercase tracking-wider">automatyczny system powiadomień</div>
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
@@ -422,7 +420,6 @@ const processConfirmationEmail = (data) => {
             <img src="${logoUrl}" alt="Centrum Medyczne 7 Logo" style="height: 50px; width: auto;" />
             <div class="text-lg font-semibold text-navy">Centrum Medyczne 7</div>
           </div>
-          <div class="text-xs text-gray-500 uppercase tracking-wider">automatyczny system powiadomień</div>
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
