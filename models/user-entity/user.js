@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: true,
-      unique: true,
+      unique: false, // Per spec: same phone may be used by multiple persons (e.g. parent registering children)
     },
     encryptedPhone: {
       type: String,

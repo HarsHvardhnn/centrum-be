@@ -78,12 +78,8 @@ const patientSchema = new mongoose.Schema({
     type: Date,
   },
 
-  // IDs and references
-  govtId: String,
-  hospId: {
-    type: String,
-    default: () => `HOSP-${Date.now()}`,
-  },
+  // IDs and references (PESEL = govtId is unique per patient per spec)
+  govtId: { type: String, sparse: true, unique: true },
   otherHospitalIds: String,
 
   // Medical info
@@ -212,41 +208,13 @@ const patientSchema = new mongoose.Schema({
   ],
 });
 
-// Add the pre-save hook for username generation and phone cleaning
-patientSchema.pre("save", async function (next) {
-  // Clean phone number - remove +48 if present
+// Pre-save hook: phone cleaning only (username is created only when patient requests portal, per spec)
+patientSchema.pre("save", function (next) {
   if (this.phone && typeof this.phone === 'string') {
-    // Remove +48 prefix if it exists (with or without spaces)
-    this.phone = this.phone.replace(/^\+48\s?/, '');
-    // Also clean any other common formats
-    this.phone = this.phone.replace(/^48\s?/, ''); // Remove 48 without + 
-    this.phone = this.phone.trim(); // Remove leading/trailing spaces
+    this.phone = this.phone.replace(/^\+48\s?/, '').replace(/^48\s?/, '').trim();
   }
-
-  // Also clean phoneFormatted if it exists
   if (this.phoneFormatted && typeof this.phoneFormatted === 'string') {
-    this.phoneFormatted = this.phoneFormatted.replace(/^\+48\s?/, '');
-    this.phoneFormatted = this.phoneFormatted.replace(/^48\s?/, '');
-    this.phoneFormatted = this.phoneFormatted.trim();
-  }
-
-  // Username generation logic
-  if (!this.username) {
-    let unique = false;
-    while (!unique) {
-      const generatedUsername = `${this.name.first.substring(
-        0.5
-      )}_${Math.random().toString(36).substring(2, 3)}_${Date.now()
-        .toString()
-        .slice(-4)}`;
-      const existingUser = await mongoose
-        .model("User")
-        .findOne({ username: generatedUsername });
-      if (!existingUser) {
-        this.username = generatedUsername;
-        unique = true;
-      }
-    }
+    this.phoneFormatted = this.phoneFormatted.replace(/^\+48\s?/, '').replace(/^48\s?/, '').trim();
   }
   next();
 });

@@ -25,6 +25,7 @@ const { createStandardizedDocument } = require("./patientController");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
+const { validatePesel } = require("../utils/peselValidation");
 
 // Email icons as inline SVG (Font Awesome 6 style) for visibility in all email clients
 const { getIconImg } = require("../utils/emailIcons");
@@ -1393,18 +1394,19 @@ exports.createAppointment = async (req, res) => {
       createdBy = "doctor";
     }
 
-    // Create appointment with new fields
+    // Create appointment with new fields (dashboard: always has patient, so booking_source RECEPTION)
     const appointment = new Appointment({
       doctor: doctorId,
       patient: patient._id,
       bookedBy: patient._id,
+      booking_source: "RECEPTION",
       date: appointmentDate,
       startTime: time,
       endTime: endTime,
       duration: duration,
-      customDuration: customDuration || null, // Set custom duration if provided
-      isBackdated: isBackdated, // Set backdated flag
-      createdBy: createdBy, // Set who created the appointment
+      customDuration: customDuration || null,
+      isBackdated: isBackdated,
+      createdBy: createdBy,
       mode: consultationType.toLowerCase(),
       notes: message || "",
       metadata: {
@@ -1417,7 +1419,6 @@ exports.createAppointment = async (req, res) => {
     await appointment.save();
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    // Send email only if valid email is provided
     let emailSent = false;
     if (emailRegex.test(patient.email) && patient.email) {
       try {
@@ -1617,12 +1618,13 @@ exports.createReceptionAppointment = async (req, res) => {
       }
     }
 
-    let patient;
+    let patient = null;
     let isNewUser = false;
+    let emailSent = false;
     const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
+    const createdByRole = req.user && req.user.role ? req.user.role : "receptionist";
 
-    console.log("patientId", patientId);
-    // If patient ID is provided, use that
+    // Follow-up: patientId provided → use existing patient. First visit: no patientId → visit only (complete registration later)
     if (patientId) {
       patient = await user.findById(patientId);
       if (!patient || patient.role !== "patient") {
@@ -1631,194 +1633,130 @@ exports.createReceptionAppointment = async (req, res) => {
           message: "Pacjent nie znaleziony",
         });
       }
-      
-        // Note: persistSmsConsent field is now used to skip sending notifications
-      // If persistSmsConsent is true, no notifications will be sent (handled later in the code)
-      
     } else {
-      // Handle new patient creation
-      if (!name || !phone) {
-
-        console.log("whats missing", name, phone);
+      // Reception first visit: require only name; phone optional per spec
+      if (!name || !name.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Wystąpił błąd",
+          message: "Imię i nazwisko są wymagane",
         });
       }
-
-      // Remove leading zeros from phone number
-      const phoneNumber = phone.replace(/^0+/, "");
-
-      // Email validation regex
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-      // Handle email - check if it's actually provided and not "undefined"
-      const emailToSave = email && email !== "undefined" ? email.trim() : "";
-
-      // Validate email format if provided
-      if (emailToSave && !emailRegex.test(emailToSave)) {
-        return res.status(400).json({
-          success: false,
-          message: "Nieprawidłowy format adresu e-mail",
-        });
-      }
-
-      // Parse name into first and last
-      const nameParts = name.trim().split(" ");
-      const firstName = nameParts[0];
-      const lastName = nameParts.slice(1).join(" ");
-
-      // Look for existing patient by phone first
-      patient = await user.findOne({
-        phone: phoneNumber,
-        role: "patient",
-      });
-
-      // If not found by phone and email is provided, look by email
-      if (!patient && emailToSave) {
-        patient = await user.findOne({
-          email: emailToSave.toLowerCase(),
-          role: "patient",
-        });
-      }
-
-      // If patient not found, create new patient
-      if (!patient) {
-        const newPatient = new user({
-          name: {
-            first: firstName,
-            last: lastName,
-          },
-          email: emailToSave,
-          phone: phoneNumber,
-          password: temporaryPassword,
-          role: "patient",
-          signupMethod: "email",
-          patientId:`P-${new Date().getTime()}`,
-          dateOfBirth: dob,
-          smsConsentAgreed: smsConsentAgreed || false,
-          consents: [],
-        });
-
-        patient = await newPatient.save();
-        isNewUser = true;
-      }
-
-      console.log("is new user",isNewUser);
-      // Note: persistSmsConsent field is now used to skip sending notifications
-      // If persistSmsConsent is true, no notifications will be sent (handled later in the code)
     }
 
-    // Determine who created the appointment
+    let appointment;
+    if (patient) {
+      // Follow-up: create visit linked to existing patient
+      appointment = new Appointment({
+        doctor: doctorId,
+        patient: patient._id,
+        bookedBy: patient._id,
+        booking_source: "RECEPTION",
+        date: appointmentDate,
+        startTime: time,
+        endTime: endTime,
+        duration: duration,
+        customDuration: customDuration || null,
+        isBackdated: isBackdated,
+        createdBy: createdByRole,
+        mode: consultationType.toLowerCase(),
+        notes: message || "",
+        metadata: {
+          ...(req.body.metadata || {}),
+          overrideConflicts: overrideConflicts,
+          receptionistOverride: req.user && req.user.role === "receptionist",
+        }
+      });
+      await appointment.save();
 
-    // Create appointment with new fields
-    const appointment = new Appointment({
-      doctor: doctorId,
-      patient: patient._id,
-      bookedBy: patient._id,
-      date: appointmentDate,
-      startTime: time,
-      endTime: endTime,
-      duration: duration,
-      customDuration: customDuration || null, // Set custom duration if provided
-      isBackdated: isBackdated, // Set backdated flag
-      createdBy: req.user._id, // Set who created the appointment
-      mode: consultationType.toLowerCase(),
-      notes: message || "",
-      metadata: {
-        ...(req.body.metadata || {}),
-        overrideConflicts: overrideConflicts,
-        receptionistOverride: req.user && req.user.role === "receptionist",
-      }
-    });
-
-    await appointment.save();
-
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    // If persistSmsConsent is true, do NOT send any notifications (email or SMS)
-    let emailSent = false;
-    
-    // Skip all notifications if persistSmsConsent is true
-    if (persistSmsConsent) {
-      console.log("Skipping all notifications: persistSmsConsent is true");
-    } else {
-      // Send email and SMS together only if SMS consent is given (from smsConsentAgreed parameter) AND both channels are available
-      // Use smsConsentAgreed from request (not from database) for this appointment's notifications
-      const hasSmsConsent = Boolean(smsConsentAgreed); // Use the parameter value, not database value
-      const hasPhone = Boolean(patient.phone);
-      const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
-      const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
- 
-      if (shouldSendBoth) {
-      try {
-        const formattedDate = formatDateForSMS(appointmentDate);
-        const formattedTime = formatTimeForSMS(time);
- 
-        // Email data
-        const emailData = {
-          patientName: `${patient.name.first} ${patient.name.last}`,
-          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-          date: formattedDate,
-          time: time,
-          department: doctorDetails.specialization || "General",
-          meetingLink:
-            consultationType.toLowerCase() === "online" ? false : null,
-          notes: message || "",
-          mode: consultationType.toLowerCase(),
-          isNewUser,
-          temporaryPassword: isNewUser ? temporaryPassword : null,
-        };
- 
-        // Send email
-        await sendEmail({
-          to: patient.email,
-          subject: "Potwierdzenie Wizyty",
-          html: createAppointmentEmailHtml(emailData),
-          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
-            doctorDetails.name.last
-          } została zaplanowana na ${formattedDate} o godz ${time}. ${
-            false
-              ? `Dołącz do spotkania pod adresem: ${false}`
-              : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
-          }`,
-        });
-        emailSent = true;
- 
-        // Prepare and send SMS
-        const messageText =
-          appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
- 
-        const batchId = uuidv4();
-        await MessageReceipt.create({
-          content: messageText,
-          batchId,
-          recipient: {
-            userId: patient._id.toString(),
-            phone: patient.phone,
-          },
-          status: "PENDING",
-        });
- 
-        await sendSMS(patient.phone, messageText);
-        console.log("Reception appointment SMS sent to", patient.phone);
-      } catch (notifyError) {
-        console.error("Failed to send reception notifications (email/SMS):", notifyError);
-      }
-      } else {
-        // Do not send either if consent not given or a channel is unavailable
-        if (!hasSmsConsent) {
-          console.log(`Skipping notifications: SMS consent not given for this appointment (smsConsentAgreed: ${smsConsentAgreed}).`);
-        } else if (!hasPhone) {
-          console.log("Skipping notifications: phone number missing, enforcing both-or-neither policy.");
-        } else if (!hasValidEmail) {
-          console.log("Skipping notifications: email invalid/missing, enforcing both-or-neither policy.");
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!persistSmsConsent && patient) {
+        const hasSmsConsent = Boolean(smsConsentAgreed);
+        const hasPhone = Boolean(patient.phone);
+        const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
+        const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
+        if (shouldSendBoth) {
+          try {
+            const formattedDate = formatDateForSMS(appointmentDate);
+            const emailData = {
+              patientName: `${patient.name.first} ${patient.name.last}`,
+              doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+              date: formattedDate,
+              time: time,
+              department: doctorDetails.specialization || "General",
+              meetingLink: consultationType.toLowerCase() === "online" ? false : null,
+              notes: message || "",
+              mode: consultationType.toLowerCase(),
+              isNewUser: false,
+              temporaryPassword: null,
+            };
+            await sendEmail({
+              to: patient.email,
+              subject: "Potwierdzenie Wizyty",
+              html: createAppointmentEmailHtml(emailData),
+              text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została zaplanowana na ${formattedDate} o godz ${time}. Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji.`,
+            });
+            emailSent = true;
+            const messageText = appointment.mode === "online"
+              ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+              : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            const batchId = uuidv4();
+            await MessageReceipt.create({
+              content: messageText,
+              batchId,
+              recipient: { userId: patient._id.toString(), phone: patient.phone },
+              status: "PENDING",
+            });
+            await sendSMS(patient.phone, messageText);
+          } catch (notifyError) {
+            console.error("Failed to send reception notifications (email/SMS):", notifyError);
+          }
         }
       }
+    } else {
+      // First visit: create visit only (no patient); store basic data in registrationData
+      const phoneNumber = phone && String(phone).replace(/^0+/, "").trim() || null;
+      const emailToSave = email && email !== "undefined" ? email.trim() : null;
+      if (emailToSave) {
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRegex.test(emailToSave)) {
+          return res.status(400).json({ success: false, message: "Nieprawidłowy format adresu e-mail" });
+        }
+      }
+      const nameParts = name.trim().split(" ");
+      const registrationData = {
+        name: name.trim(),
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(" ") || "",
+        phone: phoneNumber,
+        email: emailToSave,
+        dateOfBirth: dob || null,
+        smsConsentAgreed: !!smsConsentAgreed,
+        consents: [],
+      };
+      appointment = new Appointment({
+        doctor: doctorId,
+        patient: null,
+        bookedBy: null,
+        booking_source: "RECEPTION",
+        date: appointmentDate,
+        startTime: time,
+        endTime: endTime,
+        duration: duration,
+        customDuration: customDuration || null,
+        isBackdated: isBackdated,
+        createdBy: createdByRole,
+        mode: consultationType.toLowerCase(),
+        notes: message || "",
+        registrationData,
+        metadata: {
+          ...(req.body.metadata || {}),
+          overrideConflicts: overrideConflicts,
+          receptionistOverride: req.user && req.user.role === "receptionist",
+        }
+      });
+      await appointment.save();
     }
 
-    // Prepare response data
     const responseData = {
       appointment,
       isNewUser,
@@ -1828,13 +1766,13 @@ exports.createReceptionAppointment = async (req, res) => {
         customDuration: customDuration ? `${customDuration} minutes` : null,
         isBackdated: isBackdated,
         overrideConflicts: overrideConflicts,
-        createdBy: req.user.role,
+        createdBy: createdByRole,
       }
     };
 
     res.status(201).json({
       success: true,
-      message: "Wizyta została umówiona pomyślnie przez recepcję",
+      message: patient ? "Wizyta została umówiona pomyślnie przez recepcję" : "Wizyta (pierwsza wizyta) została utworzona. Dokończ rejestrację pacjenta po podaniu PESEL.",
       data: responseData,
     });
   } catch (error) {
@@ -1965,6 +1903,127 @@ const formatDateToYYYYMMDD = (date) => {
   return `${d.getFullYear()}-${month}-${day}`;
 };
 
+/**
+ * Complete registration: assign visit to patient by PESEL (create patient if new, link if existing).
+ * POST /api/appointments/:visitId/complete-registration
+ * Body: pesel (required), firstName, lastName, dateOfBirth, phone, email, sex, ...
+ */
+exports.completeRegistration = async (req, res) => {
+  try {
+    const { visitId } = req.params;
+    const rawPesel = req.body.pesel;
+    const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
+    if (!pesel || pesel.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Prawidłowy numer PESEL (11 cyfr) jest wymagany do zakończenia rejestracji.",
+      });
+    }
+
+    const validation = validatePesel(pesel);
+    const peselWarning = validation.warning || null;
+    if (!validation.valid && !validation.warning) {
+      return res.status(400).json({
+        success: false,
+        message: validation.warning || "Nieprawidłowy format PESEL.",
+      });
+    }
+
+    const appointment = await Appointment.findById(visitId);
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: "Wizyta nie znaleziona." });
+    }
+    if (appointment.patient) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejestracja dla tej wizyty została już zakończona.",
+      });
+    }
+
+    let patientDoc = await patient.findOne({ govtId: pesel });
+    const isExisting = !!patientDoc;
+
+    if (patientDoc) {
+      const { firstName, lastName, dateOfBirth, phone, email, sex } = req.body;
+      const updates = {};
+      if (firstName !== undefined || lastName !== undefined) {
+        updates.name = {
+          first: firstName !== undefined ? String(firstName).trim() : patientDoc.name?.first,
+          last: lastName !== undefined ? String(lastName).trim() : patientDoc.name?.last,
+        };
+      }
+      if (dateOfBirth !== undefined) updates.dateOfBirth = new Date(dateOfBirth);
+      if (phone !== undefined) updates.phone = String(phone).replace(/^0+/, "").trim();
+      if (email !== undefined) updates.email = email && email !== "undefined" ? String(email).trim() : "";
+      if (sex !== undefined) updates.sex = sex;
+      if (Object.keys(updates).length > 0) {
+        await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
+        patientDoc = await patient.findById(patientDoc._id).lean();
+      }
+    } else {
+      const firstName = req.body.firstName || (req.body.name && String(req.body.name).trim().split(" ")[0]) || "Imię";
+      const lastName = req.body.lastName || (req.body.name && String(req.body.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
+      const phoneVal = req.body.phone && String(req.body.phone).replace(/^0+/, "").trim();
+      if (!phoneVal) {
+        return res.status(400).json({
+          success: false,
+          message: "Numer telefonu jest wymagany przy tworzeniu nowego pacjenta.",
+        });
+      }
+      const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
+      const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const newPatient = new user({
+        name: { first: firstName, last: lastName },
+        email: emailVal || undefined,
+        phone: phoneVal,
+        password: hashedPassword,
+        role: "patient",
+        signupMethod: "email",
+        govtId: pesel,
+        patientId: `P-${Date.now()}`,
+        dateOfBirth: req.body.dateOfBirth ? new Date(req.body.dateOfBirth) : undefined,
+        sex: req.body.sex || undefined,
+        smsConsentAgreed: !!req.body.smsConsentAgreed,
+        consents: Array.isArray(req.body.consents) ? req.body.consents : [],
+      });
+      patientDoc = await newPatient.save();
+    }
+
+    appointment.patient = patientDoc._id;
+    appointment.bookedBy = patientDoc._id;
+    await appointment.save();
+
+    const appointmentPopulated = await Appointment.findById(visitId)
+      .populate("patient", "name govtId patientId dateOfBirth phone email sex")
+      .populate("doctor", "name")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: isExisting
+        ? "Rejestracja zakończona. Wizyta przypisana do istniejącego pacjenta."
+        : "Rejestracja zakończona. Utworzono nowego pacjenta i przypisano wizytę.",
+      appointment: appointmentPopulated,
+      patient: {
+        _id: patientDoc._id,
+        patientId: patientDoc.patientId,
+        name: patientDoc.name,
+        govtId: patientDoc.govtId,
+      },
+      existing: isExisting,
+      ...(peselWarning && { peselWarning }),
+    });
+  } catch (error) {
+    console.error("Complete registration error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się zakończyć rejestracji.",
+      error: error.message,
+    });
+  }
+};
+
 exports.getAppointmentsByDoctor = async (req, res) => {
   try {
     const { doctorId } = req.params;
@@ -2079,7 +2138,7 @@ exports.updateAppointmentStatus = async (req, res) => {
     const { appointmentId } = req.params;
     const { status } = req.body;
 
-    if (!["booked", "cancelled", "completed"].includes(status)) {
+    if (!["booked", "cancelled", "completed", "checkedIn", "no-show"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
@@ -3083,7 +3142,6 @@ exports.getAppointmentDetails = async (req, res) => {
       });
     }
 
-    // Get appointment with basic population
     const appointment = await Appointment.findById(id)
       .populate("doctor", "name.first name.last")
       .populate("patient", "name.first name.last")
@@ -3096,28 +3154,37 @@ exports.getAppointmentDetails = async (req, res) => {
       });
     }
 
-    // Manually fetch patient data to get govtId and other fields
-    const patientData = await patient.findById(appointment.patient._id).lean();
-    
-    // Create appointmentData object with all required fields
-    const appointmentData = {
-      ...appointment,
-      patient: {
-        _id: appointment.patient._id,
-        name: appointment.patient.name,
-        patientId: patientData?.patientId || null,
-        age: patientData?.age || null,
-        dateOfBirth: patientData?.dateOfBirth || null,
-        height: patientData?.height || null,
-        weight: patientData?.weight || null,
-        bloodPressure: patientData?.bloodPressure || null,
-        temperature: patientData?.temperature || null,
-        riskStatus: patientData?.riskStatus || null,
-        treatmentStatus: patientData?.treatmentStatus || null,
-        roomNumber: patientData?.roomNumber || null,
-        govtId: patientData?.govtId || null
-      }
-    };
+    let appointmentData;
+    if (appointment.patient && appointment.patient._id) {
+      const patientData = await patient.findById(appointment.patient._id).lean();
+      appointmentData = {
+        ...appointment,
+        booking_source: appointment.booking_source || null,
+        registrationData: appointment.registrationData || null,
+        patient: {
+          _id: appointment.patient._id,
+          name: appointment.patient.name,
+          patientId: patientData?.patientId || null,
+          age: patientData?.age || null,
+          dateOfBirth: patientData?.dateOfBirth || null,
+          height: patientData?.height || null,
+          weight: patientData?.weight || null,
+          bloodPressure: patientData?.bloodPressure || null,
+          temperature: patientData?.temperature || null,
+          riskStatus: patientData?.riskStatus || null,
+          treatmentStatus: patientData?.treatmentStatus || null,
+          roomNumber: patientData?.roomNumber || null,
+          govtId: patientData?.govtId || null
+        }
+      };
+    } else {
+      appointmentData = {
+        ...appointment,
+        booking_source: appointment.booking_source || null,
+        registrationData: appointment.registrationData || null,
+        patient: null,
+      };
+    }
 
     // appointmentData is already defined above, no need to redeclare
 

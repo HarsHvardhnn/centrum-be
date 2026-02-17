@@ -30,13 +30,13 @@ router.post(
 // @route   POST /api/appointments/reception
 // @desc    Create a new appointment with reception override
 // @access  Private (receptionist, admin)
+// patientId optional: when provided = follow-up (existing patient); when omitted = first visit (visit only, complete registration later)
 router.post(
   "/reception",
   authorizeRoles(["receptionist", "admin","doctor"]),
   [
     [
       check("doctorId", "Doctor ID is required").notEmpty(),
-      check("patientId", "Patient ID is required").notEmpty(),
       check("date", "Valid date is required").isDate(),
       check("startTime", "Start time is required").notEmpty(),
     ],
@@ -76,6 +76,13 @@ router.patch(
   "/:appointmentId/reschedule",
   authorizeRoles(["doctor", "receptionist", "admin"]),
   appointmentController.rescheduleAppointment
+);
+
+// Complete registration: assign visit to patient by PESEL (create or link patient)
+router.post(
+  "/:visitId/complete-registration",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.completeRegistration
 );
 
 router.get(

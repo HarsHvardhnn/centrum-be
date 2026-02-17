@@ -26,9 +26,10 @@ const DEFAULT_CONFIG = {
   // Appointment statuses
   STATUSES: {
     BOOKED: "booked",
-    CANCELLED: "cancelled", 
+    CANCELLED: "cancelled",
     COMPLETED: "completed",
-    CHECKED_IN: "checkedIn"
+    CHECKED_IN: "checkedIn",
+    NO_SHOW: "no-show"
   },
   
   // Consultation modes

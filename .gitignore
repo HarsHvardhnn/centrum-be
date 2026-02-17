@@ -3,7 +3,7 @@ node_modules
 .env
 
 env
-
+ignore-docs
 
 /node_modules
 

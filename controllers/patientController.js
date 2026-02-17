@@ -189,12 +189,18 @@ exports.createPatient = async (req, res) => {
       });
     }
 
-    // Check for existing patient with same phone number (exact match)
-    const existingPatientByPhone = await patient.findOne({ phone: phoneNumber });
-    if (existingPatientByPhone) {
+    // Per spec: PESEL is the unique identifier; patient creation requires PESEL
+    const pesel = govtId && String(govtId).replace(/\D/g, "");
+    if (!pesel || pesel.length !== 11) {
+      return res.status(400).json({
+        message: "PESEL (11 cyfr) jest wymagany do utworzenia pacjenta.",
+      });
+    }
+    const existingPatientByPesel = await patient.findOne({ govtId: pesel });
+    if (existingPatientByPesel) {
       return res.status(409).json({
-        message: "Pacjent z tym numerem telefonu już istnieje",
-        patient: existingPatientByPhone,
+        message: "Pacjent z tym numerem PESEL już istnieje w systemie.",
+        patient: existingPatientByPesel,
       });
     }
 
@@ -328,7 +334,7 @@ exports.createPatient = async (req, res) => {
       pinCode,
       consultingSpecialization: new mongoose.Types.ObjectId(consultingSpecialization),
       alternateContact,
-      govtId,
+      govtId: pesel,
       isInternationalPatient:!!isInternationalPatient,
       ivrLanguage,
       mainComplaint,
@@ -385,11 +391,56 @@ exports.createPatient = async (req, res) => {
     res.status(500).json({ error: "Błąd wewnętrzny serwera" });
   }
 };
-// Get all patients
+
+/**
+ * Check if a patient exists by PESEL (for duplicate handling / "Załaduj dane istniejącego pacjenta").
+ * GET /api/patients/by-pesel?pesel=...
+ */
+exports.checkPeselExists = async (req, res) => {
+  try {
+    const pesel = req.query.pesel && String(req.query.pesel).replace(/\D/g, "");
+    if (!pesel || pesel.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj prawidłowy numer PESEL (11 cyfr).",
+      });
+    }
+    const existing = await patient.findOne({ govtId: pesel, deleted: { $ne: true } }).lean();
+    if (!existing) {
+      return res.status(200).json({ exists: false });
+    }
+    return res.status(200).json({
+      exists: true,
+      patientId: existing.patientId || existing._id.toString(),
+      patient: {
+        _id: existing._id,
+        patientId: existing.patientId,
+        name: existing.name,
+        govtId: existing.govtId,
+        dateOfBirth: existing.dateOfBirth,
+        phone: existing.phone,
+        email: existing.email,
+        sex: existing.sex,
+      },
+    });
+  } catch (error) {
+    console.error("Check PESEL error:", error);
+    res.status(500).json({ message: "Błąd serwera" });
+  }
+};
+
+// Get all patients (only those with completed registration: have patientId or govtId per spec)
 exports.getAllPatients = async (req, res) => {
   try {
-const patients = await patient
-  .find({deleted: false})
+    const query = {
+      deleted: false,
+      $or: [
+        { patientId: { $exists: true, $ne: null, $ne: "" } },
+        { govtId: { $exists: true, $ne: null, $ne: "" } },
+      ],
+    };
+    const patients = await patient
+  .find(query)
   .populate({
     path: "doctor",
     select: "name _id",
@@ -488,8 +539,14 @@ exports.getPatientsList = async (req, res) => {
     } = req.query;
 
   
-    const query = {deleted:false};
-    
+    const query = {
+      deleted: false,
+      $or: [
+        { patientId: { $exists: true, $ne: null, $ne: "" } },
+        { govtId: { $exists: true, $ne: null, $ne: "" } },
+      ],
+    };
+
     if (doctor) {
       query.consultingDoctor = doctor;
     }
@@ -1133,7 +1190,6 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       name: patient.name || "Nie nagrane",
       patientId:
         patient.patientId ||
-        patient.hospId ||
         `#${patient._id.toString().slice(-8)}`,
       avatar: patient.profilePicture || null,
       email: patient.email,
@@ -1275,6 +1331,13 @@ exports.updatePatient = async (req, res) => {
     const existingPatient = await patient.findOne({_id: patientId});
     if (!existingPatient) {
       return res.status(404).json({ error: "Nie znaleziono pacjenta" });
+    }
+
+    // Patient ID is immutable (set only by Complete registration per spec)
+    if (req.body.patientId !== undefined && String(req.body.patientId) !== String(existingPatient.patientId || '')) {
+      return res.status(400).json({
+        message: "Identyfikator pacjenta nie może być zmieniony",
+      });
     }
 
     // Check for phone number uniqueness if being updated

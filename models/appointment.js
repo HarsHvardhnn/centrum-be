@@ -127,12 +127,20 @@ const appointmentSchema = new mongoose.Schema(
     patient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+      default: null,
     },
     bookedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+      default: null,
+    },
+    // ONLINE = registered by patient online; RECEPTION = by reception staff
+    booking_source: {
+      type: String,
+      enum: ["ONLINE", "RECEPTION"],
+      default: null,
     },
     date: {
       type: Date,
@@ -178,7 +186,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["booked", "cancelled", "completed","checkedIn"],
+      enum: ["booked", "cancelled", "completed", "checkedIn", "no-show"],
       default: "booked",
     },
     joining_link: {
@@ -193,8 +201,12 @@ const appointmentSchema = new mongoose.Schema(
     // New fields for health data and reports
     healthData: healthDataSchema,
     reports: [reportSchema],
+    // Registration data when visit created without patient (online / reception first visit)
+    registrationData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     metadata: {
-      patientSource: String,
       visitType: String,
       isInternational: Boolean,
       isWalkin: Boolean,

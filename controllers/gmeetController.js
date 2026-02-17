@@ -391,11 +391,10 @@ exports.bookAppointment = async (req, res) => {
       contactConsentAgreed,
     } = req.body;
 
-    // Validate required fields
+    // Validate required fields (phone optional per spec - at least one contact for notifications)
     if (
       !date ||
       !doctorId ||
-      !phone ||  // Changed to prioritize phone
       !name ||
       !time ||
       !consultationType
@@ -404,10 +403,16 @@ exports.bookAppointment = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Brakujące wymagane pola" });
     }
-
-    // Email validation regex
+    // Email validation regex (needed for contact check)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const isValidEmail = email ? emailRegex.test(email) : false;
+    const hasPhone = phone && String(phone).trim();
+    const hasEmail = email && isValidEmail;
+    if (!hasPhone && !hasEmail) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Podaj numer telefonu lub adres e-mail w celu potwierdzenia wizyty" });
+    }
 
     // Validate consultationType
     if (!["online", "offline"].includes(consultationType.toLowerCase())) {
@@ -478,26 +483,7 @@ exports.bookAppointment = async (req, res) => {
       });
     }
 
-    // Look for existing patient by phone number first
-    let patient = await User.findOne({
-      phone: phone,
-      role: "patient",
-    });
-
-    // If not found by phone and email is valid, try finding by email
-    if (!patient && isValidEmail) {
-      patient = await User.findOne({
-        email: email.toLowerCase(),
-        role: "patient",
-      });
-    }
-
-    let isNewUser = false;
-    const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
-
-    console.log("smsConsentAgreed", smsConsentAgreed);
-
-    // Create consent objects
+    // Per spec: online registration creates VISIT_ID only; no PATIENT_ID or USERNAME
     const smsConsent = {
       id: Date.now(),
       text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
@@ -532,122 +518,32 @@ exports.bookAppointment = async (req, res) => {
       );
     }
 
-    // If patient doesn't exist, create a new one
-    if (!patient) {
-      isNewUser = true;
+    const allConsents = [smsConsent, privacyPolicyConsent, ...additionalConsents];
+    const registrationData = {
+      name: name.trim(),
+      firstName,
+      lastName: name.trim().split(" ").slice(1).join(" ") || "",
+      phone: hasPhone ? String(phone).trim() : null,
+      email: hasEmail ? email.toLowerCase().trim() : null,
+      gender,
+      dateOfBirth: dateOfBirth || null,
+      address: address || null,
+      smsConsentAgreed: !!smsConsentAgreed,
+      consents: allConsents,
+    };
 
-      // Double check for any existing user with either phone or email
-      const existingUserByPhone = await User.findOne({ phone: phone });
-      const existingUserByEmail = isValidEmail ? await User.findOne({ email: email.toLowerCase() }) : null;
-
-      if (existingUserByPhone) {
-        patient = existingUserByPhone;
-        isNewUser = false;
-      } else if (existingUserByEmail) {
-        patient = existingUserByEmail;
-        isNewUser = false;
-        // Update phone number if it doesn't exist
-        if (!patient.phone) {
-          patient.phone = phone;
-          await patient.save();
-        }
-      } else {
-        // Create new user if no existing user found
-        const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-
-        // Prepare all consents for new user
-        const allConsents = [smsConsent, privacyPolicyConsent, ...additionalConsents];
-        console.log(allConsents,"allConsents")
-
-        patient = new User({
-          name: {
-            first: firstName,
-            last: lastName || "",
-          },
-          email: isValidEmail ? email.toLowerCase() : null,
-          sex:
-            gender === "male"
-              ? "Male"
-              : gender === "female"
-              ? "Female"
-              : "Others",
-          phone,
-          password: hashedPassword,
-          patientId:`P-${new Date().getTime()}`,
-          role: "patient",
-          signupMethod: "phone",
-          address,
-      dateOfBirth,
-      govtId,
-          smsConsentAgreed: smsConsentAgreed,
-          consents: allConsents, // Store all consents as array
-        });
-
-        try {
-          await patient.save();
-        } catch (saveError) {
-          if (saveError.code === 11000) {
-            // If we get here, there might be a race condition or unique constraint violation
-            // Try one final lookup
-            patient = await User.findOne({
-              $or: [
-                { phone: phone },
-                ...(isValidEmail ? [{ email: email.toLowerCase() }] : [])
-              ]
-            });
-            
-            if (!patient) {
-              throw saveError;
-            }
-            isNewUser = false;
-          } else {
-            throw saveError;
-          }
-        }
-      }
-    }
-
-    // Handle consents for existing user
-    if (!isNewUser) {
-      // Ensure consents is always an array
-      const existingConsents = Array.isArray(patient.consents) ? patient.consents : [];
-      
-      // Helper function to update or add consent
-      const updateConsent = (consent) => {
-        const consentIndex = existingConsents.findIndex(
-          (c) => c.text === consent.text
-        );
-        
-        if (consentIndex === -1) {
-          // Consent doesn't exist, add it
-          existingConsents.push(consent);
-        } else {
-          // Update existing consent's agreed status
-          existingConsents[consentIndex].agreed = consent.agreed;
-        }
-      };
-
-      // Update all consents
-      updateConsent(smsConsent);
-      updateConsent(privacyPolicyConsent);
-      additionalConsents.forEach(updateConsent);
-
-      patient.smsConsentAgreed = smsConsentAgreed;
-      patient.consents = existingConsents; // Store directly as array
-      await patient.save();
-    }
-
-    // Create appointment
     const appointment = new Appointment({
       doctor: doctorId,
-      patient: patient._id,
-      bookedBy: patient._id,
+      patient: null,
+      bookedBy: null,
+      booking_source: "ONLINE",
       date: appointmentDate,
       startTime: time,
       endTime: endTime,
-      duration: duration,
+      duration,
       mode: consultationType.toLowerCase(),
       notes: message || "",
+      registrationData,
     });
 
     await appointment.save();
@@ -680,10 +576,8 @@ exports.bookAppointment = async (req, res) => {
             startTime: formattedDate,
             timezone: "Europe/Warsaw",
             participants: [
-              ...(isValidEmail ? [{ email: patient.email }] : []),
-              {
-                email: doctorDetails.email
-              }
+              ...(hasEmail ? [{ email: registrationData.email }] : []),
+              { email: doctorDetails.email }
             ]
           }
         };
@@ -706,15 +600,15 @@ exports.bookAppointment = async (req, res) => {
       }
     }
 
-    // Send SMS notification if consent is agreed
+    // Send SMS notification if consent is agreed and phone provided (visit-only: no patient _id)
     let smsResult = null;
-    if (smsConsentAgreed) {
+    if (smsConsentAgreed && hasPhone) {
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
         const formattedTime = formatTimeForSMS(time);
         const message =
           appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. ${isValidEmail ? 'Link do wizyty otrzymaja Panstwo na adres e-mail.' : 'Prosimy o kontakt w celu otrzymania linku do wizyty.'}`
+            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. ${hasEmail ? 'Link do wizyty otrzymaja Panstwo na adres e-mail.' : 'Prosimy o kontakt w celu otrzymania linku do wizyty.'}`
             : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
 
         const batchId = uuidv4();
@@ -722,28 +616,26 @@ exports.bookAppointment = async (req, res) => {
           content: message,
           batchId,
           recipient: {
-            userId: patient._id.toString(),
-            phone: phone,
+            userId: appointment._id.toString(),
+            phone: registrationData.phone,
           },
           status: "PENDING",
         });
 
-        smsResult = await sendSMS(phone, message);
+        smsResult = await sendSMS(registrationData.phone, message);
       } catch (smsError) {
         console.error("Błąd wysyłania powiadomienia SMS:", smsError);
       }
     }
 
-    // Send email to patient only if email is valid
+    // Send email if email provided and consent (visit-only: use registrationData)
     let emailSent = false;
-    if (isValidEmail && patient.email && smsConsentAgreed) {
+    if (hasEmail && smsConsentAgreed) {
       try {
         const formattedDate = format(appointmentDate, "dd.MM.yyyy");
-        const formattedTime = formatTimeForSMS(time);
 
-        // Email data
         const emailData = {
-          patientName: `${patient.name.first} ${patient.name.last}`,
+          patientName: registrationData.name,
           doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
           date: formattedDate,
           time: time,
@@ -752,13 +644,12 @@ exports.bookAppointment = async (req, res) => {
             consultationType.toLowerCase() === "online" ? meetingLink : null,
           notes: message || "",
           mode: consultationType.toLowerCase(),
-          isNewUser,
-          temporaryPassword: isNewUser ? temporaryPassword : null,
+          isNewUser: false,
+          temporaryPassword: null,
         };
 
-        // Send email
         await sendEmail({
-          to: patient.email,
+          to: registrationData.email,
           subject: "Potwierdzenie Wizyty",
           html: createAppointmentEmailHtml(emailData),
           text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
@@ -770,7 +661,7 @@ exports.bookAppointment = async (req, res) => {
           }`,
         });
 
-        console.log(`Appointment confirmation email sent to ${patient.email}`);
+        console.log(`Appointment confirmation email sent to ${registrationData.email}`);
         emailSent = true;
       } catch (emailError) {
         console.error("Failed to send appointment email:", emailError);
@@ -785,7 +676,6 @@ exports.bookAppointment = async (req, res) => {
           message: "Wizyta online została pomyślnie zarezerwowana z Zoho Meetings",
           data: appointment,
           meetLink: meetingLink,
-          isNewUser,
           emailSent,
           notifications: {
             sms: smsResult
@@ -804,7 +694,6 @@ exports.bookAppointment = async (req, res) => {
           success: true,
           message: "Wizyta online została zarezerwowana, ale wymagana jest konfiguracja integracji z Zoho Meetings",
           data: appointment,
-          isNewUser,
           calendarSetupNeeded: true,
           emailSent,
           notifications: {
@@ -824,7 +713,6 @@ exports.bookAppointment = async (req, res) => {
           success: true,
           message: "Wizyta online została zarezerwowana, ale nie udało się utworzyć wydarzenia Zoho Meetings",
           data: appointment,
-          isNewUser,
           emailSent,
           notifications: {
             sms: smsResult
@@ -844,7 +732,6 @@ exports.bookAppointment = async (req, res) => {
         success: true,
         message: "Wizyta stacjonarna została pomyślnie zarezerwowana",
         data: appointment,
-        isNewUser,
         emailSent,
         notifications: {
           sms: smsResult
