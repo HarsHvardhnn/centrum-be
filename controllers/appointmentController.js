@@ -2016,6 +2016,28 @@ exports.completeRegistration = async (req, res) => {
     });
   } catch (error) {
     console.error("Complete registration error:", error);
+    if (error.code === 11000) {
+      const isPhone = (error.message && error.message.includes("phone")) ||
+        (error.keyValue && "phone" in error.keyValue);
+      const isEmail = (error.message && error.message.includes("email")) ||
+        (error.keyValue && "email" in error.keyValue);
+      if (isPhone) {
+        return res.status(409).json({
+          success: false,
+          message: "Ten numer telefonu jest już zarejestrowany w systemie.",
+        });
+      }
+      if (isEmail) {
+        return res.status(409).json({
+          success: false,
+          message: "Ten adres e-mail jest już zarejestrowany w systemie.",
+        });
+      }
+      return res.status(409).json({
+        success: false,
+        message: "Dane pacjenta kolidują z istniejącym wpisem (zduplikowany numer telefonu lub e-mail).",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Nie udało się zakończyć rejestracji.",
