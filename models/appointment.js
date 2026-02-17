@@ -168,7 +168,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     createdBy: {
       type: String,
-      enum: ["receptionist", "online", "doctor"],
+      enum: ["receptionist", "online", "doctor", "admin"],
       default: "online"
     },
     checkedIn:{
