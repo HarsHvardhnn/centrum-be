@@ -19,7 +19,8 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: true,
+      required: false, // Per spec: phone optional for reception first visit / complete registration
+      default: "",
       unique: false, // Per spec: same phone may be used by multiple persons (e.g. parent registering children)
     },
     encryptedPhone: {
