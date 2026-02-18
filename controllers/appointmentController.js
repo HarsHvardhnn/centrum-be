@@ -1963,15 +1963,16 @@ exports.completeRegistration = async (req, res) => {
     } else {
       const firstName = req.body.firstName || (req.body.name && String(req.body.name).trim().split(" ")[0]) || "Imię";
       const lastName = req.body.lastName || (req.body.name && String(req.body.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
-      // Per spec: phone optional for first visit / complete registration (reception "phone optional")
+      // Per spec: phone optional. When empty, use a unique placeholder to avoid E11000 if DB has unique index on phone.
       const phoneVal = req.body.phone ? String(req.body.phone).replace(/^0+/, "").trim() : "";
+      const phoneToSave = phoneVal || `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
       const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
       const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
       const newPatient = new user({
         name: { first: firstName, last: lastName },
         email: emailVal || undefined,
-        phone: phoneVal,
+        phone: phoneToSave,
         password: hashedPassword,
         role: "patient",
         signupMethod: "email",
@@ -1994,6 +1995,18 @@ exports.completeRegistration = async (req, res) => {
       .populate("doctor", "name")
       .lean();
 
+    const maskNoPhone = (p) => {
+      if (!p || !p.phone || typeof p.phone !== "string") return p;
+      if (p.phone.startsWith("__no_phone_")) {
+        return { ...p, phone: "" };
+      }
+      return p;
+    };
+    if (appointmentPopulated?.patient) {
+      appointmentPopulated.patient = maskNoPhone(appointmentPopulated.patient);
+    }
+    const patientForResponse = maskNoPhone(patientDoc);
+
     return res.status(200).json({
       success: true,
       message: isExisting
@@ -2001,10 +2014,10 @@ exports.completeRegistration = async (req, res) => {
         : "Rejestracja zakończona. Utworzono nowego pacjenta i przypisano wizytę.",
       appointment: appointmentPopulated,
       patient: {
-        _id: patientDoc._id,
-        patientId: patientDoc.patientId,
-        name: patientDoc.name,
-        govtId: patientDoc.govtId,
+        _id: patientForResponse._id,
+        patientId: patientForResponse.patientId,
+        name: patientForResponse.name,
+        govtId: patientForResponse.govtId,
       },
       existing: isExisting,
       ...(peselWarning && { peselWarning }),
@@ -2012,10 +2025,11 @@ exports.completeRegistration = async (req, res) => {
   } catch (error) {
     console.error("Complete registration error:", error);
     if (error.code === 11000) {
-      const isPhone = (error.message && error.message.includes("phone")) ||
-        (error.keyValue && "phone" in error.keyValue);
-      const isEmail = (error.message && error.message.includes("email")) ||
-        (error.keyValue && "email" in error.keyValue);
+      const msg = (error.message || "").toLowerCase();
+      const kv = error.keyValue || {};
+      const isPhone = msg.includes("phone") || "phone" in kv;
+      const isEmail = msg.includes("email") || "email" in kv;
+      const isGovtId = msg.includes("govtid") || msg.includes("govt_id") || "govtId" in kv;
       if (isPhone) {
         return res.status(409).json({
           success: false,
@@ -2028,9 +2042,16 @@ exports.completeRegistration = async (req, res) => {
           message: "Ten adres e-mail jest już zarejestrowany w systemie.",
         });
       }
+      if (isGovtId) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z tym numerem PESEL już istnieje w systemie. Użyj „Załaduj dane istniejącego pacjenta”.",
+        });
+      }
+      const field = Object.keys(kv)[0] || "pole";
       return res.status(409).json({
         success: false,
-        message: "Dane pacjenta kolidują z istniejącym wpisem (zduplikowany numer telefonu lub e-mail).",
+        message: `Dane pacjenta kolidują z istniejącym wpisem (zduplikowana wartość: ${field}).`,
       });
     }
     res.status(500).json({
