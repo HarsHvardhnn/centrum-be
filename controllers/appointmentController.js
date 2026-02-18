@@ -3862,42 +3862,7 @@ exports.getAppointments = async (req, res) => {
 
     // Handle isClinicIp=true case - Group by date but keep response format the same
     if (isClinicIp === "true") {
-      // Get appointments using aggregation pipeline for better search
-      let appointmentsPipeline = [
-        // First lookup to get patient details
-        {
-          $lookup: {
-            from: "users",
-            localField: "patient",
-            foreignField: "_id",
-            as: "patientData",
-          },
-        },
-        // Unwind the patient data array
-        {
-          $unwind: "$patientData",
-        },
-        // Filter out deleted patients
-        {
-          $match: {
-            "patientData.deleted": { $ne: true }
-          }
-        },
-        // Lookup to get doctor details
-        {
-          $lookup: {
-            from: "users",
-            localField: "doctor",
-            foreignField: "_id",
-            as: "doctorData",
-          },
-        },
-        {
-          $unwind: "$doctorData",
-        },
-      ];
-
-      // Build the match conditions for the clinic case
+      // Build the match conditions for the clinic case (used at start of pipeline and for search)
       const matchConditions = {};
       
       // Add base query conditions (status, date range, doctorId)
@@ -3955,34 +3920,60 @@ exports.getAppointments = async (req, res) => {
         matchConditions._id = new mongoose.Types.ObjectId(appointmentId);
       }
 
-      // Add base conditions if they exist
+      // Pipeline: match first (include all appointment filters), then lookup patient/doctor.
+      // Use preserveNullAndEmptyArrays on patient unwind so visit-only (no patient) appointments are included.
+      let appointmentsPipeline = [];
       if (Object.keys(matchConditions).length > 0) {
-        appointmentsPipeline.push({
-          $match: matchConditions,
-        });
+        appointmentsPipeline.push({ $match: matchConditions });
       }
+      appointmentsPipeline.push(
+        {
+          $lookup: {
+            from: "users",
+            localField: "patient",
+            foreignField: "_id",
+            as: "patientData",
+          },
+        },
+        // Keep visit-only appointments: do not drop when patient is null
+        { $unwind: { path: "$patientData", preserveNullAndEmptyArrays: true } },
+        // Exclude only when patient exists and is deleted
+        {
+          $match: {
+            $or: [
+              { patientData: { $exists: false } },
+              { patientData: null },
+              { "patientData.deleted": { $ne: true } },
+            ],
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "doctor",
+            foreignField: "_id",
+            as: "doctorData",
+          },
+        },
+        { $unwind: "$doctorData" }
+      );
 
-      // Add search conditions if searchTerm exists
+      // Add search conditions if searchTerm exists (include registrationData for visit-only)
       if (searchTerm) {
+        const searchRegex = { $regex: searchTerm, $options: "i" };
         appointmentsPipeline.push({
           $match: {
             $or: [
-              // Patient name search (first and last)
-              {
-                "patientData.name.first": { $regex: searchTerm, $options: "i" },
-              },
-              {
-                "patientData.name.last": { $regex: searchTerm, $options: "i" },
-              },
-              // Full name search (combined first and last)
+              { "patientData.name.first": searchRegex },
+              { "patientData.name.last": searchRegex },
               {
                 $expr: {
                   $regexMatch: {
                     input: {
                       $concat: [
-                        "$patientData.name.first",
+                        { $ifNull: ["$patientData.name.first", ""] },
                         " ",
-                        "$patientData.name.last",
+                        { $ifNull: ["$patientData.name.last", ""] },
                       ],
                     },
                     regex: searchTerm,
@@ -3990,45 +3981,22 @@ exports.getAppointments = async (req, res) => {
                   },
                 },
               },
-              // Patient contact details
-              { "patientData.email": { $regex: searchTerm, $options: "i" } },
-              { "patientData.phone": { $regex: searchTerm, $options: "i" } },
-              // Patient ID
-              {
-                "patientData.patientId": { $regex: searchTerm, $options: "i" },
-              },
-              // Appointment details
-              { notes: { $regex: searchTerm, $options: "i" } },
-              {
-                "consultation.consultationNotes": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
-              {
-                "consultation.description": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
-              {
-                "consultation.interview": { $regex: searchTerm, $options: "i" },
-              },
-              {
-                "consultation.physicalExamination": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
-              {
-                "consultation.treatment": { $regex: searchTerm, $options: "i" },
-              },
-              {
-                "consultation.recommendations": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
+              { "patientData.email": searchRegex },
+              { "patientData.phone": searchRegex },
+              { "patientData.patientId": searchRegex },
+              { notes: searchRegex },
+              { "consultation.consultationNotes": searchRegex },
+              { "consultation.description": searchRegex },
+              { "consultation.interview": searchRegex },
+              { "consultation.physicalExamination": searchRegex },
+              { "consultation.treatment": searchRegex },
+              { "consultation.recommendations": searchRegex },
+              // Visit-only: search registrationData
+              { "registrationData.firstName": searchRegex },
+              { "registrationData.lastName": searchRegex },
+              { "registrationData.name": searchRegex },
+              { "registrationData.phone": searchRegex },
+              { "registrationData.email": searchRegex },
             ],
           },
         });
@@ -4039,7 +4007,7 @@ exports.getAppointments = async (req, res) => {
 
       let appointments = await Appointment.aggregate(appointmentsPipeline);
 
-      // Process appointments data
+      // Process appointments data (include visit-only: patient null, optional registrationData)
       let appointmentsWithAge = appointments.map((appointment) => {
         const patientData = appointment.patientData;
         let age = null;
@@ -4056,8 +4024,10 @@ exports.getAppointments = async (req, res) => {
           }
         }
 
+        const hasPatient = patientData && (patientData._id || patientData.id);
         return {
           id: appointment._id,
+          _id: appointment._id,
           date: appointment.date,
           startTime: appointment.startTime,
           endTime: appointment.endTime,
@@ -4066,19 +4036,23 @@ exports.getAppointments = async (req, res) => {
           mode: appointment.mode,
           checkIn: appointment.checkedIn,
           checkInDate: appointment.checkInDate,
-          patient: {
-            patient_status: patientData?.status,
-            id: patientData?._id,
-            patientId: patientData?.patientId,
-            name: patientData
-              ? `${patientData.name.first} ${patientData.name.last}`
-              : null,
-            sex: patientData?.sex,
-            age: age,
-            phoneNumber: patientData?.phone,
-            profilePicture: patientData?.profilePicture || null,
-            email: patientData?.email,
-          },
+          patient: hasPatient
+            ? {
+                patient_status: patientData?.status,
+                id: patientData?._id,
+                _id: patientData?._id,
+                patientId: patientData?.patientId,
+                name: `${patientData.name?.first || ""} ${patientData.name?.last || ""}`.trim() || null,
+                sex: patientData?.sex,
+                age: age,
+                phoneNumber: patientData?.phone,
+                profilePicture: patientData?.profilePicture || null,
+                email: patientData?.email,
+              }
+            : null,
+          patient_id: hasPatient ? patientData?._id : null,
+          isVisitOnly: !hasPatient,
+          ...(appointment.registrationData && { registrationData: appointment.registrationData }),
           doctor: appointment.doctorData
             ? {
                 id: appointment.doctorData._id,
@@ -4210,28 +4184,14 @@ exports.getAppointments = async (req, res) => {
 
       console.log("appointment query", appointmentQuery);
 
-      // Get all appointments for these patients
-      const allAppointments = await Appointment.find({
-        ...appointmentQuery,
-        patient: { $in: allPatients.map(p => p._id) }
-      })
+      // Get all appointments (including visit-only: do not filter by patient)
+      const allAppointments = await Appointment.find(appointmentQuery)
         .populate("doctor", "name email")
         .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture")
         .sort({ date: 1 }) // Sort by date in ascending order
         .lean();
 
       console.log("allAppointments", allAppointments);
-
-      // Create a map of patient ID to their latest appointment
-      const patientAppointmentMap = new Map();
-      allAppointments.forEach((appointment) => {
-        const patientId = appointment.patient?._id.toString();
-        if (patientId && !patientAppointmentMap.has(patientId)) {
-          patientAppointmentMap.set(patientId, appointment);
-        }
-      });
-
-      console.log("patientAppointmentMap", patientAppointmentMap);
 
       // Helper function to calculate age
       const calculatePatientAge = (dateOfBirth) => {
@@ -4247,74 +4207,117 @@ exports.getAppointments = async (req, res) => {
         return age;
       };
 
-      // Process all patients
-      const processedPatients = allPatients.map((patient) => {
-        const patientId = patient._id.toString();
-        const latestAppointment = patientAppointmentMap.get(patientId);
-        const age = calculatePatientAge(patient.dateOfBirth);
+      // Rows from appointments: with patient, or visit-only (patient null)
+      const appointmentRows = [];
+      const patientIdsInAppointments = new Set();
 
-        if (latestAppointment) {
-          // Patient has appointments - use appointment data
-          return {
-            id: latestAppointment._id,
-            date: latestAppointment.date || new Date(),
-            startTime: latestAppointment.startTime || "00:00",
-            endTime: latestAppointment.endTime || "00:00",
-            meetLink: latestAppointment.joining_link || "",
-            status: latestAppointment.status || "zaplanowane",
-            mode: latestAppointment.mode || "klinika",
-            checkIn: latestAppointment.checkedIn || false,
-            checkInDate: latestAppointment.checkInDate || null,
-            isAppointment: true,
-            patient: {
-              patient_status: patient.status,
-              id: patient._id,
-              patientId: patient.patientId,
-              name: `${patient.name.first} ${patient.name.last}`,
-              sex: patient.sex,
-              age: age,
-              phoneNumber: patient.phone,
-              profilePicture: patient.profilePicture || null,
-              email: patient.email,
-            },
-            doctor: latestAppointment.doctor
-              ? {
-                  id: latestAppointment.doctor._id,
-                  name: `${latestAppointment.doctor.name.first} ${latestAppointment.doctor.name.last}`,
-                  email: latestAppointment.doctor.email,
-                }
-              : null,
-            metadata: latestAppointment.metadata || {},
-          };
-        } else {
-          // Patient has no appointments - create entry with no_appointment status
-          return {
-            id: null, // No appointment ID
-            date: new Date(), // Current date as placeholder
-            startTime: "00:00",
-            endTime: "00:00",
-            meetLink: "",
-            status: "no_appointment",
-            mode: "none",
-            checkIn: false,
-            checkInDate: null,
-            isAppointment: false,
-            patient: {
-              patient_status: patient.status,
-              id: patient._id,
-              patientId: patient.patientId,
-              name: `${patient.name.first} ${patient.name.last}`,
-              sex: patient.sex,
-              age: age,
-              phoneNumber: patient.phone,
-              profilePicture: patient.profilePicture || null,
-              email: patient.email,
-            },
-            doctor: null,
-            metadata: {},
-          };
+      allAppointments.forEach((appointment) => {
+        const patientId = appointment.patient?._id?.toString();
+        if (patientId) {
+          patientIdsInAppointments.add(patientId);
         }
+        const isVisitOnly = !appointment.patient || !appointment.patient._id;
+        const patientDoc = appointment.patient;
+        const age = patientDoc?.dateOfBirth ? calculatePatientAge(patientDoc.dateOfBirth) : null;
+        appointmentRows.push({
+          id: appointment._id,
+          _id: appointment._id,
+          date: appointment.date || new Date(),
+          startTime: appointment.startTime || "00:00",
+          endTime: appointment.endTime || "00:00",
+          meetLink: appointment.joining_link || "",
+          status: appointment.status || "zaplanowane",
+          mode: appointment.mode || "klinika",
+          checkIn: appointment.checkedIn || false,
+          checkInDate: appointment.checkInDate || null,
+          isAppointment: true,
+          patient: isVisitOnly
+            ? null
+            : {
+                patient_status: patientDoc?.status,
+                id: patientDoc._id,
+                _id: patientDoc._id,
+                patientId: patientDoc.patientId,
+                name: `${patientDoc.name?.first || ""} ${patientDoc.name?.last || ""}`.trim() || null,
+                sex: patientDoc?.sex,
+                age,
+                phoneNumber: patientDoc?.phone,
+                profilePicture: patientDoc?.profilePicture || null,
+                email: patientDoc?.email,
+              },
+          patient_id: isVisitOnly ? null : patientDoc?._id,
+          isVisitOnly,
+          ...(appointment.registrationData && { registrationData: appointment.registrationData }),
+          doctor: appointment.doctor
+            ? {
+                id: appointment.doctor._id,
+                name: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
+                email: appointment.doctor.email,
+              }
+            : null,
+          metadata: appointment.metadata || {},
+        });
       });
+
+      // Apply search to appointment rows (patient or registrationData)
+      let filteredAppointmentRows = appointmentRows;
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        filteredAppointmentRows = appointmentRows.filter((row) => {
+          if (row.patient) {
+            const name = (row.patient.name || "").toLowerCase();
+            const email = (row.patient.email || "").toLowerCase();
+            const phone = String(row.patient.phoneNumber || row.patient.phone || "");
+            const patientId = (row.patient.patientId || "").toLowerCase();
+            return name.includes(searchLower) || email.includes(searchLower) || phone.includes(searchTerm) || patientId.includes(searchLower);
+          }
+          if (row.registrationData) {
+            const rd = row.registrationData;
+            const firstName = (rd.firstName || rd.name || "").toLowerCase();
+            const lastName = (rd.lastName || "").toLowerCase();
+            const name = (rd.name || "").toLowerCase();
+            const phone = String(rd.phone || "");
+            const email = (rd.email || "").toLowerCase();
+            return firstName.includes(searchLower) || lastName.includes(searchLower) || name.includes(searchLower) || phone.includes(searchTerm) || email.includes(searchLower);
+          }
+          return false;
+        });
+      }
+
+      // Add rows for patients who have no appointments (no_appointment)
+      const processedPatients = [
+        ...filteredAppointmentRows,
+        ...allPatients
+          .filter((p) => !patientIdsInAppointments.has(p._id.toString()))
+          .map((patient) => {
+            const age = calculatePatientAge(patient.dateOfBirth);
+            return {
+              id: null,
+              date: new Date(),
+              startTime: "00:00",
+              endTime: "00:00",
+              meetLink: "",
+              status: "no_appointment",
+              mode: "none",
+              checkIn: false,
+              checkInDate: null,
+              isAppointment: false,
+              patient: {
+                patient_status: patient.status,
+                id: patient._id,
+                patientId: patient.patientId,
+                name: `${patient.name.first} ${patient.name.last}`,
+                sex: patient.sex,
+                age: age,
+                phoneNumber: patient.phone,
+                profilePicture: patient.profilePicture || null,
+                email: patient.email,
+              },
+              doctor: null,
+              metadata: {},
+            };
+          }),
+      ];
 
              // Filter by status
        let filteredPatients = processedPatients;
