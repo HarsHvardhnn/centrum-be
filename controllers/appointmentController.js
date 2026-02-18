@@ -1963,13 +1963,8 @@ exports.completeRegistration = async (req, res) => {
     } else {
       const firstName = req.body.firstName || (req.body.name && String(req.body.name).trim().split(" ")[0]) || "Imię";
       const lastName = req.body.lastName || (req.body.name && String(req.body.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
-      const phoneVal = req.body.phone && String(req.body.phone).replace(/^0+/, "").trim();
-      if (!phoneVal) {
-        return res.status(400).json({
-          success: false,
-          message: "Numer telefonu jest wymagany przy tworzeniu nowego pacjenta.",
-        });
-      }
+      // Per spec: phone optional for first visit / complete registration (reception "phone optional")
+      const phoneVal = req.body.phone ? String(req.body.phone).replace(/^0+/, "").trim() : "";
       const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
       const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
