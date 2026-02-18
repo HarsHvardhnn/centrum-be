@@ -204,18 +204,7 @@ exports.createPatient = async (req, res) => {
       });
     }
 
-    // Check for existing patient with same phone + phoneCode combination
-    const phoneCodeToCheck = phoneCode || "+48";
-    const existingPatientByPhoneAndCode = await patient.findOne({ 
-      phone: phoneNumber, 
-      phoneCode: phoneCodeToCheck 
-    });
-    if (existingPatientByPhoneAndCode) {
-      return res.status(409).json({
-        message: "Pacjent z tym numerem telefonu i kodem kraju już istnieje",
-        patient: existingPatientByPhoneAndCode,
-      });
-    }
+    // Per spec: phone is NOT unique – same number may be used by multiple persons (e.g. parent registering children). No uniqueness check.
     // Email validation regex
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -1340,18 +1329,7 @@ exports.updatePatient = async (req, res) => {
       });
     }
 
-    // Check for phone number uniqueness if being updated
-    if (phoneNumber && phoneNumber !== existingPatient.phone) {
-      const existingPatientByPhone = await patient.findOne({
-        phone: phoneNumber,
-        _id: { $ne: patientId }
-      });
-      if (existingPatientByPhone) {
-        return res.status(409).json({
-          message: "Inny pacjent z tym numerem telefonu już istnieje",
-        });
-      }
-    }
+    // Per spec: phone is NOT unique – allow same phone for multiple patients. No uniqueness check on update.
 
     // Email validation regex
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;

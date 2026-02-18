@@ -14,6 +14,7 @@ const patientSchema = new mongoose.Schema({
   username: {
     type: String,
     unique: true,
+    sparse: true, // Allow multiple patients without username (set only when patient requests portal, per spec)
   },
   age: Number,
   birthWeight: String,
