@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const patient = require("../models/user-entity/patient");
 const { default: mongoose } = require("mongoose");
+const { validatePesel } = require("../utils/peselValidation");
 const doctor = require("../models/user-entity/doctor");
 const Appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
@@ -387,19 +388,35 @@ exports.createPatient = async (req, res) => {
  */
 exports.checkPeselExists = async (req, res) => {
   try {
-    const pesel = req.query.pesel && String(req.query.pesel).replace(/\D/g, "");
+    const rawPesel = req.query.pesel;
+    const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
     if (!pesel || pesel.length !== 11) {
       return res.status(400).json({
         success: false,
         message: "Podaj prawidłowy numer PESEL (11 cyfr).",
       });
     }
+    const validation = validatePesel(pesel);
+    const peselWarning = validation.valid ? (validation.warning || null) : null;
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
+      });
+    }
     const existing = await patient.findOne({ govtId: pesel, deleted: { $ne: true } }).lean();
     if (!existing) {
-      return res.status(200).json({ exists: false });
+      return res.status(200).json({
+        success: true,
+        exists: false,
+        message: "Pacjent o podanym numerze PESEL nie istnieje w systemie.",
+        ...(peselWarning && { peselWarning }),
+      });
     }
     return res.status(200).json({
+      success: true,
       exists: true,
+      message: "Pacjent o podanym numerze PESEL już istnieje w systemie.",
       patientId: existing.patientId || existing._id.toString(),
       patient: {
         _id: existing._id,
@@ -411,10 +428,11 @@ exports.checkPeselExists = async (req, res) => {
         email: existing.email,
         sex: existing.sex,
       },
+      ...(peselWarning && { peselWarning }),
     });
   } catch (error) {
     console.error("Check PESEL error:", error);
-    res.status(500).json({ message: "Błąd serwera" });
+    res.status(500).json({ success: false, message: "Błąd serwera" });
   }
 };
 
