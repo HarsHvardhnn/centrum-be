@@ -546,35 +546,47 @@ exports.getPatientsList = async (req, res) => {
     } = req.query;
 
   
-    const query = {
-      deleted: false,
+    const completedRegistrationFilter = {
       $or: [
         { patientId: { $exists: true, $ne: null, $ne: "" } },
         { govtId: { $exists: true, $ne: null, $ne: "" } },
       ],
     };
 
+    const query = {
+      deleted: false,
+      ...completedRegistrationFilter,
+    };
+
     if (doctor) {
       query.consultingDoctor = doctor;
     }
 
-   
     if (search) {
-      const searchLower = search.toLowerCase().trim();
-      query.$or = [
-        { 
+      const searchTrimmed = search.trim();
+      const searchLower = searchTrimmed.toLowerCase();
+      const searchRegex = { $regex: searchTrimmed, $options: "i" };
+      const searchDigitsOnly = searchTrimmed.replace(/\D/g, "");
+      const searchConditions = [
+        { "name.first": searchRegex },
+        { "name.last": searchRegex },
+        {
           $expr: {
             $regexMatch: {
-              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              input: { $toLower: { $concat: [{ $ifNull: ["$name.first", ""] }, " ", { $ifNull: ["$name.last", ""] }] } },
               regex: searchLower,
-              options: "i"
-            }
-          }
+              options: "i",
+            },
+          },
         },
-        { username: { $regex: searchLower, $options: "i" } },
-        { patientId: { $regex: searchLower, $options: "i" } },
-        { mainComplaint: { $regex: searchLower, $options: "i" } }
+        { phone: searchRegex },
+        { govtId: searchDigitsOnly ? { $regex: searchDigitsOnly } : searchRegex },
+        { username: searchRegex },
+        { patientId: searchRegex },
+        { mainComplaint: searchRegex },
       ];
+      query.$and = [completedRegistrationFilter, { $or: searchConditions }];
+      delete query.$or;
     }
     
    
