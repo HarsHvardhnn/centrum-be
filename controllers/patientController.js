@@ -472,57 +472,88 @@ function deepParse(value) {
   return result;
 }
 
+function transformPatientDetails(info) {
+  if (!info) return null;
+  const parsedConsents =
+    info.consents?.length > 0 && typeof info.consents[0] === "string"
+      ? (() => {
+          try {
+            return JSON.parse(info.consents);
+          } catch (e) {
+            return info.consents || [];
+          }
+        })()
+      : info.consents || [];
+  return {
+    ...info,
+    consents: parsedConsents,
+    contactPerson1PhoneCode: info?.contactPerson1PhoneCode || "",
+    contactPerson1Phone: info?.contactPerson1Phone || "",
+    contactPerson1PhoneFull: info?.contactPerson1PhoneFull || "",
+    contactPerson1Relationship: info?.contactPerson1Relationship || "",
+    contactPerson2PhoneCode: info?.contactPerson2PhoneCode || "",
+    contactPerson2Phone: info?.contactPerson2Phone || "",
+    contactPerson2PhoneFull: info?.contactPerson2PhoneFull || "",
+    contactPerson2Relationship: info?.contactPerson2Relationship || "",
+    isWalkin: info?.isWalkin || false,
+    needsAttention: info?.needsAttention || false,
+    isBackdated: info?.isBackdated || false,
+    overrideConflicts: info?.overrideConflicts || false,
+    isEmergency: info?.isEmergency || false,
+  };
+}
+
 exports.getPatientById = async (req, res) => {
   try {
-    let info =null;
-    if(req.params.id.includes("P-")){
+    let info = null;
+    if (req.params.id.includes("P-")) {
       info = await patient.findOne({ patientId: req.params.id }).lean();
-    }else{
+    } else {
       info = await patient.findById(req.params.id).lean();
     }
 
-    
     if (!info) {
       return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
     delete info.password;
-
-    let parsedConsents = [];
-    console.log(info.consents);
-    // Parse deeply stringified consent data
-    if (info.consents.length >0 && info.consents && typeof info.consents[0]==='string') {
-   parsedConsents= JSON.parse(info?.consents);
-    }
-    else{
-      parsedConsents=info.consents;
-    }
-    // Transform documents
-
-
-    const transformedInfo = {
-      ...info,
-      consents: parsedConsents,
-      // Ensure new contact person fields are properly formatted
-      contactPerson1PhoneCode: info?.contactPerson1PhoneCode || "",
-      contactPerson1Phone: info?.contactPerson1Phone || "",
-      contactPerson1PhoneFull: info?.contactPerson1PhoneFull || "",
-      contactPerson1Relationship: info?.contactPerson1Relationship || "",
-      contactPerson2PhoneCode: info?.contactPerson2PhoneCode || "",
-      contactPerson2Phone: info?.contactPerson2Phone || "",
-      contactPerson2PhoneFull: info?.contactPerson2PhoneFull || "",
-      contactPerson2Relationship: info?.contactPerson2Relationship || "",
-      // New appointment-related fields with null checks
-      isWalkin: info?.isWalkin || false,
-      needsAttention: info?.needsAttention || false,
-      isBackdated: info?.isBackdated || false,
-      overrideConflicts: info?.overrideConflicts || false,
-      isEmergency: info?.isEmergency || false,
-    };
-
-    res.status(200).json(transformedInfo);
+    res.status(200).json(transformPatientDetails(info));
   } catch (error) {
     console.error("Error fetching patient:", error);
     res.status(500).json({ message: "Server error while fetching patient" });
+  }
+};
+
+/**
+ * Get full patient details by PESEL (11-digit Polish national ID).
+ * GET /patients/by-pesel/details?pesel=99010101234
+ */
+exports.getPatientDetailsByPesel = async (req, res) => {
+  try {
+    const rawPesel = req.query.pesel;
+    const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
+    if (!pesel || pesel.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj prawidłowy numer PESEL (11 cyfr).",
+      });
+    }
+    const info = await patient
+      .findOne({ govtId: pesel, deleted: { $ne: true } })
+      .lean();
+    if (!info) {
+      return res.status(404).json({
+        success: false,
+        message: "Pacjent o podanym numerze PESEL nie istnieje w systemie.",
+      });
+    }
+    delete info.password;
+    res.status(200).json(transformPatientDetails(info));
+  } catch (error) {
+    console.error("Error fetching patient by PESEL:", error);
+    res.status(500).json({
+      success: false,
+      message: "Błąd serwera podczas pobierania danych pacjenta.",
+    });
   }
 };
 
