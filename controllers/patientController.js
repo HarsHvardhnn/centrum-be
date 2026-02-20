@@ -386,16 +386,16 @@ exports.createPatient = async (req, res) => {
 
     console.log("Before saving - consents:", newPatient.consents);
     await newPatient.save();
-    
-    // Fetch the saved patient to verify the consents
-    const savedPatient = await patient.findById(newPatient._id);
-    console.log("After saving - consents:", savedPatient.consents);
 
-    await sendWelcomeEmail(newPatient,'polish');
-
+    // Send response immediately so client does not wait on email (which can timeout)
     res
       .status(201)
       .json({ message: "Pacjent został pomyślnie utworzony", patient: newPatient });
+
+    // Send welcome email in background; do not block the response
+    sendWelcomeEmail(newPatient, "polish").catch((err) =>
+      console.error("Welcome email failed (patient already created):", err)
+    );
   } catch (error) {
     console.error("Create patient error:", error);
     res.status(500).json({ error: "Błąd wewnętrzny serwera" });
