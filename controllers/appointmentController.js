@@ -1928,13 +1928,79 @@ exports.completeRegistration = async (req, res) => {
       });
     }
 
-    const isExistingFromBody = req.body.isExisting === true && req.body.patientId;
+    const isInternational = req.body.isInternationalPatient === true || String(req.body.isInternationalPatient || "").toLowerCase() === "true";
     let patientDoc = null;
     let isExisting = false;
     let peselWarning = null;
     let pesel = null;
 
-    if (isExistingFromBody && mongoose.Types.ObjectId.isValid(req.body.patientId)) {
+    if (isInternational) {
+      // International patient (no PESEL): require document fields, duplicate check by internationalPatientDocumentKey, create patient with documents
+      const firstName = req.body.firstName != null ? String(req.body.firstName).trim() : "";
+      const lastName = req.body.lastName != null ? String(req.body.lastName).trim() : "";
+      const dateOfBirthRaw = req.body.dateOfBirth;
+      const documentCountry = req.body.documentCountry != null ? String(req.body.documentCountry).trim() : "";
+      const documentType = req.body.documentType != null ? String(req.body.documentType).trim() : "";
+      const documentNumber = req.body.documentNumber != null ? String(req.body.documentNumber).trim() : "";
+      const docKeyRaw = req.body.internationalPatientDocumentKey != null ? String(req.body.internationalPatientDocumentKey).trim() : "";
+      if (!firstName || !lastName || !dateOfBirthRaw || !documentCountry || !documentType || !documentNumber || !docKeyRaw) {
+        return res.status(400).json({
+          success: false,
+          message: "W trybie międzynarodowym wymagane są: imię, nazwisko, data urodzenia, kraj dokumentu, typ dokumentu, numer dokumentu i klucz dokumentu (internationalPatientDocumentKey).",
+        });
+      }
+      const existingByDocKey = await patient.findOne({
+        internationalPatientDocumentKey: docKeyRaw,
+        deleted: { $ne: true },
+      });
+      if (existingByDocKey) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+          existingPatientId: existingByDocKey._id.toString(),
+        });
+      }
+      const documents = (req.files || []).map((file) => createStandardizedDocument(file, "medical_record"));
+      const phoneCodeReq = req.body.phoneCode && String(req.body.phoneCode).trim() ? String(req.body.phoneCode).trim() : "+48";
+      const phoneFull = req.body.phone && String(req.body.phone).trim()
+        ? String(req.body.phone).replace(/\D/g, "").replace(/^0+/, "").trim()
+        : (req.body.mobileNumber && String(req.body.mobileNumber).replace(/\D/g, "").replace(/^0+/, "").trim()) || "";
+      const phoneToSave = phoneFull || `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
+      const streetVal = (req.body.street != null && req.body.street !== "undefined") ? String(req.body.street).trim() : "";
+      const zipCodeVal = (req.body.zipCode != null && req.body.zipCode !== "undefined") ? String(req.body.zipCode).trim() : "";
+      const cityVal = (req.body.city != null && req.body.city !== "undefined") ? String(req.body.city).trim() : "";
+      const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const newInternationalPatient = new patient({
+        name: { first: firstName, last: lastName },
+        email: emailVal || undefined,
+        phone: phoneToSave,
+        phoneCode: phoneFull ? phoneCodeReq : "+48",
+        password: hashedPassword,
+        role: "patient",
+        signupMethod: "email",
+        govtId: undefined,
+        npesei: patient.generateNpesei(),
+        internationalPatientDocumentKey: docKeyRaw,
+        documentCountry,
+        documentType,
+        documentNumber,
+        patientId: `P-${Date.now()}`,
+        dateOfBirth: new Date(dateOfBirthRaw),
+        sex: req.body.sex || undefined,
+        smsConsentAgreed: !!req.body.smsConsentAgreed,
+        consents: Array.isArray(req.body.consents) ? req.body.consents : [],
+        address: streetVal || undefined,
+        pinCode: zipCodeVal || undefined,
+        city: cityVal || undefined,
+        isInternationalPatient: true,
+        documents,
+      });
+      const savedInternational = await newInternationalPatient.save();
+      patientDoc = await patient.findById(savedInternational._id).lean();
+      isExisting = false;
+    } else if (req.body.isExisting === true && req.body.patientId && mongoose.Types.ObjectId.isValid(req.body.patientId)) {
       patientDoc = await patient.findById(req.body.patientId).lean();
       if (!patientDoc || patientDoc.deleted) {
         return res.status(404).json({
@@ -1964,7 +2030,7 @@ exports.completeRegistration = async (req, res) => {
       isExisting = !!patientDoc;
     }
 
-    if (patientDoc) {
+    if (patientDoc && !isInternational) {
       const { firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex, street, zipCode, city } = req.body;
       const updates = {};
       if (firstName !== undefined || lastName !== undefined) {
@@ -1993,7 +2059,7 @@ exports.completeRegistration = async (req, res) => {
         await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
       }
       patientDoc = await patient.findById(patientDoc._id).lean();
-    } else {
+    } else if (!patientDoc) {
       const firstName = req.body.firstName || (req.body.name && String(req.body.name).trim().split(" ")[0]) || "Imię";
       const lastName = req.body.lastName || (req.body.name && String(req.body.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
       const phoneCodeReq = req.body.phoneCode && String(req.body.phoneCode).trim() ? String(req.body.phoneCode).trim() : "+48";
@@ -2041,7 +2107,7 @@ exports.completeRegistration = async (req, res) => {
     await appointment.save();
 
     const appointmentPopulated = await Appointment.findById(visitId)
-      .populate("patient", "name govtId patientId dateOfBirth phone phoneCode email sex address pinCode city")
+      .populate("patient", "name govtId npesei patientId dateOfBirth phone phoneCode email sex address pinCode city documentCountry documentType documentNumber internationalPatientDocumentKey documents")
       .populate("doctor", "name")
       .lean();
 
@@ -2066,13 +2132,18 @@ exports.completeRegistration = async (req, res) => {
         _id: patientDocRef._id,
         patientId: patientDocRef.patientId,
         name: patientDocRef.name,
-        govtId: patientDocRef.govtId,
+        govtId: patientDocRef.govtId || null,
         npesei: patientDocRef.npesei || null,
+        documentCountry: patientDocRef.documentCountry || null,
+        documentType: patientDocRef.documentType || null,
+        documentNumber: patientDocRef.documentNumber || null,
+        internationalPatientDocumentKey: patientDocRef.internationalPatientDocumentKey || null,
         phone: maskNoPhone(patientDocRef).phone,
         phoneCode: patientDocRef.phoneCode || "+48",
         street: patientDocRef.address || "",
         zipCode: patientDocRef.pinCode || "",
         city: patientDocRef.city || "",
+        ...(patientDocRef.documents && { documents: patientDocRef.documents }),
       },
       existing: isExisting,
       ...(peselWarning && { peselWarning }),
@@ -2101,6 +2172,13 @@ exports.completeRegistration = async (req, res) => {
         return res.status(409).json({
           success: false,
           message: "Pacjent z tym numerem PESEL już istnieje w systemie. Użyj „Załaduj dane istniejącego pacjenta”.",
+        });
+      }
+      const isDocKey = msg.includes("internationalpatientdocumentkey") || "internationalPatientDocumentKey" in kv;
+      if (isDocKey) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
         });
       }
       const field = Object.keys(kv)[0] || "pole";

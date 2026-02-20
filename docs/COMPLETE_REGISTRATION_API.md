@@ -1,15 +1,19 @@
-# Complete registration API – phone, address, existing patient
+# Complete registration API – phone, address, existing patient, international
 
 **Endpoint:** `POST /appointments/:visitId/complete-registration`  
-**Purpose:** Assign a visit to a patient by PESEL (create new patient or link to existing), or by existing patient ID. Supports phone fields, address fields (street, zip code, city), and linking an existing patient without PESEL.
+**Purpose:** Assign a visit to a patient by PESEL (create/link), by existing patient ID, or by **international patient (no PESEL)** using document identification. Supports file uploads (documents) like the Create Patient API.
+
+**Content-Type:** `application/json` (no files) or `multipart/form-data` with field name **`files`** (max 10 files) when uploading documents.
 
 ---
 
-## Two ways to complete registration
+## Three ways to complete registration
 
-1. **New or find-by-PESEL**  
+1. **International patient (no PESEL)**  
+   Send `isInternationalPatient: true` and **no** `pesel`. Required: `firstName`, `lastName`, `dateOfBirth`, `documentCountry`, `documentType`, `documentNumber`, `internationalPatientDocumentKey`. Backend creates patient with `npesei`, stores document key and document fields, saves uploaded files to `patient.documents`, and links the visit. If a patient with the same `internationalPatientDocumentKey` already exists → **409** with `existingPatientId`.
+2. **New or find-by-PESEL**  
    Send `pesel` (required) plus optional patient data. Backend finds patient by PESEL or creates a new one, then links the visit.
-2. **Existing patient by ID**  
+3. **Existing patient by ID**  
    Send `isExisting: true` and `patientId` (MongoDB `_id` of the patient). No PESEL required. Backend links the visit to that patient (404 if patient not found or deleted).
 
 ---
@@ -59,13 +63,30 @@ When using **PESEL path** (new or find-by-PESEL), send `pesel` plus any optional
 | `smsConsentAgreed` | bool | No   | SMS consent. |
 | `consents`     | array  | No       | Consent list. |
 
+### International patient only (when `isInternationalPatient: true`)
+
+| Field name | Type   | Required | Description |
+|------------|--------|----------|-------------|
+| `isInternationalPatient` | boolean | Yes | Must be `true` for this path. |
+| `firstName` | string | Yes | Patient first name. |
+| `lastName` | string | Yes | Patient last name. |
+| `dateOfBirth` | string | Yes | ISO or `YYYY-MM-DD`. |
+| `documentCountry` | string | Yes | Country of document issuance (e.g. "Germany"). |
+| `documentType` | string | Yes | One of: `"Passport"`, `"ID Card"`, `"Residence Card"`, `"Other"`. |
+| `documentNumber` | string | Yes | Document number. |
+| `internationalPatientDocumentKey` | string | Yes | Unique key for duplicate check. Format e.g. `"country|documentType|documentNumber"` (e.g. `"Germany|Passport|AB123456"`). |
+
+Optional for international: `phone`, `phoneCode`, `mobileNumber`, `email`, `sex`, `street`, `zipCode`, `city`, `smsConsentAgreed`, `consents`.
+
+**Document upload (international or PESEL new patient):** Send request as **`multipart/form-data`** with the same body fields and an additional field **`files`** (array of files). Files are saved to `patient.documents` (same structure as Create Patient API). Max 10 files.
+
 ---
 
 ## Response (200)
 
 - `success`, `message`, `appointment`, `patient`, `existing`, optional `peselWarning`.
-- **patient** object: `_id`, `patientId`, `name`, `govtId`, `phone`, `phoneCode`, **`street`**, **`zipCode`**, **`city`** (address fields returned with these names; stored in DB as `address`, `pinCode`, `city`).
-- `appointment.patient` is populated with patient fields including `address`, `pinCode`, `city` (DB names).
+- **patient** object: `_id`, `patientId`, `name`, `govtId` (null for international), `npesei`, `phone`, `phoneCode`, **`street`**, **`zipCode`**, **`city`**, and for international: **`documentCountry`**, **`documentType`**, **`documentNumber`**, **`internationalPatientDocumentKey`**, **`documents`** (when populated).
+- `appointment.patient` is populated with patient fields including address, document fields, and `documents` when present.
 - `patient.phone` is masked (empty string) when the patient has no real phone (placeholder used internally).
 - `patient.phoneCode` is returned (e.g. `"+48"`) when stored.
 

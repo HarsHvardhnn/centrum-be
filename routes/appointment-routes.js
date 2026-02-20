@@ -78,10 +78,11 @@ router.patch(
   appointmentController.rescheduleAppointment
 );
 
-// Complete registration: assign visit to patient by PESEL (create or link patient)
+// Complete registration: assign visit to patient (PESEL or international). Supports file uploads (documents) like create patient.
 router.post(
   "/:visitId/complete-registration",
   authorizeRoles(["doctor", "receptionist", "admin"]),
+  upload.array("files", 10),
   appointmentController.completeRegistration
 );
 
@@ -138,12 +139,7 @@ router.get(
   appointmentController.getAppointments
 );
 
-// Complete registration: assign visit to patient by PESEL (create or link patient). Body: pesel, phone, phoneCode, mobileNumber, ...
-router.post(
-  "/:visitId/complete-registration",
-  authorizeRoles(["doctor", "receptionist", "admin"]),
-  appointmentController.completeRegistration
-);
+// (Duplicate route removed – see above /:visitId/complete-registration with upload)
 
 // Upload a single report file to an appointment
 router.post(
