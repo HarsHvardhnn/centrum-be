@@ -1912,30 +1912,11 @@ const formatDateToYYYYMMDD = (date) => {
 /**
  * Complete registration: assign visit to patient by PESEL (create patient if new, link if existing).
  * POST /appointments/:visitId/complete-registration
- * Body: pesel (required), firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex, ...
- * Phone: accept phone (full e.g. +48123456789), or phoneCode + mobileNumber; when empty, omit all three.
+ * Body: either (pesel + optional patient data) or (isExisting: true + patientId) to link existing patient without PESEL.
  */
 exports.completeRegistration = async (req, res) => {
   try {
     const { visitId } = req.params;
-    const rawPesel = req.body.pesel;
-    const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
-    if (!pesel || pesel.length !== 11) {
-      return res.status(400).json({
-        success: false,
-        message: "Prawidłowy numer PESEL (11 cyfr) jest wymagany do zakończenia rejestracji.",
-      });
-    }
-
-    const validation = validatePesel(pesel);
-    const peselWarning = validation.warning || null;
-    if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        message: validation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
-      });
-    }
-
     const appointment = await Appointment.findById(visitId);
     if (!appointment) {
       return res.status(404).json({ success: false, message: "Wizyta nie znaleziona." });
@@ -1947,8 +1928,40 @@ exports.completeRegistration = async (req, res) => {
       });
     }
 
-    let patientDoc = await patient.findOne({ govtId: pesel, deleted: { $ne: true } });
-    const isExisting = !!patientDoc;
+    const isExistingFromBody = req.body.isExisting === true && req.body.patientId;
+    let patientDoc = null;
+    let isExisting = false;
+    let peselWarning = null;
+
+    if (isExistingFromBody && mongoose.Types.ObjectId.isValid(req.body.patientId)) {
+      patientDoc = await patient.findById(req.body.patientId).lean();
+      if (!patientDoc || patientDoc.deleted) {
+        return res.status(404).json({
+          success: false,
+          message: "Pacjent nie znaleziony.",
+        });
+      }
+      isExisting = true;
+    } else {
+      const rawPesel = req.body.pesel;
+      const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
+      if (!pesel || pesel.length !== 11) {
+        return res.status(400).json({
+          success: false,
+          message: "Prawidłowy numer PESEL (11 cyfr) jest wymagany do zakończenia rejestracji.",
+        });
+      }
+      const validation = validatePesel(pesel);
+      peselWarning = validation.warning || null;
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: validation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
+        });
+      }
+      patientDoc = await patient.findOne({ govtId: pesel, deleted: { $ne: true } });
+      isExisting = !!patientDoc;
+    }
 
     if (patientDoc) {
       const { firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex } = req.body;
