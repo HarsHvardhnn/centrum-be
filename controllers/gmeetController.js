@@ -537,6 +537,7 @@ exports.bookAppointment = async (req, res) => {
       patient: null,
       bookedBy: null,
       booking_source: "ONLINE",
+      registrationType: "online registration",
       date: appointmentDate,
       startTime: time,
       endTime: endTime,

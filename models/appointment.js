@@ -171,6 +171,11 @@ const appointmentSchema = new mongoose.Schema(
       enum: ["receptionist", "online", "doctor", "admin"],
       default: "online"
     },
+    registrationType: {
+      type: String,
+      enum: ["online registration", "receptionist registration", "admin registration", "offline registration"],
+      default: "online registration",
+    },
     checkedIn:{
       type:Boolean,
       default:false

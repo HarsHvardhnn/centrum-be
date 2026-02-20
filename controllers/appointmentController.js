@@ -1187,6 +1187,7 @@ exports.createAppointment = async (req, res) => {
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
+      registrationType: registrationTypeBody, // Optional: "online registration" | "receptionist registration" | "admin registration" | "offline registration"
     } = req.body;
 
     let name = `${firstName} ${lastName}`;
@@ -1394,12 +1395,16 @@ exports.createAppointment = async (req, res) => {
       createdBy = "doctor";
     }
 
-    // Create appointment with new fields (dashboard: always has patient, so booking_source RECEPTION)
+    const validRegistrationTypes = ["online registration", "receptionist registration", "admin registration", "offline registration"];
+    const registrationTypeResolved = registrationTypeBody && validRegistrationTypes.includes(registrationTypeBody)
+      ? registrationTypeBody
+      : (createdBy === "admin" ? "admin registration" : createdBy === "receptionist" ? "receptionist registration" : createdBy === "doctor" ? "offline registration" : "online registration");
     const appointment = new Appointment({
       doctor: doctorId,
       patient: patient._id,
       bookedBy: patient._id,
       booking_source: "RECEPTION",
+      registrationType: registrationTypeResolved,
       date: appointmentDate,
       startTime: time,
       endTime: endTime,
@@ -1645,12 +1650,12 @@ exports.createReceptionAppointment = async (req, res) => {
 
     let appointment;
     if (patient) {
-      // Follow-up: create visit linked to existing patient
       appointment = new Appointment({
         doctor: doctorId,
         patient: patient._id,
         bookedBy: patient._id,
         booking_source: "RECEPTION",
+        registrationType: "receptionist registration",
         date: appointmentDate,
         startTime: time,
         endTime: endTime,
@@ -1738,6 +1743,7 @@ exports.createReceptionAppointment = async (req, res) => {
         patient: null,
         bookedBy: null,
         booking_source: "RECEPTION",
+        registrationType: "receptionist registration",
         date: appointmentDate,
         startTime: time,
         endTime: endTime,
@@ -4086,6 +4092,7 @@ exports.getAppointments = async (req, res) => {
           patient_id: hasPatient ? patientData?._id : null,
           isVisitOnly: !hasPatient,
           ...(appointment.registrationData && { registrationData: appointment.registrationData }),
+          registrationType: appointment.registrationType || "online registration",
           doctor: appointment.doctorData
             ? {
                 id: appointment.doctorData._id,
@@ -4282,6 +4289,7 @@ exports.getAppointments = async (req, res) => {
           patient_id: isVisitOnly ? null : patientDoc?._id,
           isVisitOnly,
           ...(appointment.registrationData && { registrationData: appointment.registrationData }),
+          registrationType: appointment.registrationType || "online registration",
           doctor: appointment.doctor
             ? {
                 id: appointment.doctor._id,
@@ -4348,6 +4356,7 @@ exports.getAppointments = async (req, res) => {
                 email: patient.email,
               },
               doctor: null,
+              registrationType: null,
               metadata: {},
             };
           }),
