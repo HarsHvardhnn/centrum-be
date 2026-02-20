@@ -1905,8 +1905,9 @@ const formatDateToYYYYMMDD = (date) => {
 
 /**
  * Complete registration: assign visit to patient by PESEL (create patient if new, link if existing).
- * POST /api/appointments/:visitId/complete-registration
- * Body: pesel (required), firstName, lastName, dateOfBirth, phone, email, sex, ...
+ * POST /appointments/:visitId/complete-registration
+ * Body: pesel (required), firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex, ...
+ * Phone: accept phone (full e.g. +48123456789), or phoneCode + mobileNumber; when empty, omit all three.
  */
 exports.completeRegistration = async (req, res) => {
   try {
@@ -1922,10 +1923,10 @@ exports.completeRegistration = async (req, res) => {
 
     const validation = validatePesel(pesel);
     const peselWarning = validation.warning || null;
-    if (!validation.valid && !validation.warning) {
+    if (!validation.valid) {
       return res.status(400).json({
         success: false,
-        message: validation.warning || "Nieprawidłowy format PESEL.",
+        message: validation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
       });
     }
 
@@ -1940,11 +1941,11 @@ exports.completeRegistration = async (req, res) => {
       });
     }
 
-    let patientDoc = await patient.findOne({ govtId: pesel });
+    let patientDoc = await patient.findOne({ govtId: pesel, deleted: { $ne: true } });
     const isExisting = !!patientDoc;
 
     if (patientDoc) {
-      const { firstName, lastName, dateOfBirth, phone, email, sex } = req.body;
+      const { firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex } = req.body;
       const updates = {};
       if (firstName !== undefined || lastName !== undefined) {
         updates.name = {
@@ -1953,26 +1954,37 @@ exports.completeRegistration = async (req, res) => {
         };
       }
       if (dateOfBirth !== undefined) updates.dateOfBirth = new Date(dateOfBirth);
-      if (phone !== undefined) updates.phone = String(phone).replace(/^0+/, "").trim();
       if (email !== undefined) updates.email = email && email !== "undefined" ? String(email).trim() : "";
       if (sex !== undefined) updates.sex = sex;
+      if (phone !== undefined || mobileNumber !== undefined || phoneCode !== undefined) {
+        const code = (phoneCode && String(phoneCode).trim()) || "+48";
+        const fullNum = phone && String(phone).trim()
+          ? String(phone).replace(/\D/g, "").replace(/^0+/, "")
+          : (mobileNumber && String(mobileNumber).replace(/\D/g, "").replace(/^0+/, "")) || "";
+        updates.phone = fullNum || patientDoc.phone || "";
+        updates.phoneCode = code;
+      }
       if (Object.keys(updates).length > 0) {
         await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
-        patientDoc = await patient.findById(patientDoc._id).lean();
       }
     } else {
       const firstName = req.body.firstName || (req.body.name && String(req.body.name).trim().split(" ")[0]) || "Imię";
       const lastName = req.body.lastName || (req.body.name && String(req.body.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
-      // Per spec: phone optional. When empty, use a unique placeholder to avoid E11000 if DB has unique index on phone.
-      const phoneVal = req.body.phone ? String(req.body.phone).replace(/^0+/, "").trim() : "";
-      const phoneToSave = phoneVal || `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      const phoneCodeReq = req.body.phoneCode && String(req.body.phoneCode).trim() ? String(req.body.phoneCode).trim() : "+48";
+      const phoneFull = req.body.phone && String(req.body.phone).trim()
+        ? String(req.body.phone).replace(/\D/g, "").replace(/^0+/, "").trim()
+        : (req.body.mobileNumber && String(req.body.mobileNumber).replace(/\D/g, "").replace(/^0+/, "").trim()) || "";
+      const phoneToSave = phoneFull
+        ? phoneFull
+        : `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
       const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
       const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
-      const newPatient = new user({
+      const newPatient = new patient({
         name: { first: firstName, last: lastName },
         email: emailVal || undefined,
         phone: phoneToSave,
+        phoneCode: phoneFull ? phoneCodeReq : "+48",
         password: hashedPassword,
         role: "patient",
         signupMethod: "email",
@@ -1983,15 +1995,17 @@ exports.completeRegistration = async (req, res) => {
         smsConsentAgreed: !!req.body.smsConsentAgreed,
         consents: Array.isArray(req.body.consents) ? req.body.consents : [],
       });
-      patientDoc = await newPatient.save();
+      const saved = await newPatient.save();
+      patientDoc = await patient.findById(saved._id).lean();
     }
 
-    appointment.patient = patientDoc._id;
-    appointment.bookedBy = patientDoc._id;
+    const patientDocRef = patientDoc && typeof patientDoc.toObject === "function" ? patientDoc.toObject() : patientDoc;
+    appointment.patient = patientDocRef._id;
+    appointment.bookedBy = patientDocRef._id;
     await appointment.save();
 
     const appointmentPopulated = await Appointment.findById(visitId)
-      .populate("patient", "name govtId patientId dateOfBirth phone email sex")
+      .populate("patient", "name govtId patientId dateOfBirth phone phoneCode email sex")
       .populate("doctor", "name")
       .lean();
 
@@ -2005,7 +2019,6 @@ exports.completeRegistration = async (req, res) => {
     if (appointmentPopulated?.patient) {
       appointmentPopulated.patient = maskNoPhone(appointmentPopulated.patient);
     }
-    const patientForResponse = maskNoPhone(patientDoc);
 
     return res.status(200).json({
       success: true,
@@ -2014,10 +2027,12 @@ exports.completeRegistration = async (req, res) => {
         : "Rejestracja zakończona. Utworzono nowego pacjenta i przypisano wizytę.",
       appointment: appointmentPopulated,
       patient: {
-        _id: patientForResponse._id,
-        patientId: patientForResponse.patientId,
-        name: patientForResponse.name,
-        govtId: patientForResponse.govtId,
+        _id: patientDocRef._id,
+        patientId: patientDocRef.patientId,
+        name: patientDocRef.name,
+        govtId: patientDocRef.govtId,
+        phone: maskNoPhone(patientDocRef).phone,
+        phoneCode: patientDocRef.phoneCode || "+48",
       },
       existing: isExisting,
       ...(peselWarning && { peselWarning }),
@@ -4157,10 +4172,11 @@ exports.getAppointments = async (req, res) => {
         status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
       : {})
       
-      // Build appointment query with all filters (but without search term for now)
+      // Build appointment query with all filters. When isClinicIp is NOT true, return ONLY appointments that have a patient.
       let appointmentQuery;
       try {
         appointmentQuery = {
+        patient: { $exists: true, $ne: null },
         ...(doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {}),
         ...(appointmentId ? { _id: new mongoose.Types.ObjectId(appointmentId) } : {}),
         ...(status && status !== "all" && status !== "no_appointment" ? 
@@ -4200,7 +4216,7 @@ exports.getAppointments = async (req, res) => {
 
       console.log("appointment query", appointmentQuery);
 
-      // Get all appointments (including visit-only: do not filter by patient)
+      // Non-clinic: only appointments with a patient (no visit-only)
       const allAppointments = await Appointment.find(appointmentQuery)
         .populate("doctor", "name email")
         .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture")

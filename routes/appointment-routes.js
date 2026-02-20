@@ -138,6 +138,13 @@ router.get(
   appointmentController.getAppointments
 );
 
+// Complete registration: assign visit to patient by PESEL (create or link patient). Body: pesel, phone, phoneCode, mobileNumber, ...
+router.post(
+  "/:visitId/complete-registration",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.completeRegistration
+);
+
 // Upload a single report file to an appointment
 router.post(
   "/rep/:id/upload-report",
