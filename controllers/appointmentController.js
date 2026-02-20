@@ -1964,7 +1964,7 @@ exports.completeRegistration = async (req, res) => {
     }
 
     if (patientDoc) {
-      const { firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex } = req.body;
+      const { firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex, street, zipCode, city } = req.body;
       const updates = {};
       if (firstName !== undefined || lastName !== undefined) {
         updates.name = {
@@ -1983,6 +1983,9 @@ exports.completeRegistration = async (req, res) => {
         updates.phone = fullNum || patientDoc.phone || "";
         updates.phoneCode = code;
       }
+      if (street !== undefined && street !== "undefined") updates.address = String(street).trim();
+      if (zipCode !== undefined && zipCode !== "undefined") updates.pinCode = String(zipCode).trim();
+      if (city !== undefined && city !== "undefined") updates.city = String(city).trim();
       if (Object.keys(updates).length > 0) {
         await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
       }
@@ -1998,6 +2001,9 @@ exports.completeRegistration = async (req, res) => {
         ? phoneFull
         : `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
       const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
+      const streetVal = (req.body.street != null && req.body.street !== "undefined") ? String(req.body.street).trim() : "";
+      const zipCodeVal = (req.body.zipCode != null && req.body.zipCode !== "undefined") ? String(req.body.zipCode).trim() : "";
+      const cityVal = (req.body.city != null && req.body.city !== "undefined") ? String(req.body.city).trim() : "";
       const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
       const newPatient = new patient({
@@ -2014,6 +2020,9 @@ exports.completeRegistration = async (req, res) => {
         sex: req.body.sex || undefined,
         smsConsentAgreed: !!req.body.smsConsentAgreed,
         consents: Array.isArray(req.body.consents) ? req.body.consents : [],
+        address: streetVal || undefined,
+        pinCode: zipCodeVal || undefined,
+        city: cityVal || undefined,
       });
       const saved = await newPatient.save();
       patientDoc = await patient.findById(saved._id).lean();
@@ -2026,7 +2035,7 @@ exports.completeRegistration = async (req, res) => {
     await appointment.save();
 
     const appointmentPopulated = await Appointment.findById(visitId)
-      .populate("patient", "name govtId patientId dateOfBirth phone phoneCode email sex")
+      .populate("patient", "name govtId patientId dateOfBirth phone phoneCode email sex address pinCode city")
       .populate("doctor", "name")
       .lean();
 
@@ -2054,6 +2063,9 @@ exports.completeRegistration = async (req, res) => {
         govtId: patientDocRef.govtId,
         phone: maskNoPhone(patientDocRef).phone,
         phoneCode: patientDocRef.phoneCode || "+48",
+        street: patientDocRef.address || "",
+        zipCode: patientDocRef.pinCode || "",
+        city: patientDocRef.city || "",
       },
       existing: isExisting,
       ...(peselWarning && { peselWarning }),
