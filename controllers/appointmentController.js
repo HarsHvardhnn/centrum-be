@@ -1967,6 +1967,7 @@ exports.completeRegistration = async (req, res) => {
       if (Object.keys(updates).length > 0) {
         await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
       }
+      patientDoc = await patient.findById(patientDoc._id).lean();
     } else {
       const firstName = req.body.firstName || (req.body.name && String(req.body.name).trim().split(" ")[0]) || "Imię";
       const lastName = req.body.lastName || (req.body.name && String(req.body.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
@@ -2000,6 +2001,7 @@ exports.completeRegistration = async (req, res) => {
     }
 
     const patientDocRef = patientDoc && typeof patientDoc.toObject === "function" ? patientDoc.toObject() : patientDoc;
+    // Link visit to patient: existing (isExisting) or newly created
     appointment.patient = patientDocRef._id;
     appointment.bookedBy = patientDocRef._id;
     await appointment.save();

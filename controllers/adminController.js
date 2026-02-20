@@ -106,8 +106,9 @@ exports.getAllNonAdminUsers = async (req, res) => {
 
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase().trim();
+      const searchDigitsOnly = searchTerm.replace(/\D/g, "");
       query.$or = [
-        { 
+        {
           $expr: {
             $regexMatch: {
               input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
@@ -117,7 +118,9 @@ exports.getAllNonAdminUsers = async (req, res) => {
           }
         },
         { email: { $regex: searchLower, $options: "i" } },
-        { phone: { $regex: searchLower, $options: "i" } }
+        { phone: { $regex: searchTerm.trim(), $options: "i" } },
+        ...(searchDigitsOnly ? [{ govtId: { $regex: searchDigitsOnly, $options: "i" } }] : []),
+        { patientId: { $regex: searchLower, $options: "i" } }
       ];
     }
 
