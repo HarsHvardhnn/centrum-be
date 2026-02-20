@@ -81,6 +81,8 @@ const patientSchema = new mongoose.Schema({
 
   // IDs and references (PESEL = govtId is unique per patient per spec)
   govtId: { type: String, sparse: true, unique: true },
+  // Non-PESEL: unique ID for international patients (no PESEL); null for others; unique when set (sparse)
+  npesei: { type: String, sparse: true, unique: true },
   otherHospitalIds: String,
 
   // Medical info
@@ -208,6 +210,12 @@ const patientSchema = new mongoose.Schema({
     }
   ],
 });
+
+// Generate unique npesei for international patients (no PESEL). Call when isInternationalPatient is true.
+const crypto = require("crypto");
+patientSchema.statics.generateNpesei = function () {
+  return "NP-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
+};
 
 // Pre-save hook: phone cleaning only (username is created only when patient requests portal, per spec)
 patientSchema.pre("save", function (next) {

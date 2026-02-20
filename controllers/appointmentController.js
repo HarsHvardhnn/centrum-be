@@ -1987,6 +1987,8 @@ exports.completeRegistration = async (req, res) => {
       if (street !== undefined && street !== "undefined") updates.address = String(street).trim();
       if (zipCode !== undefined && zipCode !== "undefined") updates.pinCode = String(zipCode).trim();
       if (city !== undefined && city !== "undefined") updates.city = String(city).trim();
+      if (req.body.isInternationalPatient === true && !patientDoc.npesei) updates.npesei = patient.generateNpesei();
+      if (req.body.isInternationalPatient !== undefined) updates.isInternationalPatient = !!req.body.isInternationalPatient;
       if (Object.keys(updates).length > 0) {
         await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
       }
@@ -2005,6 +2007,7 @@ exports.completeRegistration = async (req, res) => {
       const streetVal = (req.body.street != null && req.body.street !== "undefined") ? String(req.body.street).trim() : "";
       const zipCodeVal = (req.body.zipCode != null && req.body.zipCode !== "undefined") ? String(req.body.zipCode).trim() : "";
       const cityVal = (req.body.city != null && req.body.city !== "undefined") ? String(req.body.city).trim() : "";
+      const isInternationalPatient = !!req.body.isInternationalPatient;
       const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
       const newPatient = new patient({
@@ -2016,6 +2019,7 @@ exports.completeRegistration = async (req, res) => {
         role: "patient",
         signupMethod: "email",
         govtId: pesel,
+        npesei: isInternationalPatient ? patient.generateNpesei() : null,
         patientId: `P-${Date.now()}`,
         dateOfBirth: req.body.dateOfBirth ? new Date(req.body.dateOfBirth) : undefined,
         sex: req.body.sex || undefined,
@@ -2024,6 +2028,7 @@ exports.completeRegistration = async (req, res) => {
         address: streetVal || undefined,
         pinCode: zipCodeVal || undefined,
         city: cityVal || undefined,
+        isInternationalPatient: isInternationalPatient || undefined,
       });
       const saved = await newPatient.save();
       patientDoc = await patient.findById(saved._id).lean();
@@ -2062,6 +2067,7 @@ exports.completeRegistration = async (req, res) => {
         patientId: patientDocRef.patientId,
         name: patientDocRef.name,
         govtId: patientDocRef.govtId,
+        npesei: patientDocRef.npesei || null,
         phone: maskNoPhone(patientDocRef).phone,
         phoneCode: patientDocRef.phoneCode || "+48",
         street: patientDocRef.address || "",

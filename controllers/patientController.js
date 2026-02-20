@@ -325,6 +325,7 @@ exports.createPatient = async (req, res) => {
       consultingSpecialization: new mongoose.Types.ObjectId(consultingSpecialization),
       alternateContact,
       govtId: pesel,
+      npesei: !!isInternationalPatient ? patient.generateNpesei() : null,
       isInternationalPatient:!!isInternationalPatient,
       ivrLanguage,
       mainComplaint,
@@ -1023,6 +1024,7 @@ exports.getPatientDetails = async (req, res) => {
       nationality: patient.nationality || "",
       preferredLanguage: patient.preferredLanguage || "",
       govtId: patient?.govtId || "",
+      npesei: patient?.npesei || null,
       // Additional contact person fields
       contactPerson1Name: patient?.contactPerson1Name || "",
       contactPerson1PhonePrefix: patient?.contactPerson1PhonePrefix || "",
@@ -1509,6 +1511,7 @@ exports.updatePatient = async (req, res) => {
       ...(alternateContact !== undefined && alternateContact !== "undefined" && { alternateContact }),
       ...(govtId !== undefined && govtId !== "undefined" && { govtId }),
       ...(isInternationalPatient !== undefined && isInternationalPatient !== "undefined" && { isInternationalPatient }),
+      ...(isInternationalPatient === true && !existingPatient.npesei ? { npesei: patient.generateNpesei() } : {}),
       ...(ivrLanguage !== undefined && ivrLanguage !== "undefined" && { ivrLanguage }),
       ...(mainComplaint !== undefined && mainComplaint !== "undefined" && { mainComplaint }),
       ...(reviewNotes !== undefined && reviewNotes !== "undefined" && { reviewNotes }),
