@@ -136,6 +136,7 @@ exports.createPatient = async (req, res) => {
       alternateContact,
       govtId,
       isInternationalPatient,
+      internationalPatientDocumentKey,
       ivrLanguage,
       mainComplaint,
       reviewNotes,
@@ -178,6 +179,23 @@ exports.createPatient = async (req, res) => {
     } = req.body;
 
     // console.log("req.body is ",dateOfBirth)
+    // International patient document key: must be unique; check before any other processing
+    if (!!isInternationalPatient && internationalPatientDocumentKey) {
+      const keyTrimmed = String(internationalPatientDocumentKey).trim();
+      if (keyTrimmed) {
+        const existingByDocKey = await patient.findOne({
+          internationalPatientDocumentKey: keyTrimmed,
+          deleted: { $ne: true },
+        });
+        if (existingByDocKey) {
+          return res.status(409).json({
+            message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+            patient: existingByDocKey,
+          });
+        }
+      }
+    }
+
     // Handle phone number - use phone field if provided, otherwise fallback to mobileNumber
     let phoneNumber = phone || req.body.mobileNumber || '';
     
@@ -326,7 +344,8 @@ exports.createPatient = async (req, res) => {
       alternateContact,
       govtId: pesel,
       npesei: !!isInternationalPatient ? patient.generateNpesei() : null,
-      isInternationalPatient:!!isInternationalPatient,
+      isInternationalPatient: !!isInternationalPatient,
+      internationalPatientDocumentKey: (!!isInternationalPatient && internationalPatientDocumentKey && String(internationalPatientDocumentKey).trim()) || null,
       ivrLanguage,
       mainComplaint,
       reviewNotes,

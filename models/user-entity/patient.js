@@ -87,6 +87,8 @@ const patientSchema = new mongoose.Schema({
 
   // Medical info
   isInternationalPatient: Boolean,
+  /** Unique document key for international patients; required when isInternationalPatient is true. Unique when set (sparse). */
+  internationalPatientDocumentKey: { type: String, sparse: true, unique: true },
   ivrLanguage: String,
   mainComplaint: String,
   reviewNotes: String,
