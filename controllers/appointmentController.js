@@ -1932,6 +1932,7 @@ exports.completeRegistration = async (req, res) => {
     let patientDoc = null;
     let isExisting = false;
     let peselWarning = null;
+    let pesel = null;
 
     if (isExistingFromBody && mongoose.Types.ObjectId.isValid(req.body.patientId)) {
       patientDoc = await patient.findById(req.body.patientId).lean();
@@ -1944,7 +1945,7 @@ exports.completeRegistration = async (req, res) => {
       isExisting = true;
     } else {
       const rawPesel = req.body.pesel;
-      const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
+      pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
       if (!pesel || pesel.length !== 11) {
         return res.status(400).json({
           success: false,
