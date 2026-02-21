@@ -1,5 +1,6 @@
 const User = require("../models/user-entity/user");
 const Appointment = require("../models/appointment");
+const patient = require("../models/user-entity/patient");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
 const sendEmail = require("../utils/mailer");
@@ -381,6 +382,11 @@ exports.bookAppointment = async (req, res) => {
       address,
       dateOfBirth,
       govtId,
+      isInternationalPatient,
+      documentCountry,
+      documentType,
+      documentNumber,
+      internationalPatientDocumentKey,
       phone,
       smsConsentAgreed,
       consultationType,
@@ -519,6 +525,10 @@ exports.bookAppointment = async (req, res) => {
     }
 
     const allConsents = [smsConsent, privacyPolicyConsent, ...additionalConsents];
+    const isInternational = isInternationalPatient === true || String(isInternationalPatient || "").toLowerCase() === "true";
+
+    // Resolve patient: link to existing by PESEL when govtId provided and not international; otherwise visit-only (no PATIENT_ID)
+    let linkedPatientId = null;
     const registrationData = {
       name: name.trim(),
       firstName,
@@ -532,10 +542,28 @@ exports.bookAppointment = async (req, res) => {
       consents: allConsents,
     };
 
+    if (govtId && !isInternational) {
+      const pesel = String(govtId).replace(/\D/g, "");
+      if (pesel.length === 11) {
+        const existingPatient = await patient.findOne({ govtId: pesel, deleted: { $ne: true } });
+        if (existingPatient) {
+          linkedPatientId = existingPatient._id;
+        } else {
+          registrationData.pendingPesel = pesel;
+        }
+      }
+    } else if (isInternational) {
+      registrationData.isInternationalPatient = true;
+      if (documentCountry != null) registrationData.documentCountry = String(documentCountry).trim();
+      if (documentType != null) registrationData.documentType = String(documentType).trim();
+      if (documentNumber != null) registrationData.documentNumber = String(documentNumber).trim();
+      if (internationalPatientDocumentKey != null) registrationData.internationalPatientDocumentKey = String(internationalPatientDocumentKey).trim();
+    }
+
     const appointment = new Appointment({
       doctor: doctorId,
-      patient: null,
-      bookedBy: null,
+      patient: linkedPatientId,
+      bookedBy: linkedPatientId,
       booking_source: "ONLINE",
       registrationType: "online registration",
       date: appointmentDate,
@@ -545,6 +573,10 @@ exports.bookAppointment = async (req, res) => {
       mode: consultationType.toLowerCase(),
       notes: message || "",
       registrationData,
+      metadata: {
+        ...(linkedPatientId ? {} : { toBeCompleted: true }),
+        ...(isInternational ? { isInternational: true } : {}),
+      },
     });
 
     await appointment.save();

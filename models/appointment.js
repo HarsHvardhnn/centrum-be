@@ -214,6 +214,7 @@ const appointmentSchema = new mongoose.Schema(
     metadata: {
       visitType: String,
       isInternational: Boolean,
+      toBeCompleted: Boolean, // true when online booking created visit only (no patient linked); complete at reception
       isWalkin: Boolean,
       needsAttention: Boolean,
       enableRepeats: Boolean,
