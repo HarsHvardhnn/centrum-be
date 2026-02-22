@@ -1944,7 +1944,8 @@ exports.getAppointmentsList = async (req, res) => {
         patient_id: appointment.patient?._id,
         mode: appointment.mode || "offline",
         startTime: appointment.startTime,
-        endTime: appointment.endTime
+        endTime: appointment.endTime,
+        tempPesel: appointment.tempPesel || null
       };
     });
 
