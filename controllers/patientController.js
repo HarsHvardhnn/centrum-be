@@ -737,7 +737,8 @@ exports.getPatientsList = async (req, res) => {
         disease: patient.mainComplaint || "Nieokreślony",
         status: patient.status || "w trakcie leczenia",
         doctor: doctorName,
-        _id: patient._id 
+        _id: patient._id,
+        isInternational: !!patient.isInternationalPatient
       };
     });
 
@@ -1945,7 +1946,8 @@ exports.getAppointmentsList = async (req, res) => {
         mode: appointment.mode || "offline",
         startTime: appointment.startTime,
         endTime: appointment.endTime,
-        tempPesel: appointment.tempPesel || null
+        tempPesel: appointment.tempPesel || null,
+        isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient)
       };
     });
 

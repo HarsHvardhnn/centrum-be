@@ -4133,6 +4133,9 @@ exports.getAppointments = async (req, res) => {
               { "patientData.email": searchRegex },
               { "patientData.phone": searchRegex },
               { "patientData.patientId": searchRegex },
+              { "patientData.govtId": searchRegex },
+              { tempPesel: searchRegex },
+              { "registrationData.pendingPesel": searchRegex },
               { notes: searchRegex },
               { "consultation.consultationNotes": searchRegex },
               { "consultation.description": searchRegex },
@@ -4211,6 +4214,7 @@ exports.getAppointments = async (req, res) => {
               }
             : null,
           metadata: appointment.metadata || {},
+          isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
         };
       });
 
@@ -4265,7 +4269,7 @@ exports.getAppointments = async (req, res) => {
           ...patientQuery,
         })
         .select(
-          "name email profilePicture sex dateOfBirth patientId status phone consultingDoctor"
+          "name email profilePicture sex dateOfBirth patientId status phone consultingDoctor govtId"
         )
         .sort({ "name.first": 1 })
         .lean();
@@ -4282,7 +4286,8 @@ exports.getAppointments = async (req, res) => {
             fullName.includes(searchLower) ||
             (patient.email && patient.email.toLowerCase().includes(searchLower)) ||
             (patient.phone && patient.phone.includes(searchTerm)) ||
-            (patient.patientId && patient.patientId.toLowerCase().includes(searchLower))
+            (patient.patientId && patient.patientId.toLowerCase().includes(searchLower)) ||
+            (patient.govtId && patient.govtId.includes(searchTerm))
           );
         });
       }
@@ -4291,11 +4296,10 @@ exports.getAppointments = async (req, res) => {
         status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
       : {})
       
-      // Build appointment query with all filters. When isClinicIp is NOT true, return ONLY appointments that have a patient.
+      // Build appointment query with all filters. Include visit-only (patient null) for both isClinicIp true and false.
       let appointmentQuery;
       try {
         appointmentQuery = {
-        patient: { $exists: true, $ne: null },
         ...(doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {}),
         ...(appointmentId ? { _id: new mongoose.Types.ObjectId(appointmentId) } : {}),
         ...(status && status !== "all" && status !== "no_appointment" ? 
@@ -4335,10 +4339,10 @@ exports.getAppointments = async (req, res) => {
 
       console.log("appointment query", appointmentQuery);
 
-      // Non-clinic: only appointments with a patient (no visit-only)
+      // Non-clinic: include all appointments (with patient and visit-only)
       const allAppointments = await Appointment.find(appointmentQuery)
         .populate("doctor", "name email")
-        .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture")
+        .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture govtId")
         .sort({ date: 1 }) // Sort by date in ascending order
         .lean();
 
@@ -4395,9 +4399,11 @@ exports.getAppointments = async (req, res) => {
                 phoneNumber: patientDoc?.phone,
                 profilePicture: patientDoc?.profilePicture || null,
                 email: patientDoc?.email,
+                govtId: patientDoc?.govtId || null,
               },
           patient_id: isVisitOnly ? null : patientDoc?._id,
           isVisitOnly,
+          tempPesel: appointment.tempPesel || null,
           ...(appointment.registrationData && { registrationData: appointment.registrationData }),
           registrationType: appointment.registrationType || "online registration",
           doctor: appointment.doctor
@@ -4408,6 +4414,7 @@ exports.getAppointments = async (req, res) => {
               }
             : null,
           metadata: appointment.metadata || {},
+          isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
         });
       });
 
@@ -4421,7 +4428,8 @@ exports.getAppointments = async (req, res) => {
             const email = (row.patient.email || "").toLowerCase();
             const phone = String(row.patient.phoneNumber || row.patient.phone || "");
             const patientId = (row.patient.patientId || "").toLowerCase();
-            return name.includes(searchLower) || email.includes(searchLower) || phone.includes(searchTerm) || patientId.includes(searchLower);
+            const govtId = String(row.patient.govtId || "");
+            return name.includes(searchLower) || email.includes(searchLower) || phone.includes(searchTerm) || patientId.includes(searchLower) || govtId.includes(searchTerm);
           }
           if (row.registrationData) {
             const rd = row.registrationData;
@@ -4430,8 +4438,11 @@ exports.getAppointments = async (req, res) => {
             const name = (rd.name || "").toLowerCase();
             const phone = String(rd.phone || "");
             const email = (rd.email || "").toLowerCase();
-            return firstName.includes(searchLower) || lastName.includes(searchLower) || name.includes(searchLower) || phone.includes(searchTerm) || email.includes(searchLower);
+            const pendingPesel = String(rd.pendingPesel || "");
+            const matchReg = firstName.includes(searchLower) || lastName.includes(searchLower) || name.includes(searchLower) || phone.includes(searchTerm) || email.includes(searchLower) || pendingPesel.includes(searchTerm);
+            if (matchReg) return true;
           }
+          if (row.tempPesel && String(row.tempPesel).includes(searchTerm)) return true;
           return false;
         });
       }
