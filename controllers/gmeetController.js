@@ -542,6 +542,7 @@ exports.bookAppointment = async (req, res) => {
       consents: allConsents,
     };
 
+    let tempPesel = null;
     if (govtId && !isInternational) {
       const pesel = String(govtId).replace(/\D/g, "");
       if (pesel.length === 11) {
@@ -549,6 +550,7 @@ exports.bookAppointment = async (req, res) => {
         if (existingPatient) {
           linkedPatientId = existingPatient._id;
         } else {
+          tempPesel = pesel;
           registrationData.pendingPesel = pesel;
         }
       }
@@ -573,6 +575,7 @@ exports.bookAppointment = async (req, res) => {
       mode: consultationType.toLowerCase(),
       notes: message || "",
       registrationData,
+      tempPesel: tempPesel,
       metadata: {
         ...(linkedPatientId ? {} : { toBeCompleted: true }),
         ...(isInternational ? { isInternational: true } : {}),

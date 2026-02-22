@@ -211,6 +211,8 @@ const appointmentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    // PESEL entered during online booking but patient not yet created; used for complete-registration flow
+    tempPesel: { type: String, default: null },
     metadata: {
       visitType: String,
       isInternational: Boolean,
