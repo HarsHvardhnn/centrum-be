@@ -343,7 +343,7 @@ exports.createPatient = async (req, res) => {
       consultingSpecialization: new mongoose.Types.ObjectId(consultingSpecialization),
       alternateContact,
       govtId: pesel,
-      npesei: !!isInternationalPatient ? patient.generateNpesei() : null,
+      ...(!!isInternationalPatient ? { npesei: patient.generateNpesei() } : {}),
       isInternationalPatient: !!isInternationalPatient,
       internationalPatientDocumentKey: (!!isInternationalPatient && internationalPatientDocumentKey && String(internationalPatientDocumentKey).trim()) || null,
       ivrLanguage,

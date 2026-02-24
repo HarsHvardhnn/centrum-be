@@ -2095,7 +2095,7 @@ exports.completeRegistration = async (req, res) => {
         role: "patient",
         signupMethod: "email",
         govtId: pesel,
-        npesei: isInternationalPatient ? patient.generateNpesei() : null,
+        ...(isInternationalPatient ? { npesei: patient.generateNpesei() } : {}),
         patientId: `P-${Date.now()}`,
         dateOfBirth: req.body.dateOfBirth ? new Date(req.body.dateOfBirth) : undefined,
         sex: req.body.sex || undefined,

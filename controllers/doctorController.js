@@ -161,6 +161,7 @@ const addDoctor = async (req, res) => {
     const doctorFields = {
       d_id: `dr-${Date.now()}`, // Generate unique ID
       slug: slug, // Add generated slug
+      order: doctorData.order != null ? Number(doctorData.order) : null,
       specialization: doctorData.specialization || [],
       qualifications: doctorData.qualifications || [],
       experience: doctorData.experience || 0,
@@ -225,8 +226,8 @@ const addDoctor = async (req, res) => {
       specializations: newDoctor.specialization,
       bio: newDoctor.bio,
       consultationFee: newDoctor.consultationFee,
-      offlineConsultationFee: newDoctor.offlineConsultationFee
-      // Removed weeklyShifts as it's no longer part of the doctor model
+      offlineConsultationFee: newDoctor.offlineConsultationFee,
+      order: newDoctor.order != null ? newDoctor.order : null,
     };
 
     res.status(201).json({
@@ -1595,8 +1596,8 @@ const updateDoctor = async (req, res) => {
       'onlineConsultationFee',
       'offlineConsultationFee',
       'singleSessionMode',
-      'shortDescription'
-      // Removed weeklyShifts and offSchedule - now handled by separate schedule models
+      'shortDescription',
+      'order',
     ];
 
     // Filter out fields that are not allowed to be updated
@@ -1606,6 +1607,11 @@ const updateDoctor = async (req, res) => {
         obj[key] = updateData[key];
         return obj;
       }, {});
+
+    // Coerce order to number or null when updating
+    if (updateData.order !== undefined) {
+      filteredUpdates.order = updateData.order === null || updateData.order === "" ? null : Number(updateData.order);
+    }
 
     // Only add profilePicture to updates if a new file was uploaded
     if (req.file?.path) {
@@ -1645,8 +1651,8 @@ const updateDoctor = async (req, res) => {
       shortDescription: updatedDoctor.shortDescription,
       singleSessionMode: updatedDoctor.singleSessionMode,
       signupMethod: updatedDoctor.signupMethod,
-      isAvailable: updatedDoctor.isAvailable
-      // Removed weeklyShifts and offSchedule - now handled by separate schedule models
+      isAvailable: updatedDoctor.isAvailable,
+      order: updatedDoctor.order != null ? updatedDoctor.order : null,
     };
 
     res.status(200).json({
