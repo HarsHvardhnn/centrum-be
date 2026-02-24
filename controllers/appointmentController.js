@@ -2061,6 +2061,8 @@ exports.completeRegistration = async (req, res) => {
       if (street !== undefined && street !== "undefined") updates.address = String(street).trim();
       if (zipCode !== undefined && zipCode !== "undefined") updates.pinCode = String(zipCode).trim();
       if (city !== undefined && city !== "undefined") updates.city = String(city).trim();
+      if (req.body.smsConsentAgreed !== undefined) updates.smsConsentAgreed = !!req.body.smsConsentAgreed;
+      if (Array.isArray(req.body.consents)) updates.consents = req.body.consents;
       if (req.body.isInternationalPatient === true && !patientDoc.npesei) updates.npesei = patient.generateNpesei();
       if (req.body.isInternationalPatient !== undefined) updates.isInternationalPatient = !!req.body.isInternationalPatient;
       if (Object.keys(updates).length > 0) {
