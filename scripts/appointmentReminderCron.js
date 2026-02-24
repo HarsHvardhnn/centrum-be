@@ -318,6 +318,51 @@ const cleanupOldLogs = async () => {
   }
 };
 
+/**
+ * Hard-delete all appointments for which registration was not completed (visit-only, no patient linked)
+ * and whose appointment date is before today (midnight). Runs at midnight.
+ */
+const deleteIncompleteRegistrationAppointments = async (triggeredBy = 'cron') => {
+  const executionId = uuidv4();
+  let logEntry = null;
+  try {
+    logEntry = await CronJobLog.create({
+      jobName: 'delete_incomplete_registration_appointments',
+      executionId,
+      status: 'running',
+      metadata: {
+        triggeredBy,
+        environment: process.env.NODE_ENV || 'development',
+        version: '1.0.0',
+      },
+    });
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const result = await Appointment.deleteMany({
+      patient: null,
+      date: { $lt: startOfToday },
+    });
+
+    await logEntry.markCompleted();
+    await logEntry.addResult({
+      recordType: 'incomplete_registration_cleanup',
+      status: 'success',
+      details: { deletedCount: result.deletedCount },
+    });
+
+    console.log(`[deleteIncompleteRegistrationAppointments] Hard-deleted ${result.deletedCount} past visit-only (incomplete registration) appointments.`);
+    return { deletedCount: result.deletedCount };
+  } catch (error) {
+    console.error('Error deleting incomplete registration appointments:', error);
+    if (logEntry) {
+      await logEntry.markFailed(error).catch(() => {});
+    }
+    throw error;
+  }
+};
+
 // Schedule the cron job to run every minute to check for appointments 4 hours away
 const startAppointmentReminderCron = () => {
   console.log('Starting appointment reminder cron job...');
@@ -341,9 +386,24 @@ const startAppointmentReminderCron = () => {
     scheduled: true,
     timezone: "Europe/Warsaw"
   });
+
+  // Midnight: hard-delete past appointments for which registration was not completed (visit-only, no patient)
+  cron.schedule('0 0 * * *', async () => {
+    console.log('Starting delete incomplete registration appointments at:', new Date().toISOString());
+    try {
+      const result = await deleteIncompleteRegistrationAppointments('cron');
+      console.log(`Delete incomplete registration completed. Deleted ${result.deletedCount} appointments.`);
+    } catch (err) {
+      console.error('Delete incomplete registration cron failed:', err);
+    }
+  }, {
+    scheduled: true,
+    timezone: "Europe/Warsaw"
+  });
   
   console.log('Appointment reminder cron job scheduled to run every minute');
   console.log('Log cleanup scheduled to run weekly on Sundays at 2:00 AM');
+  console.log('Delete incomplete registration appointments scheduled at midnight (Europe/Warsaw)');
 };
 
 // Initialize database connection and start cron job
@@ -358,7 +418,8 @@ module.exports = {
   sendAppointmentReminder,
   initializeAppointmentReminders,
   startAppointmentReminderCron,
-  cleanupOldLogs
+  cleanupOldLogs,
+  deleteIncompleteRegistrationAppointments,
 };
 
 // If this file is run directly, initialize the cron job
