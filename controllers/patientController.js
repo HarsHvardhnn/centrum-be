@@ -511,6 +511,9 @@ function transformPatientDetails(info) {
     documentCountry: info?.documentCountry ?? null,
     documentType: info?.documentType ?? null,
     documentNumber: info?.documentNumber ?? null,
+    documentDateOfBirth: info?.documentDateOfBirth ?? null,
+    documentExpiryDate: info?.documentExpiryDate ?? null,
+    citizenship: info?.citizenship ?? null,
     internationalPatientDocumentKey: info?.internationalPatientDocumentKey ?? null,
     address: info?.address ?? "",
     pinCode: info?.pinCode ?? "",
@@ -1406,6 +1409,14 @@ exports.updatePatient = async (req, res) => {
       // Phone fields
       phoneCode,
       phone,
+      // Document fields (edit modal – international patient)
+      documentCountry,
+      documentType,
+      documentNumber,
+      documentDateOfBirth,
+      documentExpiryDate,
+      citizenship,
+      internationalPatientDocumentKey,
     } = req.body;
 
     // Handle phone number - use phone field if provided, otherwise fallback to mobileNumber
@@ -1451,6 +1462,25 @@ exports.updatePatient = async (req, res) => {
       if (existingPatientByEmail) {
         return res.status(409).json({
           message: "Inny pacjent z tym adresem email już istnieje",
+        });
+      }
+    }
+
+    // internationalPatientDocumentKey: allow same key for current patient; 409 if another patient has it
+    const docKeyTrimmed =
+      internationalPatientDocumentKey != null && internationalPatientDocumentKey !== "undefined"
+        ? String(internationalPatientDocumentKey).trim()
+        : null;
+    if (docKeyTrimmed) {
+      const otherWithSameKey = await patient.findOne({
+        internationalPatientDocumentKey: docKeyTrimmed,
+        _id: { $ne: patientId },
+        deleted: { $ne: true },
+      }).lean();
+      if (otherWithSameKey) {
+        return res.status(409).json({
+          message: "Inny pacjent z tym samym dokumentem tożsamości już istnieje",
+          existingPatientId: otherWithSameKey._id?.toString?.(),
         });
       }
     }
@@ -1547,6 +1577,14 @@ exports.updatePatient = async (req, res) => {
       ...(govtId !== undefined && govtId !== "undefined" && { govtId }),
       ...(isInternationalPatient !== undefined && isInternationalPatient !== "undefined" && { isInternationalPatient }),
       ...(isInternationalPatient === true && !existingPatient.npesei ? { npesei: patient.generateNpesei() } : {}),
+      // Document fields (edit modal)
+      ...(documentCountry !== undefined && documentCountry !== "undefined" && { documentCountry: String(documentCountry).trim() }),
+      ...(documentType !== undefined && documentType !== "undefined" && { documentType: String(documentType).trim() }),
+      ...(documentNumber !== undefined && documentNumber !== "undefined" && { documentNumber: String(documentNumber).trim() }),
+      ...(documentDateOfBirth !== undefined && documentDateOfBirth !== "undefined" && { documentDateOfBirth: documentDateOfBirth === "" ? null : new Date(documentDateOfBirth) }),
+      ...(documentExpiryDate !== undefined && documentExpiryDate !== "undefined" && { documentExpiryDate: documentExpiryDate === "" ? null : new Date(documentExpiryDate) }),
+      ...(citizenship !== undefined && citizenship !== "undefined" && { citizenship: String(citizenship).trim() }),
+      ...(internationalPatientDocumentKey !== undefined && { internationalPatientDocumentKey: docKeyTrimmed || null }),
       ...(ivrLanguage !== undefined && ivrLanguage !== "undefined" && { ivrLanguage }),
       ...(mainComplaint !== undefined && mainComplaint !== "undefined" && { mainComplaint }),
       ...(reviewNotes !== undefined && reviewNotes !== "undefined" && { reviewNotes }),
