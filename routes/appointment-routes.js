@@ -118,6 +118,13 @@ router.put(
   appointmentController.updateAppointmentDetails
 );
 
+// Get consents for a visit (by appointment/visit ID)
+router.get(
+  "/:visitId/consents",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getVisitConsents
+);
+
 // Get appointment details
 router.get(
   "/:id",

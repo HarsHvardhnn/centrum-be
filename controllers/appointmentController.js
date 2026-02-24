@@ -3315,6 +3315,79 @@ exports.deleteReport = async (req, res) => {
   }
 };
 
+/**
+ * Get consents for a visit (appointment).
+ * For visits with a linked patient: returns patient.consents.
+ * For visit-only (no patient): returns appointment.registrationData.consents.
+ *
+ * GET /appointments/:visitId/consents
+ */
+exports.getVisitConsents = async (req, res) => {
+  try {
+    const { visitId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(visitId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid visit ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(visitId)
+      .select("patient registrationData")
+      .lean();
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Visit not found",
+      });
+    }
+
+    let consents = [];
+    let source = "registration";
+
+    if (appointment.patient && appointment.patient._id) {
+      const patientDoc = await patient
+        .findById(appointment.patient._id)
+        .select("consents")
+        .lean();
+      if (patientDoc) {
+        source = "patient";
+        const raw = patientDoc.consents;
+        if (Array.isArray(raw)) {
+          consents = raw;
+        } else if (typeof raw === "string") {
+          try {
+            consents = JSON.parse(raw) || [];
+          } catch {
+            consents = [];
+          }
+        }
+      }
+    }
+
+    if (source === "registration" && appointment.registrationData?.consents) {
+      consents = Array.isArray(appointment.registrationData.consents)
+        ? appointment.registrationData.consents
+        : [];
+    }
+
+    return res.status(200).json({
+      success: true,
+      visitId,
+      source,
+      consents,
+    });
+  } catch (error) {
+    console.error("Error fetching visit consents:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch visit consents",
+      error: error.message,
+    });
+  }
+};
+
 // Get appointment details including consultation, tests, and medications
 exports.getAppointmentDetails = async (req, res) => {
   try {
