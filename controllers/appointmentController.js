@@ -4225,6 +4225,8 @@ exports.getAppointments = async (req, res) => {
             : null,
           metadata: appointment.metadata || {},
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
+          role: appointment.createdByRole != null ? appointment.createdByRole : "online",
+          visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
         };
       });
 
@@ -4425,6 +4427,8 @@ exports.getAppointments = async (req, res) => {
             : null,
           metadata: appointment.metadata || {},
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
+          role: appointment.createdByRole != null ? appointment.createdByRole : "online",
+          visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
         });
       });
 

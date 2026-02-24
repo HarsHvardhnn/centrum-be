@@ -1947,7 +1947,9 @@ exports.getAppointmentsList = async (req, res) => {
         startTime: appointment.startTime,
         endTime: appointment.endTime,
         tempPesel: appointment.tempPesel || null,
-        isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient)
+        isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
+        role: appointment.createdByRole != null ? appointment.createdByRole : "online",
+        visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
       };
     });
 
