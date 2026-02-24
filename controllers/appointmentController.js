@@ -4289,7 +4289,7 @@ exports.getAppointments = async (req, res) => {
             : null,
           patient_id: hasPatient ? patientData?._id : null,
           isVisitOnly: !hasPatient,
-          ...(appointment.registrationData && { registrationData: appointment.registrationData }),
+          registrationData: appointment.registrationData || null,
           registrationType: appointment.registrationType || "online registration",
           doctor: appointment.doctorData
             ? {
@@ -4383,10 +4383,11 @@ exports.getAppointments = async (req, res) => {
         status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
       : {})
       
-      // Build appointment query with all filters. Include visit-only (patient null) for both isClinicIp true and false.
+      // Build appointment query. Non-clinic: only appointments with a patient (exclude visit-only). Clinic (isClinicIp true) includes visit-only in its branch above.
       let appointmentQuery;
       try {
         appointmentQuery = {
+        patient: { $ne: null },
         ...(doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {}),
         ...(appointmentId ? { _id: new mongoose.Types.ObjectId(appointmentId) } : {}),
         ...(status && status !== "all" && status !== "no_appointment" ? 
@@ -4426,7 +4427,7 @@ exports.getAppointments = async (req, res) => {
 
       console.log("appointment query", appointmentQuery);
 
-      // Non-clinic: include all appointments (with patient and visit-only)
+      // Non-clinic: only appointments with patient (no visit-only)
       const allAppointments = await Appointment.find(appointmentQuery)
         .populate("doctor", "name email")
         .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture govtId")
