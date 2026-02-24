@@ -562,8 +562,9 @@ exports.bookAppointment = async (req, res) => {
       if (internationalPatientDocumentKey != null) registrationData.internationalPatientDocumentKey = String(internationalPatientDocumentKey).trim();
     }
 
-    // Token optional (public booking): createdByRole = role from token or null; mode = online when no token or patient token, offline when staff
-    const createdByRole = req.user && req.user.role ? req.user.role : null;
+    // createdByRole: patient when no token or token role is patient; otherwise admin / receptionist / doctor from token
+    const rawRole = req.user && req.user.role ? req.user.role : null;
+    const createdByRole = (rawRole === "admin" || rawRole === "receptionist" || rawRole === "doctor") ? rawRole : "patient";
     const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "online").toLowerCase();
 
     const appointment = new Appointment({

@@ -1387,16 +1387,13 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-    // Determine who created the appointment (token required on this route)
-    const createdByRole = req.user && req.user.role ? req.user.role : null;
+    // createdByRole: patient when no token or token role is patient; otherwise admin / receptionist / doctor from token
+    const rawRole = req.user && req.user.role ? req.user.role : null;
+    const createdByRole = (rawRole === "admin" || rawRole === "receptionist" || rawRole === "doctor") ? rawRole : "patient";
     let createdBy = "online";
-    if (req.user && req.user.role === "receptionist") {
-      createdBy = "receptionist";
-    } else if (req.user && req.user.role === "doctor") {
-      createdBy = "doctor";
-    } else if (req.user && req.user.role === "admin") {
-      createdBy = "admin";
-    }
+    if (createdByRole === "receptionist") createdBy = "receptionist";
+    else if (createdByRole === "doctor") createdBy = "doctor";
+    else if (createdByRole === "admin") createdBy = "admin";
     // Visit mode: offline when created by admin/receptionist/doctor
     const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "offline").toLowerCase();
 
@@ -1633,7 +1630,8 @@ exports.createReceptionAppointment = async (req, res) => {
     let isNewUser = false;
     let emailSent = false;
     const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
-    const createdByRole = req.user && req.user.role ? req.user.role : null;
+    const rawRole = req.user && req.user.role ? req.user.role : null;
+    const createdByRole = (rawRole === "admin" || rawRole === "receptionist" || rawRole === "doctor") ? rawRole : "receptionist";
     // Visit mode: offline when created by admin/receptionist/doctor (this route is staff-only)
     const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "offline").toLowerCase();
 
