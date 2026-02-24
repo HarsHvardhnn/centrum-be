@@ -171,6 +171,8 @@ const appointmentSchema = new mongoose.Schema(
       enum: ["receptionist", "online", "doctor", "admin"],
       default: "online"
     },
+    // Role of the user who created the appointment (from token); null when no token (e.g. public /book)
+    createdByRole: { type: String, default: null },
     registrationType: {
       type: String,
       enum: ["online registration", "receptionist registration", "admin registration", "offline registration"],

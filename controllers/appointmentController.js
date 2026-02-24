@@ -1387,13 +1387,18 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-    // Determine who created the appointment
+    // Determine who created the appointment (token required on this route)
+    const createdByRole = req.user && req.user.role ? req.user.role : null;
     let createdBy = "online";
     if (req.user && req.user.role === "receptionist") {
       createdBy = "receptionist";
     } else if (req.user && req.user.role === "doctor") {
       createdBy = "doctor";
+    } else if (req.user && req.user.role === "admin") {
+      createdBy = "admin";
     }
+    // Visit mode: offline when created by admin/receptionist/doctor
+    const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "offline").toLowerCase();
 
     const validRegistrationTypes = ["online registration", "receptionist registration", "admin registration", "offline registration"];
     const registrationTypeResolved = registrationTypeBody && validRegistrationTypes.includes(registrationTypeBody)
@@ -1412,7 +1417,8 @@ exports.createAppointment = async (req, res) => {
       customDuration: customDuration || null,
       isBackdated: isBackdated,
       createdBy: createdBy,
-      mode: consultationType.toLowerCase(),
+      createdByRole: createdByRole,
+      mode: visitMode,
       notes: message || "",
       metadata: {
         ...(req.body.metadata || {}),
@@ -1627,7 +1633,9 @@ exports.createReceptionAppointment = async (req, res) => {
     let isNewUser = false;
     let emailSent = false;
     const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
-    const createdByRole = req.user && req.user.role ? req.user.role : "receptionist";
+    const createdByRole = req.user && req.user.role ? req.user.role : null;
+    // Visit mode: offline when created by admin/receptionist/doctor (this route is staff-only)
+    const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "offline").toLowerCase();
 
     // Follow-up: patientId provided → use existing patient. First visit: no patientId → visit only (complete registration later)
     if (patientId) {
@@ -1662,8 +1670,9 @@ exports.createReceptionAppointment = async (req, res) => {
         duration: duration,
         customDuration: customDuration || null,
         isBackdated: isBackdated,
-        createdBy: createdByRole,
-        mode: consultationType.toLowerCase(),
+        createdBy: createdByRole || "receptionist",
+        createdByRole: createdByRole,
+        mode: visitMode,
         notes: message || "",
         metadata: {
           ...(req.body.metadata || {}),
@@ -1750,8 +1759,9 @@ exports.createReceptionAppointment = async (req, res) => {
         duration: duration,
         customDuration: customDuration || null,
         isBackdated: isBackdated,
-        createdBy: createdByRole,
-        mode: consultationType.toLowerCase(),
+        createdBy: createdByRole || "receptionist",
+        createdByRole: createdByRole,
+        mode: visitMode,
         notes: message || "",
         registrationData,
         metadata: {
