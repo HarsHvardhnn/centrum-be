@@ -1912,11 +1912,18 @@ exports.getAppointmentsList = async (req, res) => {
     }
 
     if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
       query.$or = [
-        { "patient.name.first": { $regex: search, $options: "i" } },
-        { "patient.name.last": { $regex: search, $options: "i" } },
-        { "patient.patientId": { $regex: search, $options: "i" } },
-        { "consultation.description": { $regex: search, $options: "i" } }
+        { "patient.name.first": searchRegex },
+        { "patient.name.last": searchRegex },
+        { "patient.patientId": searchRegex },
+        { "consultation.description": searchRegex },
+        { "registrationData.pendingPesel": searchRegex },
+        { "registrationData.firstName": searchRegex },
+        { "registrationData.lastName": searchRegex },
+        { "registrationData.name": searchRegex },
+        { "registrationData.phone": searchRegex },
+        { "registrationData.email": searchRegex },
       ];
     }
     
@@ -1948,7 +1955,8 @@ exports.getAppointmentsList = async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
-    // Transform the data
+    // Transform the data (use registrationData for visit-only when patient is null)
+    const rd = (a) => a?.registrationData;
     const simplifiedAppointments = appointments.map((appointment) => {
       const appointmentDate = appointment.date
         ? new Date(appointment.date).toLocaleDateString("en-US", {
@@ -1966,8 +1974,14 @@ exports.getAppointmentsList = async (req, res) => {
       if (appointment.doctor?.name) {
         doctorName = `Dr. ${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
       }
-      
-      const dob = appointment.patient?.dateOfBirth;
+
+      const fromReg = rd(appointment);
+      const name = appointment.patient
+        ? `${appointment.patient.name?.first || ""} ${appointment.patient.name?.last || ""}`.trim()
+        : (fromReg?.firstName || fromReg?.lastName
+            ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
+            : fromReg?.name || "Unknown");
+      const dob = appointment.patient?.dateOfBirth ?? fromReg?.dateOfBirth;
       const age = dob
         ? Math.floor(
             (Date.now() - new Date(dob).getTime()) /
@@ -1977,17 +1991,15 @@ exports.getAppointmentsList = async (req, res) => {
 
       return {
         id: appointment._id,
-        name: appointment.patient 
-          ? `${appointment.patient.name?.first || ""} ${appointment.patient.name?.last || ""}`.trim()
-          : "Unknown",
+        name: name || "Unknown",
         username: appointment.patient?.username ? `@${appointment.patient.username}` : "",
         date: appointmentDate,
-        email: appointment.patient?.email || "Nieokreślony",
-        phone: appointment.patient?.phone || "Nieokreślony",
-        phoneCode: appointment.patient?.phoneCode || "+48",
-        sex: appointment.patient?.sex || "Nieokreślony",
+        email: appointment.patient?.email ?? fromReg?.email ?? "Nieokreślony",
+        phone: appointment.patient?.phone ?? fromReg?.phone ?? "Nieokreślony",
+        phoneCode: appointment.patient?.phoneCode ?? fromReg?.phoneCode ?? "+48",
+        sex: appointment.patient?.sex ?? fromReg?.sex ?? "Nieokreślony",
         isCheckedIn: appointment.checkedIn || false,
-        dateOfBirth: appointment.patient?.dateOfBirth || "Nieokreślony",
+        dateOfBirth: appointment.patient?.dateOfBirth ?? fromReg?.dateOfBirth ?? "Nieokreślony",
         age,
         avatar: appointment.patient?.profilePicture || "",
         disease: appointment.consultation?.description || "Nieokreślony",
@@ -1995,14 +2007,16 @@ exports.getAppointmentsList = async (req, res) => {
         doctor: doctorName,
         _id: appointment._id,
         doctor_id: appointment?.doctor?._id,
-        patient_id: appointment.patient?._id,
+        patient_id: appointment.patient?._id ?? null,
         mode: appointment.mode || "offline",
         startTime: appointment.startTime,
         endTime: appointment.endTime,
         tempPesel: appointment.tempPesel || null,
-        isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
+        isInternational: !!(appointment.metadata?.isInternational || rd(appointment)?.isInternationalPatient),
         role: appointment.createdByRole != null ? appointment.createdByRole : "online",
         visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
+        registrationData: fromReg || null,
+        pendingPesel: fromReg?.pendingPesel ?? null,
       };
     });
 
