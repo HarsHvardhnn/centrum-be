@@ -507,6 +507,21 @@ function transformPatientDetails(info) {
   return {
     ...info,
     consents: parsedConsents,
+    // Patient-level details (from complete-registration) for patient modal
+    documentCountry: info?.documentCountry ?? null,
+    documentType: info?.documentType ?? null,
+    documentNumber: info?.documentNumber ?? null,
+    internationalPatientDocumentKey: info?.internationalPatientDocumentKey ?? null,
+    address: info?.address ?? "",
+    pinCode: info?.pinCode ?? "",
+    city: info?.city ?? "",
+    npesei: info?.npesei ?? null,
+    isInternationalPatient: info?.isInternationalPatient ?? false,
+    smsConsentAgreed: info?.smsConsentAgreed ?? false,
+    documents: info?.documents ?? [],
+    // FE form aliases (same shape as complete-registration patient payload)
+    street: info?.address ?? "",
+    zipCode: info?.pinCode ?? "",
     contactPerson1PhoneCode: info?.contactPerson1PhoneCode || "",
     contactPerson1Phone: info?.contactPerson1Phone || "",
     contactPerson1PhoneFull: info?.contactPerson1PhoneFull || "",
