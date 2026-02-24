@@ -2338,14 +2338,15 @@ exports.updateAppointmentStatus = async (req, res) => {
       });
     }
 
-    // Get doctor and patient details for SMS
-    const doctorDetails = await doctor.findById(appointment.doctor._id);
-    const patientDetails = await user.findById(appointment.patient._id);
+    const doctorDetails = await doctor.findById(appointment.doctor?._id);
+    const patientDetails = appointment.patient?._id
+      ? await user.findById(appointment.patient._id)
+      : null;
 
-    if (!doctorDetails || !patientDetails) {
+    if (!doctorDetails) {
       return res.status(404).json({
         success: false,
-        message: "Doctor or patient details not found",
+        message: "Doctor details not found",
       });
     }
 
@@ -2353,17 +2354,19 @@ exports.updateAppointmentStatus = async (req, res) => {
     appointment.status = status;
     await appointment.save();
 
-    // Send SMS notification
+    // Send SMS notification only when patient exists (visit-only appointments have no patient)
     let smsResult = null;
-    try {
-      smsResult = await sendAppointmentStatusSMS(
-        appointment,
-        patientDetails,
-        doctorDetails,
-        status
-      );
-    } catch (smsError) {
-      console.error("Error sending status update SMS:", smsError);
+    if (patientDetails) {
+      try {
+        smsResult = await sendAppointmentStatusSMS(
+          appointment,
+          patientDetails,
+          doctorDetails,
+          status
+        );
+      } catch (smsError) {
+        console.error("Error sending status update SMS:", smsError);
+      }
     }
 
     res.status(200).json({
@@ -2743,27 +2746,28 @@ exports.cancelAppointment = async (req, res) => {
     appointment.status = "cancelled";
     await appointment.save();
 
-    // Send SMS notification only if requested
+    // Send SMS notification only if requested and appointment has a patient (visit-only has no patient)
     let smsResult = null;
     if (sendSMSNotification) {
       try {
-        // Get doctor and patient details for SMS
-        const doctorDetails = await doctor.findById(appointment.doctor._id);
-        const patientDetails = await user.findById(appointment.patient?._id);
+        const doctorDetails = await doctor.findById(appointment.doctor?._id);
+        const patientDetails = appointment.patient?._id
+          ? await user.findById(appointment.patient._id)
+          : null;
 
-        if (!doctorDetails || !patientDetails) {
-          return res.status(404).json({
+        if (doctorDetails && patientDetails) {
+          smsResult = await sendAppointmentStatusSMS(
+            appointment,
+            patientDetails,
+            doctorDetails,
+            "cancelled"
+          );
+        } else {
+          smsResult = {
             success: false,
-            message: "Doctor or patient details not found",
-          });
+            error: !appointment.patient ? "Visit-only appointment - no patient to notify" : "Doctor or patient details not found",
+          };
         }
-
-        smsResult = await sendAppointmentStatusSMS(
-          appointment,
-          patientDetails,
-          doctorDetails,
-          "cancelled"
-        );
       } catch (smsError) {
         console.error("Error sending cancellation SMS:", smsError);
         smsResult = {
