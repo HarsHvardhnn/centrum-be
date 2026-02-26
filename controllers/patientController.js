@@ -520,6 +520,7 @@ function transformPatientDetails(info) {
     city: info?.city ?? "",
     npesei: info?.npesei ?? null,
     isInternationalPatient: info?.isInternationalPatient ?? false,
+    isInternational: info?.isInternationalPatient ?? false,
     smsConsentAgreed: info?.smsConsentAgreed ?? false,
     documents: info?.documents ?? [],
     // FE form aliases (same shape as complete-registration patient payload)
