@@ -127,6 +127,22 @@ or invalid PESEL format message.
 
 - **FE:** Ask for a different email or show contact info.
 
+### Patient already has an account
+
+If this PESEL already has an account (email + password set, e.g. from a previous create-account or from complete-registration at the clinic), the backend returns:
+
+- **Status:** `409`
+- **Body:**
+```json
+{
+  "success": false,
+  "alreadyHasAccount": true,
+  "message": "Ten pacjent ma już konto. Zaloguj się przy użyciu adresu e-mail i hasła."
+}
+```
+
+- **FE:** Do not show the email step. Show a message like “You already have an account. Please log in with your email and password.” and redirect to the login form (email + password).
+
 ### Patient not found / no visit (e.g. expired or re-check)
 
 - **Status:** `404`
@@ -153,8 +169,9 @@ or invalid PESEL format message.
 - [ ] **Step 2b – Found:** On `200` and `found: true`, show “Enter email to associate with your patient account” and an email input.
 - [ ] **Step 3 – Create account:** On submit, call `POST /api/patient-portal/create-account` with `{ pesel, email }`.
 - [ ] **Step 4a – Success:** On `200`, show success and “Check your email (and spam) for login details.”
-- [ ] **Step 4b – Email taken:** On `409`, show the Polish message and ask for another email or contact reception.
-- [ ] **Login:** When patient portal login is enabled, patients will use the same login endpoint (`POST /api/auth/login`) with the email and temporary password (then change password as needed). Username changes are done via profile/update and are reflected in the internal system automatically.
+- [ ] **Step 4b – Email taken:** On `409` without `alreadyHasAccount`, show the Polish message and ask for another email or contact reception.
+- [ ] **Step 4c – Already has account:** On `409` with `alreadyHasAccount: true`, show “You already have an account. Please log in.” and redirect to login (email + password).
+- [ ] **Login:** When patient portal login is enabled, patients will use the same login endpoint (e.g. `POST /auth/login` or a dedicated patient-login) with the email and temporary password (then change password as needed). Username changes are done via profile/update and are reflected in the internal system automatically.
 
 ---
 
@@ -174,6 +191,42 @@ The new flow only **creates/updates** the patient account (email + temporary pas
 | Step | FE action | API | On success | On failure |
 |------|------------|-----|------------|------------|
 | 1 | User enters PESEL | `POST /api/patient-portal/check-by-pesel` | Show “Enter email” | Show “No patient account found - please contact the reception desk.” |
-| 2 | User enters email | `POST /api/patient-portal/create-account` | “Check your email for login details” | Show 409 message or 404 message |
+| 2 | User enters email | `POST /api/patient-portal/create-account` | “Check your email for login details” | 409 (email taken / already has account) or 404 |
 
 No registration of users who have never been patients.
+
+---
+
+## API reference (base URL + examples)
+
+**Base URL:** `https://<your-backend-host>/api/patient-portal` (e.g. `https://centrum-be.onrender.com/api/patient-portal`).
+
+### 1. Check by PESEL
+
+```http
+POST /api/patient-portal/check-by-pesel
+Content-Type: application/json
+
+{ "pesel": "99010101234" }
+```
+
+**Success (200):** `{ "success": true, "found": true, "patientId": "P-1234567890", "message": "..." }`  
+**Not found (404):** `{ "success": false, "found": false, "message": "No patient account found - please contact the reception desk." }`  
+**Validation (400):** `{ "success": false, "message": "Podaj prawidłowy numer PESEL (11 cyfr)." }`
+
+### 2. Create account
+
+```http
+POST /api/patient-portal/create-account
+Content-Type: application/json
+
+{ "pesel": "99010101234", "email": "patient@example.com" }
+```
+
+**Success (200):** `{ "success": true, "message": "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam)." }`  
+**Already has account (409):** `{ "success": false, "alreadyHasAccount": true, "message": "Ten pacjent ma już konto. Zaloguj się przy użyciu adresu e-mail i hasła." }`  
+**Email taken by another (409):** `{ "success": false, "message": "Ten adres e-mail jest już przypisany do innego konta. ..." }`  
+**Not found (404):** same as check-by-pesel.  
+**Validation (400):** invalid PESEL or invalid email message.
+
+**Note:** On success, the backend sets a temporary password on the patient, sends a welcome email (Polish) with login link and temporary password. Patient can later change password and username; username is stored on the patient record and reflected in the internal dashboard.

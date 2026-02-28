@@ -160,6 +160,15 @@ exports.createAccount = async (req, res) => {
       });
     }
 
+    // Patient already has an account (email + password set, e.g. from previous create-account or complete-registration)
+    if (patientDoc.signupMethod === "email" && patientDoc.email && String(patientDoc.email).trim()) {
+      return res.status(409).json({
+        success: false,
+        alreadyHasAccount: true,
+        message: "Ten pacjent ma już konto. Zaloguj się przy użyciu adresu e-mail i hasła.",
+      });
+    }
+
     const existingUserWithEmail = await User.findOne({
       email,
       _id: { $ne: patientDoc._id },

@@ -40,6 +40,7 @@ const forgotPasswordRoutes = require("./routes/forgot-password-routes");
 const logoRoutes = require("./routes/logo-routes");
 const emailPreviewRoutes = require("./routes/email-preview-routes");
 const permanentDeleteRoutes = require("./routes/permanent-delete-routes");
+const patientPortalRoutes = require("./routes/patient-portal-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -220,6 +221,7 @@ app.use("/api/auth", forgotPasswordRoutes);
 app.use("/api/logo", logoRoutes);
 app.use("/api/email-preview", emailPreviewRoutes);
 app.use("/api/permanent-delete", permanentDeleteRoutes);
+app.use("/api/patient-portal", patientPortalRoutes);
 
 // Test route for SEO (can be removed later)
 app.get("/seo-test", (req, res) => {
