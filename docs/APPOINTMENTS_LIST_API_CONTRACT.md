@@ -33,7 +33,7 @@ If your PDF had additional items (e.g. other list endpoints, reports, or filters
 - The **same** `GET /api/appointments/details/list` returns:
   - Appointments **with** a linked patient.
   - Appointments **without** a linked patient (visit-only).
-- The backend does **not** add a special “patient-less” mode or query param; it simply **stops excluding** rows where `patient` is null.
+- For clinic (`isClinicIp=true`) you can additionally pass `patientLessOnly=true` to return **only** visit-only rows.
 
 ---
 
@@ -77,6 +77,7 @@ No other flag or query parameter was added; the only explicit signal is **`isVis
 | `doctorId`  | string | No       | Filter by doctor ObjectId |
 | `appointmentId` | string | No   | Single appointment by ID |
 | `isClinicIp`| string | No       | `"true"` for clinic / Historia wizyt; omit or `"false"` for Lista pacjentów |
+| `patientLessOnly` | string | No | **Clinic only (`isClinicIp=true`)**. When `"true"`/`"1"` returns only visit-only (patient-less) appointments (`isVisitOnly === true`). Ignored for non-clinic calls. |
 
 ### Response (200 OK)
 

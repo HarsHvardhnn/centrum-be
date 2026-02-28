@@ -4004,7 +4004,15 @@ exports.getAppointments = async (req, res) => {
       appointmentId,
       searchTerm,
       isClinicIp,
+      // Clinic-only filter: when true and isClinicIp=true, return only patient-less (visit-only) appointments
+      patientLessOnly,
     } = req.query;
+
+    // Derived flags
+    const visitOnlyFilter =
+      patientLessOnly === "true" ||
+      patientLessOnly === true ||
+      patientLessOnly === "1";
 
     // Validate pagination parameters
     const pageNum = parseInt(page);
@@ -4193,6 +4201,19 @@ exports.getAppointments = async (req, res) => {
         },
         { $unwind: "$doctorData" }
       );
+
+      // Clinic-only filter: when visitOnlyFilter is true, keep only visit-only (no patient) appointments
+      if (visitOnlyFilter) {
+        appointmentsPipeline.push({
+          $match: {
+            $or: [
+              { patient: null },
+              { patientData: { $exists: false } },
+              { patientData: null },
+            ],
+          },
+        });
+      }
 
       // Add search conditions if searchTerm exists (include registrationData for visit-only)
       if (searchTerm) {
