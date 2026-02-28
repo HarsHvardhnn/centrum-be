@@ -14,7 +14,7 @@ This document describes the **new** patient account flow for the Patient Portal.
 4. **Backend checks (check-by-pesel):**
    - **Existing patient:** A patient with this PESEL exists **and** has at least one appointment → `200`, `found: true`, `source: "existing_patient"`, `patientId`.
    - **Pending visit:** No such patient, but an appointment exists with this PESEL in `tempPesel` or `registrationData.pendingPesel` (visit-only, not yet linked to a patient) → `200`, `found: true`, `source: "pending_visit"`. No `patientId` yet.
-   - **Otherwise** → `404` with message: *"No patient account found - please contact the reception desk."*
+   - **Otherwise** → `404` with message: *"Nie znaleziono konta pacjenta. Proszę skontaktować się z rejestracją."*
 5. **If found (either source):** FE shows “Enter an email address to be associated with your patient account.”
 6. **Patient enters email** → FE calls **create-account** with `pesel` + `email`.
 7. **Backend (create-account):**
@@ -34,11 +34,13 @@ All endpoints are under:
 
 (No authentication required for these two endpoints.)
 
+**Language:** All error and success response fields `message` are in **Polish**.
+
 ---
 
 ## 1. Check by PESEL
 
-**Purpose:** After the user enters PESEL, check whether a patient exists and has visited at least once. Use the response to either show “enter email” or the “No patient account found” message.
+**Purpose:** After the user enters PESEL, check whether a patient exists and has visited at least once. Use the response to either show “enter email” or the not-found message. All response `message` values are in Polish.
 
 | Item | Value |
 |------|--------|
@@ -59,7 +61,7 @@ PESEL can also be sent as query: `?pesel=12345678901` (same validation).
   "found": true,
   "source": "existing_patient",
   "patientId": "P-1234567890",
-  "message": "Patient found and has visited the clinic. You can proceed to associate an email and receive login details."
+  "message": "Znaleziono pacjenta, który odwiedził przychodnię. Możesz podać adres e-mail, aby powiązać konto i otrzymać dane logowania."
 }
 ```
 
@@ -74,7 +76,7 @@ PESEL can also be sent as query: `?pesel=12345678901` (same validation).
   "success": true,
   "found": true,
   "source": "pending_visit",
-  "message": "Visit found with this PESEL. Enter your email to create your patient account and link this visit."
+  "message": "Znaleziono wizytę z tym numerem PESEL. Wprowadź adres e-mail, aby utworzyć konto pacjenta i powiązać tę wizytę."
 }
 ```
 
@@ -88,11 +90,11 @@ PESEL can also be sent as query: `?pesel=12345678901` (same validation).
 {
   "success": false,
   "found": false,
-  "message": "No patient account found - please contact the reception desk."
+  "message": "Nie znaleziono konta pacjenta. Proszę skontaktować się z rejestracją."
 }
 ```
 
-- **FE:** Show this **exact** message to the user (e.g. “No patient account found - please contact the reception desk.”).
+- **FE:** Show this message to the user (all API `message` fields are in Polish).
 
 ### Validation errors
 
@@ -169,7 +171,7 @@ If this PESEL already has an account (email + password set, e.g. from a previous
 {
   "success": false,
   "found": false,
-  "message": "No patient account found - please contact the reception desk."
+  "message": "Nie znaleziono konta pacjenta. Proszę skontaktować się z rejestracją."
 }
 ```
 
@@ -183,7 +185,7 @@ If this PESEL already has an account (email + password set, e.g. from a previous
 ## Frontend integration checklist
 
 - [ ] **Step 1 – PESEL:** On “Log in” / “Create account”, show PESEL input (11 digits). Call `POST /api/patient-portal/check-by-pesel` with `{ pesel }`.
-- [ ] **Step 2a – Not found:** On `404` or `found: false`, show: *“No patient account found - please contact the reception desk.”*
+- [ ] **Step 2a – Not found:** On `404` or `found: false`, show the response `message` (Polish): *"Nie znaleziono konta pacjenta. Proszę skontaktować się z rejestracją."*
 - [ ] **Step 2b – Found:** On `200` and `found: true` (optional: use `source`: `"existing_patient"` vs `"pending_visit"` for analytics or copy). Show “Enter email to associate with your patient account” and an email input.
 - [ ] **Step 3 – Create account:** On submit, call `POST /api/patient-portal/create-account` with `{ pesel, email }`.
 - [ ] **Step 4a – Success:** On `200`, show success and “Check your email (and spam) for login details.”
@@ -208,7 +210,7 @@ The new flow only **creates/updates** the patient account (email + temporary pas
 
 | Step | FE action | API | On success | On failure |
 |------|------------|-----|------------|------------|
-| 1 | User enters PESEL | `POST /api/patient-portal/check-by-pesel` | Show “Enter email” | Show “No patient account found - please contact the reception desk.” |
+| 1 | User enters PESEL | `POST /api/patient-portal/check-by-pesel` | Show “Enter email” | Show response `message` (Polish) |
 | 2 | User enters email | `POST /api/patient-portal/create-account` | “Check your email for login details” | 409 (email taken / already has account) or 404 |
 
 No registration of users who have never been patients.
@@ -228,9 +230,9 @@ Content-Type: application/json
 { "pesel": "99010101234" }
 ```
 
-**Success (200) – existing patient:** `{ "success": true, "found": true, "source": "existing_patient", "patientId": "P-1234567890", "message": "..." }`  
-**Success (200) – pending visit:** `{ "success": true, "found": true, "source": "pending_visit", "message": "Visit found with this PESEL. Enter your email to create your patient account and link this visit." }`  
-**Not found (404):** `{ "success": false, "found": false, "message": "No patient account found - please contact the reception desk." }`  
+**Success (200) – existing patient:** `{ "success": true, "found": true, "source": "existing_patient", "patientId": "P-1234567890", "message": "Znaleziono pacjenta, który odwiedził przychodnię. Możesz podać adres e-mail, aby powiązać konto i otrzymać dane logowania." }`  
+**Success (200) – pending visit:** `{ "success": true, "found": true, "source": "pending_visit", "message": "Znaleziono wizytę z tym numerem PESEL. Wprowadź adres e-mail, aby utworzyć konto pacjenta i powiązać tę wizytę." }`  
+**Not found (404):** `{ "success": false, "found": false, "message": "Nie znaleziono konta pacjenta. Proszę skontaktować się z rejestracją." }`  
 **Validation (400):** `{ "success": false, "message": "Podaj prawidłowy numer PESEL (11 cyfr)." }`
 
 ### 2. Create account

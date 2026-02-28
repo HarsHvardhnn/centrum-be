@@ -14,7 +14,7 @@ const { validatePesel } = require("../utils/peselValidation");
 const sendWelcomeEmail = require("../utils/welcomeEmail");
 
 const NO_ACCOUNT_MESSAGE =
-  "No patient account found - please contact the reception desk.";
+  "Nie znaleziono konta pacjenta. Proszę skontaktować się z rejestracją.";
 
 function normalizePesel(raw) {
   if (!raw) return "";
@@ -23,6 +23,17 @@ function normalizePesel(raw) {
 
 function generateTemporaryPassword() {
   return crypto.randomBytes(8).toString("hex");
+}
+
+/** Normalize sex/gender to Patient schema enum: "Male" | "Female" | "Others" */
+function normalizeSex(value) {
+  if (value == null || value === "") return undefined;
+  const v = String(value).trim().toLowerCase();
+  if (v === "male") return "Male";
+  if (v === "female") return "Female";
+  if (v === "others" || v === "other") return "Others";
+  if (["Male", "Female", "Others"].includes(String(value).trim())) return String(value).trim();
+  return undefined;
 }
 
 /**
@@ -69,7 +80,7 @@ exports.checkByPesel = async (req, res) => {
           found: true,
           source: "existing_patient",
           patientId: patientDoc.patientId || patientDoc._id.toString(),
-          message: "Patient found and has visited the clinic. You can proceed to associate an email and receive login details.",
+          message: "Znaleziono pacjenta, który odwiedził przychodnię. Możesz podać adres e-mail, aby powiązać konto i otrzymać dane logowania.",
         });
       }
     }
@@ -90,7 +101,7 @@ exports.checkByPesel = async (req, res) => {
         success: true,
         found: true,
         source: "pending_visit",
-        message: "Visit found with this PESEL. Enter your email to create your patient account and link this visit.",
+        message: "Znaleziono wizytę z tym numerem PESEL. Wprowadź adres e-mail, aby utworzyć konto pacjenta i powiązać tę wizytę.",
       });
     }
 
@@ -250,7 +261,7 @@ exports.createAccount = async (req, res) => {
       govtId: pesel,
       patientId: `P-${Date.now()}`,
       dateOfBirth: rd.dateOfBirth ? new Date(rd.dateOfBirth) : undefined,
-      sex: rd.gender || rd.sex || undefined,
+      sex: normalizeSex(rd.gender || rd.sex),
       smsConsentAgreed: !!rd.smsConsentAgreed,
       consents: Array.isArray(rd.consents) ? rd.consents : [],
       address: (rd.address && String(rd.address).trim()) || undefined,
