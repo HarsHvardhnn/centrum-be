@@ -295,12 +295,12 @@ const login = async (req, res) => {
       return res.status(401).json({ message: "Nieprawidłowe dane logowania" });
     }
 
-    // Check if user role is patient - prevent patient login
-    if (user.role === "patient") {
-      return res.status(403).json({ 
-        message: "Logowanie dla pacjentów jest niedozwolone" 
-      });
-    }
+    // Patient login: temporarily enabled for testing (was blocked)
+    // if (user.role === "patient") {
+    //   return res.status(403).json({
+    //     message: "Logowanie dla pacjentów jest niedozwolone"
+    //   });
+    // }
 
     // Check if user is locked out
     if (user.isLocked()) {
@@ -448,12 +448,12 @@ const googleLogin = async (req, res) => {
       });
     }
 
-    // Check if user role is patient - prevent patient login
-    if (user.role === "patient") {
-      return res.status(403).json({ 
-        message: "Logowanie dla pacjentów jest niedozwolone" 
-      });
-    }
+    // Patient login: temporarily enabled for testing (was blocked)
+    // if (user.role === "patient") {
+    //   return res.status(403).json({
+    //     message: "Logowanie dla pacjentów jest niedozwolone"
+    //   });
+    // }
 
     // Generate tokens but don't save within the function
     const { accessToken, refreshToken } = generateTokens(
