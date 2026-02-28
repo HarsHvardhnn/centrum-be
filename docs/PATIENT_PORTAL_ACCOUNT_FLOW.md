@@ -2,23 +2,25 @@
 
 This document describes the **new** patient account flow for the Patient Portal. Existing signup/login flows (e.g. OTP signup, Google login) are unchanged and co-exist with this flow.
 
-**Rule:** A patient account cannot be created if the patient has never visited the clinic. The system checks that a `PATIENT_ID` exists (patient exists in the system **and** has at least one visit).
+**Rule:** A patient account can only be created if (a) the patient already exists and has at least one visit, or (b) there is a visit-only appointment (e.g. online booking) with this PESEL stored in `tempPesel` or `registrationData.pendingPesel`. In case (b), creating an account creates the patient from the visit’s `registrationData` and links that visit (and any other visits with the same PESEL) to the new patient.
 
 ---
 
 ## Flow overview
 
 1. **Patient opens** the Patient Portal login page.
-2. **Patient clicks** “Log in” or “Create account” → system requests data required to create an account.
+2. **Patient clicks** “Log in” or “Create account” → system requests PESEL.
 3. **Patient enters PESEL** (11 digits).
-4. **Backend checks:** Does a patient with this PESEL exist **and** have at least one appointment (visit)?
-   - **If NO** → Return `404` with message: *"No patient account found - please contact the reception desk."*  
-     → **FE:** Display exactly this message.
-   - **If YES** → Return `200` with `found: true` and `patientId`.
-5. **If patient found:** FE shows the next step: “Enter an email address to be associated with the patient account.”
-6. **Patient enters email** → FE calls **create-account** API with `pesel` + `email`.
-7. **Backend:** Associates email with the patient, sets a temporary password, sends login details (or login link) to that email.
-8. **FE:** Tell the user to check their email. Patient can later change the temporary password and username; if the patient changes the username, it is stored on the same patient record and is reflected in the internal system/dashboard automatically.
+4. **Backend checks (check-by-pesel):**
+   - **Existing patient:** A patient with this PESEL exists **and** has at least one appointment → `200`, `found: true`, `source: "existing_patient"`, `patientId`.
+   - **Pending visit:** No such patient, but an appointment exists with this PESEL in `tempPesel` or `registrationData.pendingPesel` (visit-only, not yet linked to a patient) → `200`, `found: true`, `source: "pending_visit"`. No `patientId` yet.
+   - **Otherwise** → `404` with message: *"No patient account found - please contact the reception desk."*
+5. **If found (either source):** FE shows “Enter an email address to be associated with your patient account.”
+6. **Patient enters email** → FE calls **create-account** with `pesel` + `email`.
+7. **Backend (create-account):**
+   - **Existing patient:** Associates email with the patient, sets a temporary password, sends login details to that email.
+   - **Pending visit:** Creates a new patient from the appointment’s `registrationData` (name, phone, dateOfBirth, sex, address, consents, etc.), sets PESEL and the provided email, sets a temporary password, links all appointments with this PESEL (tempPesel/pendingPesel) to the new patient, sends login details to the email.
+8. **FE:** Tell the user to check their email. Patient can later change password and username; username is stored on the patient record and reflected in the internal dashboard.
 
 ---
 
@@ -47,7 +49,7 @@ All endpoints are under:
 
 PESEL can also be sent as query: `?pesel=12345678901` (same validation).
 
-### Success – patient found and has visited
+### Success – existing patient (has visited)
 
 - **Status:** `200`
 - **Body:**
@@ -55,12 +57,28 @@ PESEL can also be sent as query: `?pesel=12345678901` (same validation).
 {
   "success": true,
   "found": true,
+  "source": "existing_patient",
   "patientId": "P-1234567890",
   "message": "Patient found and has visited the clinic. You can proceed to associate an email and receive login details."
 }
 ```
 
-- **FE:** Proceed to the “Enter email” step. You may store `patientId` for display only; the next API still requires `pesel` + `email`.
+- **FE:** Proceed to the “Enter email” step. Next API requires `pesel` + `email`.
+
+### Success – pending visit (PESEL in tempPesel / registrationData.pendingPesel)
+
+- **Status:** `200`
+- **Body:**
+```json
+{
+  "success": true,
+  "found": true,
+  "source": "pending_visit",
+  "message": "Visit found with this PESEL. Enter your email to create your patient account and link this visit."
+}
+```
+
+- **FE:** Same as above: show “Enter email” and then call create-account with `pesel` + `email`. Backend will create the patient from the visit’s registration data and link the visit(s).
 
 ### Not found – no patient or no visit
 
@@ -92,7 +110,7 @@ or invalid PESEL format message.
 
 ## 2. Create account (associate email and send login details)
 
-**Purpose:** After check-by-pesel returns `found: true`, the user enters an email. This endpoint associates that email with the patient, sets a temporary password, and sends the login details to the email.
+**Purpose:** After check-by-pesel returns `found: true` (either `existing_patient` or `pending_visit`), the user enters an email. This endpoint either (a) associates that email with an existing patient and sets a temporary password, or (b) creates a new patient from the visit’s `registrationData` (when PESEL was only in tempPesel/pendingPesel), links the visit(s) to the new patient, and sends login details. In both cases login details are sent to the given email.
 
 | Item | Value |
 |------|--------|
@@ -166,7 +184,7 @@ If this PESEL already has an account (email + password set, e.g. from a previous
 
 - [ ] **Step 1 – PESEL:** On “Log in” / “Create account”, show PESEL input (11 digits). Call `POST /api/patient-portal/check-by-pesel` with `{ pesel }`.
 - [ ] **Step 2a – Not found:** On `404` or `found: false`, show: *“No patient account found - please contact the reception desk.”*
-- [ ] **Step 2b – Found:** On `200` and `found: true`, show “Enter email to associate with your patient account” and an email input.
+- [ ] **Step 2b – Found:** On `200` and `found: true` (optional: use `source`: `"existing_patient"` vs `"pending_visit"` for analytics or copy). Show “Enter email to associate with your patient account” and an email input.
 - [ ] **Step 3 – Create account:** On submit, call `POST /api/patient-portal/create-account` with `{ pesel, email }`.
 - [ ] **Step 4a – Success:** On `200`, show success and “Check your email (and spam) for login details.”
 - [ ] **Step 4b – Email taken:** On `409` without `alreadyHasAccount`, show the Polish message and ask for another email or contact reception.
@@ -210,7 +228,8 @@ Content-Type: application/json
 { "pesel": "99010101234" }
 ```
 
-**Success (200):** `{ "success": true, "found": true, "patientId": "P-1234567890", "message": "..." }`  
+**Success (200) – existing patient:** `{ "success": true, "found": true, "source": "existing_patient", "patientId": "P-1234567890", "message": "..." }`  
+**Success (200) – pending visit:** `{ "success": true, "found": true, "source": "pending_visit", "message": "Visit found with this PESEL. Enter your email to create your patient account and link this visit." }`  
 **Not found (404):** `{ "success": false, "found": false, "message": "No patient account found - please contact the reception desk." }`  
 **Validation (400):** `{ "success": false, "message": "Podaj prawidłowy numer PESEL (11 cyfr)." }`
 
@@ -223,10 +242,10 @@ Content-Type: application/json
 { "pesel": "99010101234", "email": "patient@example.com" }
 ```
 
-**Success (200):** `{ "success": true, "message": "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam)." }`  
+**Success (200):** `{ "success": true, "message": "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam).", "patientId": "P-1234567890" }` (patientId present when patient was just created from pending visit).  
 **Already has account (409):** `{ "success": false, "alreadyHasAccount": true, "message": "Ten pacjent ma już konto. Zaloguj się przy użyciu adresu e-mail i hasła." }`  
 **Email taken by another (409):** `{ "success": false, "message": "Ten adres e-mail jest już przypisany do innego konta. ..." }`  
 **Not found (404):** same as check-by-pesel.  
 **Validation (400):** invalid PESEL or invalid email message.
 
-**Note:** On success, the backend sets a temporary password on the patient, sends a welcome email (Polish) with login link and temporary password. Patient can later change password and username; username is stored on the patient record and reflected in the internal dashboard.
+**Note:** On success, the backend either updates the existing patient or creates a new one from the visit’s `registrationData` (name, phone, dateOfBirth, sex, address, consents, document fields for international, etc.), sets a temporary password, and sends a welcome email (Polish) with login link and temporary password. Any visit-only appointments with this PESEL (tempPesel/pendingPesel) are linked to the patient. Patient can later change password and username; username is stored on the patient record and reflected in the internal dashboard.
