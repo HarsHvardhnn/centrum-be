@@ -1907,12 +1907,18 @@ exports.getAppointmentsList = async (req, res) => {
       startDate,
       endDate,
       date, // absolute: single day (overrides range when set)
+      patientLessOnly, // when true: only visit-only (no patient) appointments
     } = req.query;
 
     const query = {};
 
     if (doctor) {
       query.doctor = doctor;
+    }
+
+    // Patient-less (visit-only) filter: only appointments without a linked patient
+    if (patientLessOnly === "true" || patientLessOnly === "1" || patientLessOnly === true) {
+      query.patient = null;
     }
 
     // Date filter: absolute (single day) or range
