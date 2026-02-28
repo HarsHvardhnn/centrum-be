@@ -1904,12 +1904,44 @@ exports.getAppointmentsList = async (req, res) => {
       status,
       doctor,
       mode,
+      startDate,
+      endDate,
+      date, // absolute: single day (overrides range when set)
     } = req.query;
 
     const query = {};
-    
+
     if (doctor) {
       query.doctor = doctor;
+    }
+
+    // Date filter: absolute (single day) or range
+    if (date) {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) {
+        const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setHours(23, 59, 59, 999);
+        query.date = { $gte: dayStart, $lte: dayEnd };
+      }
+    } else if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        if (!isNaN(start.getTime())) {
+          start.setHours(0, 0, 0, 0);
+          query.date.$gte = start;
+        }
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        if (!isNaN(end.getTime())) {
+          end.setHours(23, 59, 59, 999);
+          query.date.$lte = end;
+        }
+      }
+      if (query.date && Object.keys(query.date).length === 0) delete query.date;
     }
 
     if (search) {
@@ -1927,11 +1959,12 @@ exports.getAppointmentsList = async (req, res) => {
         { "registrationData.email": searchRegex },
       ];
     }
-    
-    if (status) {
-      query.status = status;
+
+    // Appointment status filter (booked, completed, cancelled, checkedIn, no-show)
+    if (status && status !== "all") {
+      query.status = status === "checkedIn" ? status : status.toLowerCase();
     }
-    
+
     if (mode) {
       query.mode = mode;
     }
