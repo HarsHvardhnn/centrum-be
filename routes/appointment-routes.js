@@ -4,6 +4,8 @@ const express = require("express");
 const router = express.Router();
 const { check } = require("express-validator");
 const appointmentController = require("../controllers/appointmentController");
+const visitDiagnosisController = require("../controllers/visitDiagnosisController");
+const visitProcedureController = require("../controllers/visitProcedureController");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const { bookAppointment } = require("../controllers/gmeetController");
 const { upload } = require("../middlewares/cloudinaryUpload");
@@ -194,5 +196,14 @@ router.get(
   authorizeRoles(["doctor", "receptionist", "admin"]),
   appointmentController.getDoctorAppointmentsByDate
 );
+
+// Visit (appointment) ICD-10 diagnoses and ICD-9 procedures; visitId = appointment _id
+router.get("/:visitId/medical-codes", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.getMedicalCodes);
+router.post("/:visitId/diagnoses", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.addDiagnosis);
+router.get("/:visitId/diagnoses", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.getDiagnoses);
+router.delete("/:visitId/diagnoses/:diagnosisId", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.deleteDiagnosis);
+router.post("/:visitId/procedures", authorizeRoles(["doctor", "receptionist", "admin"]), visitProcedureController.addProcedure);
+router.get("/:visitId/procedures", authorizeRoles(["doctor", "receptionist", "admin"]), visitProcedureController.getProcedures);
+router.delete("/:visitId/procedures/:procedureId", authorizeRoles(["doctor", "receptionist", "admin"]), visitProcedureController.deleteProcedure);
 
 module.exports = router;

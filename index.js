@@ -41,6 +41,8 @@ const logoRoutes = require("./routes/logo-routes");
 const emailPreviewRoutes = require("./routes/email-preview-routes");
 const permanentDeleteRoutes = require("./routes/permanent-delete-routes");
 const patientPortalRoutes = require("./routes/patient-portal-routes");
+const icdRoutes = require("./routes/icd-routes");
+const adminIcdRoutes = require("./routes/admin-icd-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -222,6 +224,8 @@ app.use("/api/logo", logoRoutes);
 app.use("/api/email-preview", emailPreviewRoutes);
 app.use("/api/permanent-delete", permanentDeleteRoutes);
 app.use("/api/patient-portal", patientPortalRoutes);
+app.use("/api", icdRoutes);
+app.use("/admin", adminIcdRoutes);
 
 // Test route for SEO (can be removed later)
 app.get("/seo-test", (req, res) => {
