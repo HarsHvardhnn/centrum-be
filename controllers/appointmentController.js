@@ -2249,21 +2249,32 @@ exports.getAppointmentsByDoctor = async (req, res) => {
 
     const total = await Appointment.countDocuments(query);
 
-    const transformed = appointments.map((appt, index) => ({
-      id: appt._id.toString(),
-      name: `${appt.patient?.name.first || ""} ${
-        appt.patient?.name.last || ""
-      }`,
-      patient_id: appt.patient?._id || null,
-      username: `@${appt.patient?.name.first?.toLowerCase() || "user"}`,
-      avatar: appt.patient?.profilePicture || null,
-      sex: appt.patient?.sex || "Unknown",
-      mode: appt.mode || "offline",
-      joining_link: appt.joining_link || null,
-      age: calculateAge(appt.patient?.date),
-      status: appt.status || "Unknown",
-      date: formatDateToYYYYMMDD(appt.date),
-    }));
+    const rd = (a) => a?.registrationData;
+    const transformed = appointments.map((appt) => {
+      const fromReg = rd(appt);
+      const name = appt.patient
+        ? `${appt.patient?.name?.first || ""} ${appt.patient?.name?.last || ""}`.trim()
+        : (fromReg?.firstName || fromReg?.lastName
+            ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
+            : fromReg?.name || "");
+      return {
+        id: appt._id.toString(),
+        name: name || "—",
+        patient_id: appt.patient?._id || null,
+        username: appt.patient?.name?.first
+          ? `@${appt.patient.name.first.toLowerCase()}`
+          : (fromReg?.firstName ? `@${String(fromReg.firstName).toLowerCase()}` : "—"),
+        avatar: appt.patient?.profilePicture || null,
+        sex: appt.patient?.sex ?? fromReg?.gender ?? fromReg?.sex ?? "Unknown",
+        mode: appt.mode || "offline",
+        joining_link: appt.joining_link || null,
+        age: appt.patient?.dateOfBirth
+          ? calculateAge(appt.patient.dateOfBirth)
+          : (fromReg?.dateOfBirth ? calculateAge(fromReg.dateOfBirth) : null),
+        status: appt.status || "Unknown",
+        date: formatDateToYYYYMMDD(appt.date),
+      };
+    });
 
     res.status(200).json({
       success: true,
