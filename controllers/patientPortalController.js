@@ -210,13 +210,19 @@ exports.createAccount = async (req, res) => {
         email: patientDoc.email,
         password: tempPassword,
       };
-      sendWelcomeEmail(userData, "polish").catch((err) =>
-        console.error("Patient portal welcome email failed:", err)
-      );
+      let emailSent = true;
+      try {
+        await sendWelcomeEmail(userData, "polish");
+      } catch (err) {
+        console.error("Patient portal welcome email failed:", err);
+        emailSent = false;
+      }
       return res.status(200).json({
         success: true,
-        message:
-          "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam).",
+        emailSent,
+        message: emailSent
+          ? "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam)."
+          : "Konto zostało utworzone, ale nie udało się wysłać e-maila z danymi logowania. Skontaktuj się z rejestracją, podając numer PESEL.",
       });
     }
 
@@ -290,15 +296,20 @@ exports.createAccount = async (req, res) => {
       email: savedPatient.email,
       password: tempPassword,
     };
-    sendWelcomeEmail(userData, "polish").catch((err) =>
-      console.error("Patient portal welcome email failed:", err)
-    );
-
+    let emailSent = true;
+    try {
+      await sendWelcomeEmail(userData, "polish");
+    } catch (err) {
+      console.error("Patient portal welcome email failed:", err);
+      emailSent = false;
+    }
     return res.status(200).json({
       success: true,
       patientId: savedPatient.patientId || savedPatient._id.toString(),
-      message:
-        "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam).",
+      emailSent,
+      message: emailSent
+        ? "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam)."
+        : "Konto zostało utworzone, ale nie udało się wysłać e-maila z danymi logowania. Skontaktuj się z rejestracją, podając numer PESEL.",
     });
   } catch (error) {
     console.error("Patient portal createAccount error:", error);
