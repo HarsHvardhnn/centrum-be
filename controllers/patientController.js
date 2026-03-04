@@ -1467,6 +1467,31 @@ exports.updatePatient = async (req, res) => {
       }
     }
 
+    // PESEL (govtId) uniqueness: if user is updating govtId, it must not belong to another patient
+    let govtIdToSave = undefined; // leave unchanged unless govtId is being updated
+    if (govtId !== undefined && govtId !== "undefined") {
+      const peselNormalized = String(govtId).replace(/\D/g, "").trim();
+      const currentGovtId = existingPatient.govtId ? String(existingPatient.govtId).replace(/\D/g, "") : "";
+      if (peselNormalized.length > 0) {
+        if (peselNormalized !== currentGovtId) {
+          const otherWithSamePesel = await patient.findOne({
+            govtId: peselNormalized,
+            _id: { $ne: patientId },
+            deleted: { $ne: true },
+          }).lean();
+          if (otherWithSamePesel) {
+            return res.status(409).json({
+              message: "Inny pacjent z tym numerem PESEL już istnieje w systemie.",
+              existingPatientId: otherWithSamePesel._id?.toString?.(),
+            });
+          }
+        }
+        govtIdToSave = peselNormalized;
+      } else {
+        govtIdToSave = null;
+      }
+    }
+
     // internationalPatientDocumentKey: allow same key for current patient; 409 if another patient has it
     const docKeyTrimmed =
       internationalPatientDocumentKey != null && internationalPatientDocumentKey !== "undefined"
@@ -1575,7 +1600,7 @@ exports.updatePatient = async (req, res) => {
       ...(country !== undefined && country !== "undefined" && { country }),
       ...(pinCode !== undefined && pinCode !== "undefined" && { pinCode }),
       ...(alternateContact !== undefined && alternateContact !== "undefined" && { alternateContact }),
-      ...(govtId !== undefined && govtId !== "undefined" && { govtId }),
+      ...(govtIdToSave !== undefined && { govtId: govtIdToSave }),
       ...(isInternationalPatient !== undefined && isInternationalPatient !== "undefined" && { isInternationalPatient }),
       ...(isInternationalPatient === true && !existingPatient.npesei ? { npesei: patient.generateNpesei() } : {}),
       // Document fields (edit modal)
