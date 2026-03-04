@@ -1936,6 +1936,9 @@ exports.completeRegistration = async (req, res) => {
       });
     }
 
+    // Consents: prefer request body, fallback to visit's registrationData (from online booking)
+    const consentsFromVisit = Array.isArray(appointment.registrationData?.consents) ? appointment.registrationData.consents : [];
+
     const isInternational = req.body.isInternationalPatient === true || String(req.body.isInternationalPatient || "").toLowerCase() === "true";
     let patientDoc = null;
     let isExisting = false;
@@ -1998,7 +2001,7 @@ exports.completeRegistration = async (req, res) => {
         dateOfBirth: new Date(dateOfBirthRaw),
         sex: req.body.sex || undefined,
         smsConsentAgreed: !!req.body.smsConsentAgreed,
-        consents: Array.isArray(req.body.consents) ? req.body.consents : [],
+        consents: (Array.isArray(req.body.consents) && req.body.consents.length) ? req.body.consents : consentsFromVisit,
         address: streetVal || undefined,
         pinCode: zipCodeVal || undefined,
         city: cityVal || undefined,
@@ -2062,7 +2065,8 @@ exports.completeRegistration = async (req, res) => {
       if (zipCode !== undefined && zipCode !== "undefined") updates.pinCode = String(zipCode).trim();
       if (city !== undefined && city !== "undefined") updates.city = String(city).trim();
       if (req.body.smsConsentAgreed !== undefined) updates.smsConsentAgreed = !!req.body.smsConsentAgreed;
-      if (Array.isArray(req.body.consents)) updates.consents = req.body.consents;
+      if (Array.isArray(req.body.consents) && req.body.consents.length) updates.consents = req.body.consents;
+      else if (consentsFromVisit.length) updates.consents = consentsFromVisit;
       if (req.body.isInternationalPatient === true && !patientDoc.npesei) updates.npesei = patient.generateNpesei();
       if (req.body.isInternationalPatient !== undefined) updates.isInternationalPatient = !!req.body.isInternationalPatient;
       if (Object.keys(updates).length > 0) {
@@ -2100,7 +2104,7 @@ exports.completeRegistration = async (req, res) => {
         dateOfBirth: req.body.dateOfBirth ? new Date(req.body.dateOfBirth) : undefined,
         sex: req.body.sex || undefined,
         smsConsentAgreed: !!req.body.smsConsentAgreed,
-        consents: Array.isArray(req.body.consents) ? req.body.consents : [],
+        consents: (Array.isArray(req.body.consents) && req.body.consents.length) ? req.body.consents : consentsFromVisit,
         address: streetVal || undefined,
         pinCode: zipCodeVal || undefined,
         city: cityVal || undefined,
