@@ -12,6 +12,7 @@ const { getCalendarClient } = require("../config/googleCalendar");
 const path = require("path");
 const fs = require("fs");
 const { getMeetingsClient } = require("../utils/zohoMeetings");
+const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
@@ -556,11 +557,31 @@ exports.bookAppointment = async (req, res) => {
         }
       }
     } else if (isInternational) {
+      const docValidation = validateInternationalDocument({
+        documentNumber,
+        internationalPatientDocumentKey,
+      });
+      if (!docValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: docValidation.warning || "Dla pacjenta międzynarodowego wymagane są: numer dokumentu i klucz dokumentu (internationalPatientDocumentKey).",
+        });
+      }
+      const existingByDocKey = await patient.findOne({
+        internationalPatientDocumentKey: docValidation.internationalPatientDocumentKey,
+        deleted: { $ne: true },
+      });
+      if (existingByDocKey) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+        });
+      }
       registrationData.isInternationalPatient = true;
       if (documentCountry != null) registrationData.documentCountry = String(documentCountry).trim();
       if (documentType != null) registrationData.documentType = String(documentType).trim();
-      if (documentNumber != null) registrationData.documentNumber = String(documentNumber).trim();
-      if (internationalPatientDocumentKey != null) registrationData.internationalPatientDocumentKey = String(internationalPatientDocumentKey).trim();
+      registrationData.documentNumber = docValidation.documentNumber;
+      registrationData.internationalPatientDocumentKey = docValidation.internationalPatientDocumentKey;
     }
 
     // createdByRole: patient when no token or token role is patient; otherwise admin / receptionist / doctor from token

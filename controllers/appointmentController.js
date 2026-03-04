@@ -26,6 +26,7 @@ const { createStandardizedDocument } = require("./patientController");
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 const { validatePesel } = require("../utils/peselValidation");
+const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 
 // Email icons as inline SVG (Font Awesome 6 style) for visibility in all email clients
 const { getIconImg } = require("../utils/emailIcons");
@@ -1946,22 +1947,30 @@ exports.completeRegistration = async (req, res) => {
     let pesel = null;
 
     if (isInternational) {
-      // International patient (no PESEL): require document fields, duplicate check by internationalPatientDocumentKey, create patient with documents
+      // International patient (no PESEL): document number and key validated (same rigor as PESEL); key must be unique
       const firstName = req.body.firstName != null ? String(req.body.firstName).trim() : "";
       const lastName = req.body.lastName != null ? String(req.body.lastName).trim() : "";
       const dateOfBirthRaw = req.body.dateOfBirth;
       const documentCountry = req.body.documentCountry != null ? String(req.body.documentCountry).trim() : "";
       const documentType = req.body.documentType != null ? String(req.body.documentType).trim() : "";
-      const documentNumber = req.body.documentNumber != null ? String(req.body.documentNumber).trim() : "";
-      const docKeyRaw = req.body.internationalPatientDocumentKey != null ? String(req.body.internationalPatientDocumentKey).trim() : "";
-      if (!firstName || !lastName || !dateOfBirthRaw || !documentCountry || !documentType || !documentNumber || !docKeyRaw) {
+      const docValidation = validateInternationalDocument({
+        documentNumber: req.body.documentNumber,
+        internationalPatientDocumentKey: req.body.internationalPatientDocumentKey,
+      });
+      if (!docValidation.valid) {
         return res.status(400).json({
           success: false,
-          message: "W trybie międzynarodowym wymagane są: imię, nazwisko, data urodzenia, kraj dokumentu, typ dokumentu, numer dokumentu i klucz dokumentu (internationalPatientDocumentKey).",
+          message: docValidation.warning || "W trybie międzynarodowym wymagane są: numer dokumentu i klucz dokumentu (internationalPatientDocumentKey).",
+        });
+      }
+      if (!firstName || !lastName || !dateOfBirthRaw || !documentCountry || !documentType) {
+        return res.status(400).json({
+          success: false,
+          message: "W trybie międzynarodowym wymagane są: imię, nazwisko, data urodzenia, kraj dokumentu i typ dokumentu.",
         });
       }
       const existingByDocKey = await patient.findOne({
-        internationalPatientDocumentKey: docKeyRaw,
+        internationalPatientDocumentKey: docValidation.internationalPatientDocumentKey,
         deleted: { $ne: true },
       });
       if (existingByDocKey) {
@@ -1993,10 +2002,10 @@ exports.completeRegistration = async (req, res) => {
         signupMethod: "email",
         govtId: undefined,
         npesei: patient.generateNpesei(),
-        internationalPatientDocumentKey: docKeyRaw,
+        internationalPatientDocumentKey: docValidation.internationalPatientDocumentKey,
         documentCountry,
         documentType,
-        documentNumber,
+        documentNumber: docValidation.documentNumber,
         patientId: `P-${Date.now()}`,
         dateOfBirth: new Date(dateOfBirthRaw),
         sex: req.body.sex || undefined,

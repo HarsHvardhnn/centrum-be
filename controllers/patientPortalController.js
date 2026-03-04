@@ -11,6 +11,7 @@ const patient = require("../models/user-entity/patient");
 const User = require("../models/user-entity/user");
 const Appointment = require("../models/appointment");
 const { validatePesel } = require("../utils/peselValidation");
+const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 const sendWelcomeEmail = require("../utils/welcomeEmail");
 
 const NO_ACCOUNT_MESSAGE =
@@ -246,6 +247,33 @@ exports.createAccount = async (req, res) => {
     const appointment = pendingAppointments[0];
     const rd = appointment.registrationData || {};
 
+    let validatedDocKey = null;
+    let validatedDocNumber = null;
+    if (rd.isInternationalPatient) {
+      const docValidation = validateInternationalDocument({
+        documentNumber: rd.documentNumber,
+        internationalPatientDocumentKey: rd.internationalPatientDocumentKey,
+      });
+      if (!docValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: docValidation.warning || "Nieprawidłowe dane dokumentu dla pacjenta międzynarodowego.",
+        });
+      }
+      validatedDocKey = docValidation.internationalPatientDocumentKey;
+      validatedDocNumber = docValidation.documentNumber;
+      const existingByDocKey = await patient.findOne({
+        internationalPatientDocumentKey: validatedDocKey,
+        deleted: { $ne: true },
+      });
+      if (existingByDocKey) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+        });
+      }
+    }
+
     const firstName = rd.firstName || (rd.name && String(rd.name).trim().split(" ")[0]) || "Imię";
     const lastName = rd.lastName || (rd.name && String(rd.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
     const phoneRaw = rd.phone && String(rd.phone).trim() ? String(rd.phone).replace(/\D/g, "").replace(/^0+/, "").trim() : "";
@@ -272,12 +300,12 @@ exports.createAccount = async (req, res) => {
       pinCode: (rd.pinCode || rd.zipCode) != null ? String(rd.pinCode || rd.zipCode).trim() : undefined,
       city: (rd.city && String(rd.city).trim()) || undefined,
       isInternationalPatient: !!rd.isInternationalPatient,
-      ...(rd.isInternationalPatient && {
+      ...(rd.isInternationalPatient && validatedDocKey && {
         npesei: patient.generateNpesei(),
         documentCountry: rd.documentCountry || undefined,
         documentType: rd.documentType || undefined,
-        documentNumber: rd.documentNumber || undefined,
-        internationalPatientDocumentKey: rd.internationalPatientDocumentKey || undefined,
+        documentNumber: validatedDocNumber,
+        internationalPatientDocumentKey: validatedDocKey,
       }),
     });
     const savedPatient = await newPatient.save();

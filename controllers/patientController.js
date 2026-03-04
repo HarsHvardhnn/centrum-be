@@ -2,6 +2,7 @@ const bcrypt = require("bcrypt");
 const patient = require("../models/user-entity/patient");
 const { default: mongoose } = require("mongoose");
 const { validatePesel } = require("../utils/peselValidation");
+const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 const doctor = require("../models/user-entity/doctor");
 const Appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
@@ -179,20 +180,29 @@ exports.createPatient = async (req, res) => {
     } = req.body;
 
     // console.log("req.body is ",dateOfBirth)
-    // International patient document key: must be unique; check before any other processing
-    if (!!isInternationalPatient && internationalPatientDocumentKey) {
-      const keyTrimmed = String(internationalPatientDocumentKey).trim();
-      if (keyTrimmed) {
-        const existingByDocKey = await patient.findOne({
-          internationalPatientDocumentKey: keyTrimmed,
-          deleted: { $ne: true },
+    let validatedDocKey = null;
+    let validatedDocNumber = null;
+    if (!!isInternationalPatient) {
+      const docValidation = validateInternationalDocument({
+        documentNumber: req.body.documentNumber,
+        internationalPatientDocumentKey: internationalPatientDocumentKey,
+      });
+      if (!docValidation.valid) {
+        return res.status(400).json({
+          message: docValidation.warning || "Nieprawidłowe dane dokumentu dla pacjenta międzynarodowego.",
         });
-        if (existingByDocKey) {
-          return res.status(409).json({
-            message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
-            patient: existingByDocKey,
-          });
-        }
+      }
+      validatedDocKey = docValidation.internationalPatientDocumentKey;
+      validatedDocNumber = docValidation.documentNumber;
+      const existingByDocKey = await patient.findOne({
+        internationalPatientDocumentKey: validatedDocKey,
+        deleted: { $ne: true },
+      });
+      if (existingByDocKey) {
+        return res.status(409).json({
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+          patient: existingByDocKey,
+        });
       }
     }
 
@@ -345,7 +355,12 @@ exports.createPatient = async (req, res) => {
       govtId: pesel,
       ...(!!isInternationalPatient ? { npesei: patient.generateNpesei() } : {}),
       isInternationalPatient: !!isInternationalPatient,
-      internationalPatientDocumentKey: (!!isInternationalPatient && internationalPatientDocumentKey && String(internationalPatientDocumentKey).trim()) || null,
+      ...(!!isInternationalPatient && validatedDocKey && {
+        internationalPatientDocumentKey: validatedDocKey,
+        documentNumber: validatedDocNumber,
+        ...(req.body.documentCountry != null && req.body.documentCountry !== "undefined" && { documentCountry: String(req.body.documentCountry).trim() }),
+        ...(req.body.documentType != null && req.body.documentType !== "undefined" && { documentType: String(req.body.documentType).trim() }),
+      }),
       ivrLanguage,
       mainComplaint,
       reviewNotes,
@@ -1492,14 +1507,32 @@ exports.updatePatient = async (req, res) => {
       }
     }
 
-    // internationalPatientDocumentKey: allow same key for current patient; 409 if another patient has it
+    // internationalPatientDocumentKey / documentNumber: validate like PESEL when provided; key must be unique (no other patient)
     const docKeyTrimmed =
       internationalPatientDocumentKey != null && internationalPatientDocumentKey !== "undefined"
         ? String(internationalPatientDocumentKey).trim()
         : null;
-    if (docKeyTrimmed) {
+    const documentNumberRaw = documentNumber !== undefined && documentNumber !== "undefined" ? documentNumber : null;
+    const isUpdatingDocument = docKeyTrimmed !== null || documentNumberRaw !== null;
+    const isInternational = req.body.isInternationalPatient === true || existingPatient.isInternationalPatient === true;
+    let validatedDocKeyForUpdate = docKeyTrimmed;
+    let validatedDocNumberForUpdate = documentNumberRaw != null ? String(documentNumberRaw).trim() : null;
+    if (isUpdatingDocument && isInternational) {
+      const docValidation = validateInternationalDocument({
+        documentNumber: documentNumberRaw != null ? documentNumberRaw : (existingPatient.documentNumber || ""),
+        internationalPatientDocumentKey: docKeyTrimmed != null ? docKeyTrimmed : (existingPatient.internationalPatientDocumentKey || ""),
+      });
+      if (!docValidation.valid) {
+        return res.status(400).json({
+          message: docValidation.warning || "Nieprawidłowe dane dokumentu dla pacjenta międzynarodowego.",
+        });
+      }
+      validatedDocKeyForUpdate = docValidation.internationalPatientDocumentKey;
+      validatedDocNumberForUpdate = docValidation.documentNumber;
+    }
+    if (validatedDocKeyForUpdate) {
       const otherWithSameKey = await patient.findOne({
-        internationalPatientDocumentKey: docKeyTrimmed,
+        internationalPatientDocumentKey: validatedDocKeyForUpdate,
         _id: { $ne: patientId },
         deleted: { $ne: true },
       }).lean();
@@ -1606,11 +1639,11 @@ exports.updatePatient = async (req, res) => {
       // Document fields (edit modal)
       ...(documentCountry !== undefined && documentCountry !== "undefined" && { documentCountry: String(documentCountry).trim() }),
       ...(documentType !== undefined && documentType !== "undefined" && { documentType: String(documentType).trim() }),
-      ...(documentNumber !== undefined && documentNumber !== "undefined" && { documentNumber: String(documentNumber).trim() }),
+      ...(documentNumber !== undefined && documentNumber !== "undefined" && { documentNumber: (validatedDocNumberForUpdate != null ? validatedDocNumberForUpdate : String(documentNumber).trim()) }),
       ...(documentDateOfBirth !== undefined && documentDateOfBirth !== "undefined" && { documentDateOfBirth: documentDateOfBirth === "" ? null : new Date(documentDateOfBirth) }),
       ...(documentExpiryDate !== undefined && documentExpiryDate !== "undefined" && { documentExpiryDate: documentExpiryDate === "" ? null : new Date(documentExpiryDate) }),
       ...(citizenship !== undefined && citizenship !== "undefined" && { citizenship: String(citizenship).trim() }),
-      ...(internationalPatientDocumentKey !== undefined && { internationalPatientDocumentKey: docKeyTrimmed || null }),
+      ...(internationalPatientDocumentKey !== undefined && { internationalPatientDocumentKey: (validatedDocKeyForUpdate != null ? validatedDocKeyForUpdate : docKeyTrimmed) || null }),
       ...(ivrLanguage !== undefined && ivrLanguage !== "undefined" && { ivrLanguage }),
       ...(mainComplaint !== undefined && mainComplaint !== "undefined" && { mainComplaint }),
       ...(reviewNotes !== undefined && reviewNotes !== "undefined" && { reviewNotes }),
