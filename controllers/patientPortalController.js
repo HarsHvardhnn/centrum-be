@@ -210,20 +210,15 @@ exports.createAccount = async (req, res) => {
         email: patientDoc.email,
         password: tempPassword,
       };
-      let emailSent = true;
-      try {
-        await sendWelcomeEmail(userData, "polish");
-      } catch (err) {
-        console.error("Patient portal welcome email failed:", err);
-        emailSent = false;
-      }
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
-        emailSent,
-        message: emailSent
-          ? "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam)."
-          : "Konto zostało utworzone, ale nie udało się wysłać e-maila z danymi logowania. Skontaktuj się z rejestracją, podając numer PESEL.",
+        emailSent: true,
+        message: "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam).",
       });
+      sendWelcomeEmail(userData, "polish").catch((err) =>
+        console.error("Patient portal welcome email failed:", err)
+      );
+      return;
     }
 
     // No patient with this PESEL: create patient from registrationData and link visit(s)
@@ -296,21 +291,16 @@ exports.createAccount = async (req, res) => {
       email: savedPatient.email,
       password: tempPassword,
     };
-    let emailSent = true;
-    try {
-      await sendWelcomeEmail(userData, "polish");
-    } catch (err) {
-      console.error("Patient portal welcome email failed:", err);
-      emailSent = false;
-    }
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       patientId: savedPatient.patientId || savedPatient._id.toString(),
-      emailSent,
-      message: emailSent
-        ? "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam)."
-        : "Konto zostało utworzone, ale nie udało się wysłać e-maila z danymi logowania. Skontaktuj się z rejestracją, podając numer PESEL.",
+      emailSent: true,
+      message: "Dane logowania zostały wysłane na podany adres e-mail. Sprawdź skrzynkę (oraz folder spam).",
     });
+    sendWelcomeEmail(userData, "polish").catch((err) =>
+      console.error("Patient portal welcome email failed:", err)
+    );
+    return;
   } catch (error) {
     console.error("Patient portal createAccount error:", error);
     return res.status(500).json({
