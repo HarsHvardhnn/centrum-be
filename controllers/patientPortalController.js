@@ -16,6 +16,9 @@ const sendWelcomeEmail = require("../utils/welcomeEmail");
 const NO_ACCOUNT_MESSAGE =
   "Nie znaleziono konta pacjenta. Proszę skontaktować się z rejestracją.";
 
+/** Fixed temp password so patient can log in even when welcome email is not delivered */
+const DEFAULT_TEMP_PASSWORD = "centrum123";
+
 function normalizePesel(raw) {
   if (!raw) return "";
   return String(raw).replace(/\D/g, "").trim();
@@ -196,7 +199,7 @@ exports.createAccount = async (req, res) => {
           message: "Ten pacjent ma już konto. Zaloguj się przy użyciu adresu e-mail i hasła.",
         });
       }
-      const tempPassword = generateTemporaryPassword();
+      const tempPassword = DEFAULT_TEMP_PASSWORD;
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
       patientDoc.email = email;
       patientDoc.password = hashedPassword;
@@ -248,7 +251,7 @@ exports.createAccount = async (req, res) => {
     const phoneRaw = rd.phone && String(rd.phone).trim() ? String(rd.phone).replace(/\D/g, "").replace(/^0+/, "").trim() : "";
     const phoneToSave = phoneRaw || `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
     const phoneCode = (rd.phoneCode && String(rd.phoneCode).trim()) || "+48";
-    const tempPassword = generateTemporaryPassword();
+    const tempPassword = DEFAULT_TEMP_PASSWORD;
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
     const newPatient = new patient({
