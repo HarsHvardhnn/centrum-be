@@ -2278,10 +2278,16 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         : (fromReg?.firstName || fromReg?.lastName
             ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
             : fromReg?.name || "");
+      const consultationType =
+        appt.consultation?.consultationType ||
+        appt.metadata?.visitType ||
+        (appt.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni") ||
+        null;
+
       return {
         id: appt._id.toString(),
         name: name || "—",
-        patient_id: appt.patient?._id || null,
+        patient_id: appt.patient?._id?.toString() || null,
         username: appt.patient?.name?.first
           ? `@${appt.patient.name.first.toLowerCase()}`
           : (fromReg?.firstName ? `@${String(fromReg.firstName).toLowerCase()}` : "—"),
@@ -2296,6 +2302,8 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         date: formatDateToYYYYMMDD(appt.date),
         startTime: appt.startTime || null,
         endTime: appt.endTime || null,
+        consultationType,
+        visitType: consultationType,
       };
     });
 

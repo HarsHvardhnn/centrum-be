@@ -5,6 +5,7 @@ const { validatePesel } = require("../utils/peselValidation");
 const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 const doctor = require("../models/user-entity/doctor");
 const Appointment = require("../models/appointment");
+const VisitDiagnosis = require("../models/visitDiagnosis");
 const user = require("../models/user-entity/user");
 const Specialization = require("../models/specialization");
 const sendWelcomeEmail = require("../utils/welcomeEmail");
@@ -1192,33 +1193,83 @@ function calculateAge(birthDate) {
 exports.getPatientDetailsAndReports = async (req, res) => {
   try {
     const { patientId } = req.params;
-    const { appointmentId } = req.query; // Get appointmentId from query params
-    console.log("Received patientId:", patientId, "appointmentId:", appointmentId);
+    const { appointmentId } = req.query;
 
-    // Find patient by ID
     const patient = await user
       .findById(patientId)
       .populate("consultingDoctor", "name.first name.last")
       .lean();
-    
+
     if (!patient) {
       return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
 
-    // Find appointment by ID if provided
     let appointment = null;
     if (appointmentId) {
-     
       appointment = await Appointment.findById(appointmentId)
         .populate("doctor", "name.first name.last")
         .lean();
-      
       if (!appointment) {
         return res.status(404).json({ message: "Nie znaleziono wizyty" });
       }
     }
 
-    // Format last checked date - use appointment date if available
+    // Full name (string) for "Szczegóły pacjenta" panel
+    const nameStr = patient.name
+      ? `${patient.name.first || ""} ${patient.name.last || ""}`.trim() || "Nie nagrane"
+      : "Nie nagrane";
+
+    // PESEL (govtId) – required for panel; UI shows "Brak PESEL – niezweryfikowany" if missing
+    const pesel = patient.govtId || "";
+
+    // Last visit date: last appointment (booked/checkedIn/completed) for this patient, excluding current
+    let lastVisit = null;
+    const lastApptQuery = {
+      patient: patientId,
+      status: { $in: ["booked", "checkedIn", "completed"] },
+    };
+    if (appointmentId) lastApptQuery._id = { $ne: appointmentId };
+    const lastAppt = await Appointment.findOne(lastApptQuery)
+      .sort({ date: -1, startTime: -1 })
+      .select("date startTime endTime")
+      .lean();
+    if (lastAppt && lastAppt.date) {
+      const d = new Date(lastAppt.date);
+      const dateStr = d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+      if (lastAppt.startTime && lastAppt.endTime) {
+        lastVisit = `${dateStr}, ${lastAppt.startTime}-${lastAppt.endTime}`;
+      } else {
+        lastVisit = dateStr;
+      }
+    }
+
+    // Last diagnosis (ICD-10) from last visit
+    let lastDiagnosis = null;
+    if (lastAppt && lastAppt._id) {
+      const diag = await VisitDiagnosis.findOne({ visit_id: lastAppt._id })
+        .sort({ is_primary: -1, createdAt: 1 })
+        .lean();
+      if (diag) {
+        lastDiagnosis = `${diag.icd10_code} – ${diag.icd10_name}`;
+      }
+    }
+
+    // Medications: include name, dosage, frequency, status; only "Aktywny" / "active" shown in UI
+    const rawMeds = appointment?.medications || patient.medications || [];
+    const activeStatuses = ["Aktywny", "active", "Active"];
+    const medications = rawMeds
+      .filter((med) => {
+        const s = (med.status || "").trim();
+        return activeStatuses.some((a) => a.toLowerCase() === s.toLowerCase());
+      })
+      .map((med) => ({
+        name: med.name,
+        dosage: med.dosage,
+        frequency: med.frequency,
+        status: med.status || "Aktywny",
+      }));
+
+    // Legacy / other screens: lastChecked, health, reports, etc.
     let lastChecked = "Nie nagrane";
     if (appointment && appointment.date) {
       const doctor = appointment.doctor
@@ -1244,73 +1295,38 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       lastChecked = `${doctor} on ${date}`;
     }
 
-    // Get health data - prefer from appointment if available
     const healthData = appointment?.healthData || patient.healthData || {};
-    
-    // Format blood pressure
     const bp = healthData.bloodPressure?.value || "Nie nagrane";
-
-    // Get weight
-    const weight = healthData.bodyWeight?.value 
-      ? `${healthData.bodyWeight.value} kg` 
+    const weight = healthData.bodyWeight?.value
+      ? `${healthData.bodyWeight.value} kg`
       : "Nie nagrane";
 
-    // Format medications - use appointment data if available
-    const medications = appointment?.medications 
-      ? appointment.medications.map((med) => ({
-          name: med.name,
-          dosage: med.dosage,
-          frequency: med.frequency,
-          duration: med.endDate
-            ? `X ${Math.ceil(
-                (new Date(med.endDate) - new Date(med.startDate)) /
-                  (1000 * 60 * 60 * 24)
-              )} Dni`
-            : "Jak przepisano",
-        }))
-      : patient.medications
-        ? patient.medications.map((med) => ({
-            name: med.name,
-            dosage: med.dosage,
-            frequency: med.frequency,
-            duration: med.endDate
-              ? `X ${Math.ceil(
-                  (new Date(med.endDate) - new Date(med.startDate)) /
-                    (1000 * 60 * 60 * 24)
-                )} Dni`
-              : "Jak przepisano",
-          }))
-        : [];
-
-    console.log("Appointment reports:", medications);
-
-    // Format reports - use appointment reports if available
-    const reports = appointment?.reports || 
-      (patient.documents || []).filter(doc => doc.document_type === "report");
-
-    // Get consultation data from appointment if available
+    const reports = appointment?.reports ||
+      (patient.documents || []).filter((doc) => doc.document_type === "report");
     const consultation = appointment?.consultation || patient.consultations || {};
 
-    // Format final response
     const formattedPatient = {
-      name: patient.name || "Nie nagrane",
-      patientId:
-        patient.patientId ||
-        `#${patient._id.toString().slice(-8)}`,
+      name: nameStr,
+      pesel,
+      phone: patient.phone || patient.phoneFormatted || "",
+      patientId: patient.patientId || patient._id?.toString() || "",
+      id: patient._id?.toString(),
+      allergies: patient.allergies || "",
+      lastVisit,
+      lastDiagnosis,
+      medications,
       avatar: patient.profilePicture || null,
       email: patient.email,
-      phone: patient.phone || patient.phoneFormatted || "Niedostępny",
       lastChecked,
       prescription: appointment?.consultation || consultation
         ? `#${Date.now().toString().slice(-8)}`
         : "Niedostępny",
       weight,
       bp,
-      pulseRate: "Normalny", // This doesn't seem to be in your model, so using a default
+      pulseRate: "Normalny",
       observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "Brak obserwacji",
-      medications,
       reports,
-      appointmentId: appointment?._id || null
+      appointmentId: appointment?._id || null,
     };
 
     return res.status(200).json(formattedPatient);
