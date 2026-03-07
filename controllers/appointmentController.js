@@ -2224,6 +2224,8 @@ exports.getAppointmentsByDoctor = async (req, res) => {
     const {
       startDate,
       endDate,
+      startTime,
+      endTime,
       status = "all",
       page = 1,
       limit = 10,
@@ -2246,6 +2248,14 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         end.setHours(23, 59, 59, 999);
         query.date.$lte = end;
       }
+    }
+
+    // Optional time range: only appointments within [startTime, endTime] (HH:MM, e.g. 09:00, 17:00)
+    if (startTime && String(startTime).trim()) {
+      query.startTime = { $gte: String(startTime).trim() };
+    }
+    if (endTime && String(endTime).trim()) {
+      query.endTime = { $lte: String(endTime).trim() };
     }
 
     if (status !== "all") {
