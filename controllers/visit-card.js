@@ -10,6 +10,7 @@ const mongoose = require("mongoose");
 
 // Import the standardized document helper from patient controller
 const { createStandardizedDocument } = require("./patientController");
+const { getVisitMedicalCodes } = require("../services/visitMedicalCodesService");
 
 // Function to convert logo to base64
 const getLogoBase64 = async () => {
@@ -124,8 +125,18 @@ exports.generateVisitCard = async (req, res) => {
     // Get consultation data from appointment
     const consultationData = appointment.consultation || {};
 
-    // Create a unique filename
-    const filename = `visit_card_${patient._id}_${uuidv4()}.pdf`;
+    // ICD-10 diagnoses and ICD-9 procedures for this visit (per spec: Main Section)
+    const medicalCodes = await getVisitMedicalCodes(appointmentId);
+    const diagnoses = medicalCodes.diagnoses || [];
+    const procedures = medicalCodes.procedures || [];
+
+    // Spec: file naming karta_wizyty_PESEL_DATE.pdf
+    const peselForFile = (patient.govtId && String(patient.govtId).replace(/\D/g, "")) || (patient.npesei && String(patient.npesei).replace(/\s/g, "_")) || "brak";
+    const dateForFile = appointment.date
+      ? new Date(appointment.date).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const pdfBaseName = `karta_wizyty_${peselForFile}_${dateForFile}.pdf`;
+    const filename = pdfBaseName;
     const tempFilePath = path.join(__dirname, "..", "temp", filename);
 
     // Make sure temp directory exists
@@ -134,8 +145,10 @@ exports.generateVisitCard = async (req, res) => {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Format visit time
+    // Format visit time (spec: Start Time and End Time)
     const visitTime = appointment.startTime || "10:00";
+    const visitEndTime = appointment.endTime || "";
+    const visitTimeDisplay = visitEndTime ? `${visitTime} - ${visitEndTime}` : visitTime;
 
     // Get doctor's name
     let doctorName = "Dr. ";
@@ -504,7 +517,7 @@ exports.generateVisitCard = async (req, res) => {
                     </div>
                     <div class="info-row">
                         <span class="info-label">Godzina wizyty:</span>
-                        <span>${visitTime}</span>
+                        <span>${visitTimeDisplay}</span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Lekarz:</span>
@@ -514,6 +527,24 @@ exports.generateVisitCard = async (req, res) => {
             </div>
             
             <div class="visit-card-title">KARTA WIZYTY</div>
+            
+            ${diagnoses.length > 0 || procedures.length > 0 ? `
+            <div class="consultation-item" style="margin-bottom: 12px;">
+              <div class="section-title" style="margin-top: 10px;">Rozpoznania i procedury</div>
+              ${diagnoses.length > 0 ? `
+              <div class="info-row" style="margin-bottom: 6px;"><span class="info-label">ICD-10 (Rozpoznania):</span></div>
+              <div style="margin-left: 0; margin-bottom: 8px;">
+                ${diagnoses.map((d) => `<div class="info-row">${d.code} – ${d.name}${d.isPrimary ? " <strong>(Główne)</strong>" : ""}</div>`).join("")}
+              </div>
+              ` : ""}
+              ${procedures.length > 0 ? `
+              <div class="info-row" style="margin-bottom: 6px;"><span class="info-label">ICD-9 (Procedury):</span></div>
+              <div style="margin-left: 0;">
+                ${procedures.map((p) => `<div class="info-row">${p.code} – ${p.name}</div>`).join("")}
+              </div>
+              ` : ""}
+            </div>
+            ` : ""}
             
             <div class="consultation-section">
                 <div class="consultation-item">
@@ -624,10 +655,7 @@ exports.generateVisitCard = async (req, res) => {
         use_filename: true,
         unique_filename: true,
         access_mode: "public",
-        public_id: `karta_wizyty_${patientName.replace(
-          /\s+/g,
-          "_"
-        )}_${visitDate.replace(/\./g, "_")}_CM7`,
+        public_id: `karta_wizyty_${peselForFile}_${dateForFile}`,
         format: "pdf",
       });
 
@@ -674,29 +702,9 @@ exports.generateVisitCard = async (req, res) => {
       appointment.reports.push(newReport);
       await appointment.save();
 
-      // Save the standardized document reference to the patient as well for backward compatibility
-      try {
-        const patientDoc = await Patient.findById(patient._id);
-        if (patientDoc) {
-          if (!patientDoc.documents) {
-            patientDoc.documents = [];
-          }
-
-          // Create standardized document for patient's documents array
-          const patientDocument = createStandardizedDocument(
-            mockFileData,
-            "report"
-          );
-          patientDocument.documentType = "visit-card"; // Override document type for patient
-          patientDocument.appointmentId = appointmentId; // Add appointment reference
-
-          patientDoc.documents.push(patientDocument);
-          await patientDoc.save();
-        }
-      } catch (patientSaveError) {
-        console.error("Error saving patient document:", patientSaveError);
-        // Continue execution - the visit card is still generated successfully
-      }
+      // Spec: "The file is saved exclusively in the Medical Documents section of this specific visit.
+      // It must not appear in the general patient documents available to the reception."
+      // So we do NOT push to patient.documents – only appointment.reports.
 
       // Return the download URL
       return res.status(200).json({
