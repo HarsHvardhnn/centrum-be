@@ -41,6 +41,53 @@ This document maps the **FINAL TECHNICAL SPECIFICATION: VISIT CARD** to backend 
 
 ---
 
+## 3a. APIs for ICD-10 / ICD-9 (FE integration)
+
+All base URLs below are relative to your API root (e.g. `https://centrum-be.onrender.com`). Auth: **Bearer token**; roles: `admin`, `doctor`, `receptionist`.
+
+### Search (autocomplete)
+
+| Purpose | Method | URL | Response |
+|--------|--------|-----|----------|
+| **ICD-10** (diagnoses) | GET | `/api/icd10/search?q={query}` | `[{ "code": "E11", "name": "Type 2 diabetes mellitus" }, ...]` (max 10). Search by code or disease name, case-insensitive. |
+| **ICD-9** (procedures) | GET | `/api/icd9/search?q={query}` | `[{ "code": "45.13", "name": "Colonoscopy" }, ...]` (max 10). |
+
+Example: `GET /api/icd10/search?q=I10` or `GET /api/icd10/search?q=nadciśnienie`.
+
+### Visit diagnoses (ICD-10) – per visit
+
+`visitId` = appointment `_id` (the visit for the current visit card).
+
+| Action | Method | URL | Body | Response |
+|--------|--------|-----|------|----------|
+| List diagnoses | GET | `/appointments/:visitId/diagnoses` | – | `{ "success": true, "data": [{ "id", "code", "name", "isPrimary" }, ...] }` |
+| Add diagnosis | POST | `/appointments/:visitId/diagnoses` | `{ "code": "E11", "name": "Type 2 diabetes mellitus", "isPrimary": true }` | `{ "success": true, "data": { "id", "code", "name", "isPrimary" } }` |
+| Remove diagnosis | DELETE | `/appointments/:visitId/diagnoses/:diagnosisId` | – | `{ "success": true }` |
+
+Only one diagnosis can be primary per visit; setting `isPrimary: true` clears the previous primary.
+
+### Visit procedures (ICD-9) – per visit
+
+| Action | Method | URL | Body | Response |
+|--------|--------|-----|------|----------|
+| List procedures | GET | `/appointments/:visitId/procedures` | – | `{ "success": true, "data": [{ "id", "code", "name" }, ...] }` |
+| Add procedure | POST | `/appointments/:visitId/procedures` | `{ "code": "45.13", "name": "Colonoscopy" }` | `{ "success": true, "data": { "id", "code", "name" } }` |
+| Remove procedure | DELETE | `/appointments/:visitId/procedures/:procedureId` | – | `{ "success": true }` |
+
+### Get all medical codes for a visit (optional)
+
+If you need a single call to load both diagnoses and procedures for the visit card view:
+
+| Method | URL | Response |
+|--------|-----|----------|
+| GET | `/appointments/:visitId/medical-codes` | `{ "success": true, "data": { "diagnoses": [{ "code", "name", "isPrimary" }], "procedures": [{ "code", "name" }] } }` |
+
+---
+
+Full details (admin import, CSV format, etc.): **`docs/ICD_VISIT_CODES_API.md`**.
+
+---
+
 ## 4. Footer and Actions
 
 | Spec item | Backend status / notes |
@@ -75,6 +122,16 @@ This document maps the **FINAL TECHNICAL SPECIFICATION: VISIT CARD** to backend 
 
 3. **Patient details panel**
    - `GET /patients/det/reports/:patientId` returns PESEL, allergies, lastVisit, lastDiagnosis, medications (active only), etc.
+
+---
+
+## Render (and other cloud) deployment – visit card PDF
+
+Visit card PDF generation uses **Puppeteer** and needs a Chrome/Chromium executable. On Render there is no system Chrome by default.
+
+- **Solution in place:** The app uses the full **`puppeteer`** package as well as `puppeteer-core`. The visit-card controller falls back to Puppeteer’s **bundled Chromium** when `CHROME_EXECUTABLE_PATH` is not set. So on Render, after `npm install`, the bundled Chromium is used and the visit card PDF should work without extra config.
+- **Optional:** To use a system Chrome instead (e.g. in Docker), set **`CHROME_EXECUTABLE_PATH`** (or **`PUPPETEER_EXECUTABLE_PATH`**) in the environment to the path of the Chrome/Chromium binary.
+- **Build:** If the build runs out of memory when Puppeteer downloads Chromium, you can set **`PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1`** in the build environment and then install Chromium in the image (e.g. `apt-get install -y chromium`) and set `CHROME_EXECUTABLE_PATH=/usr/bin/chromium`.
 
 ---
 

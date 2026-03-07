@@ -1,4 +1,4 @@
-const puppeteer = require("puppeteer-core");
+const puppeteer = require("puppeteer");
 const fs = require("fs");
 const path = require("path");
 const Patient = require("../models/user-entity/patient");
@@ -29,14 +29,16 @@ const getLogoBase64 = async () => {
   }
 };
 
-// Function to find Chrome executable (copied from patientBillController)
+// Function to find Chrome executable. On Render (and similar cloud) use bundled Chromium from "puppeteer" package.
 const findChrome = () => {
   const possiblePaths = [
     process.env.CHROME_EXECUTABLE_PATH,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
     "/usr/bin/chromium-browser",
     "/usr/bin/chromium",
+    "/snap/bin/chromium",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -49,8 +51,18 @@ const findChrome = () => {
     }
   }
 
+  // Fallback: use Chromium bundled by "puppeteer" (used on Render etc. where no system Chrome)
+  try {
+    const executablePath = puppeteer.executablePath();
+    if (executablePath && fs.existsSync(executablePath)) {
+      return executablePath;
+    }
+  } catch (e) {
+    // executablePath() failed
+  }
+
   throw new Error(
-    "Chrome executable not found. Please install Chrome or set CHROME_EXECUTABLE_PATH environment variable."
+    "Chrome executable not found. Install the 'puppeteer' package (npm install puppeteer) for cloud deploy, or set CHROME_EXECUTABLE_PATH."
   );
 };
 
@@ -591,7 +603,7 @@ exports.generateVisitCard = async (req, res) => {
     </html>
     `;
 
-    // Launch browser with puppeteer-core
+    // Launch browser (uses system Chrome if CHROME_EXECUTABLE_PATH set, else Puppeteer's bundled Chromium)
     browser = await puppeteer.launch({
       headless: true,
       executablePath: findChrome(),
