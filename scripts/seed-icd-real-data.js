@@ -42,15 +42,46 @@ function normalizeRow(row) {
   return { code, full_name };
 }
 
+/** Parse one CSV line respecting quoted fields (commas inside quotes stay). */
+function parseCsvLine(line, sep = ",") {
+  const out = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '"') {
+      let field = "";
+      i++;
+      while (i < line.length) {
+        if (line[i] === '"') {
+          i++;
+          if (line[i] === '"') { field += '"'; i++; }
+          else break;
+        } else {
+          field += line[i];
+          i++;
+        }
+      }
+      out.push(field.trim());
+      while (i < line.length && line[i] !== sep) i++;
+      if (line[i] === sep) i++;
+    } else {
+      let end = line.indexOf(sep, i);
+      if (end === -1) end = line.length;
+      out.push(line.slice(i, end).trim().replace(/^"|"$/g, ""));
+      i = end + (line[end] === sep ? 1 : 0);
+    }
+  }
+  return out;
+}
+
 function parseCsv(content) {
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length === 0) return [];
   const headerLine = lines[0];
   const sep = headerLine.includes("\t") ? "\t" : ",";
-  const headers = headerLine.split(sep).map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const headers = parseCsvLine(headerLine, sep).map((h) => h.toLowerCase().replace(/\s+/g, "_"));
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(sep).map((v) => v.trim());
+    const values = parseCsvLine(lines[i], sep);
     const row = {};
     headers.forEach((h, j) => {
       row[h] = values[j] ?? "";

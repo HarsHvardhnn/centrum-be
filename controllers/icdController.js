@@ -198,18 +198,50 @@ function parseImportPayload(req) {
   return rows;
 }
 
+/** Parse one CSV line respecting quoted fields (commas inside quotes stay). */
+function parseCsvLine(line, sep = ",") {
+  const out = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '"') {
+      let field = "";
+      i++;
+      while (i < line.length) {
+        if (line[i] === '"') {
+          i++;
+          if (line[i] === '"') { field += '"'; i++; }
+          else break;
+        } else {
+          field += line[i];
+          i++;
+        }
+      }
+      out.push(field.trim());
+      while (i < line.length && line[i] !== sep) i++;
+      if (line[i] === sep) i++;
+    } else {
+      let end = line.indexOf(sep, i);
+      if (end === -1) end = line.length;
+      out.push(line.slice(i, end).trim().replace(/^"|"$/g, ""));
+      i = end + (line[end] === sep ? 1 : 0);
+    }
+  }
+  return out;
+}
+
 function parseCsv(str) {
   const lines = str.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length === 0) return [];
-  const header = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/\s/g, "_"));
+  const sep = lines[0].includes("\t") ? "\t" : ",";
+  const header = parseCsvLine(lines[0], sep).map((h) => h.trim().toLowerCase().replace(/\s/g, "_"));
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(",").map((v) => v.trim());
+    const values = parseCsvLine(lines[i], sep);
     const row = {};
     header.forEach((h, j) => {
-      row[h] = values[j] || "";
+      row[h] = (values[j] || "").trim();
     });
-    if (row.code || row.full_name) rows.push(row);
+    if (row.code || row.prcdrcd || row.full_name || row.longdesc) rows.push(row);
   }
   return rows;
 }
