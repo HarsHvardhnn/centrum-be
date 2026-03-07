@@ -368,11 +368,8 @@ const getAllDoctors = async (req, res) => {
 const getDoctorById = async (req, res) => {
   try {
     const { id } = req.params;
-    // Optional: date for which to return shift timing (YYYY-MM-DD). Default: today in Poland.
-    const dateParam = req.query.date;
-    const requestedDate = dateParam
-      ? toZonedTime(new Date(dateParam + "T12:00:00.000Z"), POLAND_TIMEZONE)
-      : getCurrentDatePoland();
+    // Always use today's date (Poland) for "that day's" shift timing; FE does not send date.
+    const requestedDate = getCurrentDatePoland();
 
     let query = {};
     if (mongoose.Types.ObjectId.isValid(id)) {

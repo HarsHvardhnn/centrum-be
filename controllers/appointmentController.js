@@ -2262,6 +2262,14 @@ exports.getAppointmentsByDoctor = async (req, res) => {
 
     const total = await Appointment.countDocuments(query);
 
+    // Full-day counts (same date range), regardless of pagination
+    const liczbaWizytQuery = { ...query, status: { $in: ["booked", "checkedIn", "completed"] } };
+    const pozostaloWizytQuery = { ...query, status: { $in: ["booked", "checkedIn"] } };
+    const [liczbaWizyt, pozostaloWizyt] = await Promise.all([
+      Appointment.countDocuments(liczbaWizytQuery),
+      Appointment.countDocuments(pozostaloWizytQuery),
+    ]);
+
     const rd = (a) => a?.registrationData;
     const transformed = appointments.map((appt) => {
       const fromReg = rd(appt);
@@ -2294,6 +2302,8 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       total,
       page: parseInt(page),
       limit: parseInt(limit),
+      liczbaWizyt,
+      pozostaloWizyt,
       data: transformed,
     });
   } catch (error) {
