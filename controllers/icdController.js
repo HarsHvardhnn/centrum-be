@@ -213,3 +213,84 @@ function parseCsv(str) {
   }
   return rows;
 }
+
+const BATCH_SIZE = 1000;
+
+function normalizeRow(row) {
+  const code = (row.code || row.Code || "").toString().trim();
+  const full_name = (row.full_name ?? row.fullName ?? row.name ?? "").toString().trim();
+  return { code, full_name };
+}
+
+/**
+ * POST /api/icd/seed (unprotected)
+ * Body: JSON { icd10: { items: [{ code, full_name }] }, icd9: { items: [...] } }
+ * Or multipart: file fields "icd10" and/or "icd9" (CSV, header code,full_name).
+ * Batch-inserts; skips codes that already exist. Use for initial load from main server.
+ */
+exports.seedIcdRealData = async (req, res) => {
+  try {
+    const result = { icd10: { inserted: 0 }, icd9: { inserted: 0 } };
+    const body = req.body || {};
+    const files = req.files || {};
+
+    const getRows = (itemsOrFile) => {
+      if (!itemsOrFile) return [];
+      if (Array.isArray(itemsOrFile)) return itemsOrFile.map(normalizeRow).filter((r) => r.code && r.full_name);
+      if (itemsOrFile.buffer) return parseCsv(itemsOrFile.buffer.toString("utf8")).map(normalizeRow).filter((r) => r.code && r.full_name);
+      if (itemsOrFile.items && Array.isArray(itemsOrFile.items)) return itemsOrFile.items.map(normalizeRow).filter((r) => r.code && r.full_name);
+      return [];
+    };
+
+    const icd10Input = body.icd10 || (files.icd10 && files.icd10[0]);
+    const icd9Input = body.icd9 || (files.icd9 && files.icd9[0]);
+
+    let icd10Rows = getRows(icd10Input);
+    let icd9Rows = getRows(icd9Input);
+
+    if (icd10Rows.length > 0) {
+      const seen = new Set();
+      icd10Rows = icd10Rows.filter((r) => {
+        if (seen.has(r.code)) return false;
+        seen.add(r.code);
+        return true;
+      });
+      const existing = new Set((await Icd10Master.find({}).select("code").lean()).map((d) => d.code));
+      const toInsert = icd10Rows.filter((r) => !existing.has(r.code));
+      for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+        const batch = toInsert.slice(i, i + BATCH_SIZE);
+        await Icd10Master.insertMany(batch);
+        result.icd10.inserted += batch.length;
+      }
+    }
+
+    if (icd9Rows.length > 0) {
+      const seen = new Set();
+      icd9Rows = icd9Rows.filter((r) => {
+        if (seen.has(r.code)) return false;
+        seen.add(r.code);
+        return true;
+      });
+      const existing = new Set((await Icd9Master.find({}).select("code").lean()).map((d) => d.code));
+      const toInsert = icd9Rows.filter((r) => !existing.has(r.code));
+      for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+        const batch = toInsert.slice(i, i + BATCH_SIZE);
+        await Icd9Master.insertMany(batch);
+        result.icd9.inserted += batch.length;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "ICD seed completed",
+      ...result,
+    });
+  } catch (err) {
+    console.error("ICD seed error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Seed failed",
+      error: err.message,
+    });
+  }
+};
