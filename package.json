@@ -5,6 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
+    "postinstall": "npx puppeteer browsers install chrome || true",
     "dev": "nodemon index.js",
     "setup-google": "node scripts/setup-google-service-account.js",
     "setup-delegation": "node scripts/setup-google-delegation.js",

@@ -29,7 +29,30 @@ const getLogoBase64 = async () => {
   }
 };
 
-// Function to find Chrome executable. On Render (and similar cloud) use bundled Chromium from "puppeteer" package.
+// Find Chrome binary inside a directory (e.g. .cache/puppeteer); returns path or null.
+function findChromeInDir(dir) {
+  if (!dir || !fs.existsSync(dir)) return null;
+  const names = ["chrome", "chromium", "chrome-headless-shell"];
+  const trySubdirs = (d, depth) => {
+    if (depth > 5) return null;
+    try {
+      const entries = fs.readdirSync(d, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(d, e.name);
+        if (e.isFile() && (e.name === "chrome" || e.name === "chromium" || e.name === "chrome-headless-shell"))
+          return full;
+        if (e.isDirectory() && (e.name.startsWith("chrome") || e.name.startsWith("linux") || e.name.startsWith("headless"))) {
+          const found = trySubdirs(full, depth + 1);
+          if (found) return found;
+        }
+      }
+    } catch (_) {}
+    return null;
+  };
+  return trySubdirs(dir, 0);
+}
+
+// Function to find Chrome executable. On Render use .cache/puppeteer (filled by postinstall) or CHROME_EXECUTABLE_PATH.
 const findChrome = () => {
   const possiblePaths = [
     process.env.CHROME_EXECUTABLE_PATH,
@@ -51,7 +74,18 @@ const findChrome = () => {
     }
   }
 
-  // Fallback: use Chromium bundled by "puppeteer" (used on Render etc. where no system Chrome)
+  // Project cache (Render: .puppeteerrc.cjs sets cacheDirectory to .cache/puppeteer; postinstall installs Chrome there)
+  const cacheDirs = [
+    path.join(process.cwd(), ".cache", "puppeteer"),
+    process.env.PUPPETEER_CACHE_DIR,
+    "/opt/render/.cache/puppeteer",
+  ].filter(Boolean);
+  for (const cacheDir of cacheDirs) {
+    const found = findChromeInDir(cacheDir);
+    if (found) return found;
+  }
+
+  // Fallback: use Chromium from "puppeteer" (executablePath() respects .puppeteerrc.cjs)
   try {
     const executablePath = puppeteer.executablePath();
     if (executablePath && fs.existsSync(executablePath)) {
@@ -62,7 +96,7 @@ const findChrome = () => {
   }
 
   throw new Error(
-    "Chrome executable not found. Install the 'puppeteer' package (npm install puppeteer) for cloud deploy, or set CHROME_EXECUTABLE_PATH."
+    "Chrome executable not found. On Render: ensure .puppeteerrc.cjs exists, postinstall runs 'npx puppeteer browsers install chrome', and PUPPETEER_SKIP_CHROMIUM_DOWNLOAD is not set to true. Or set CHROME_EXECUTABLE_PATH."
   );
 };
 
