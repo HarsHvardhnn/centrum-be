@@ -8,6 +8,7 @@ const {
   getSmsTemplateById,
   updateSmsTemplate,
   deleteSmsTemplate,
+  bulkPermanentDeleteSmsTemplates,
   getActiveSmsTemplates,
   toggleSmsTemplateStatus,
 } = require("../controllers/smsTemplateController");
@@ -51,6 +52,13 @@ router.put(
 
 // Delete SMS Template (Admin only)
 router.delete("/:id", authenticateRole(["admin","receptionist"]), deleteSmsTemplate);
+
+// Permanently delete multiple SMS templates (bulk). Body: { ids: string[] }
+router.post(
+  "/bulk-delete",
+  authenticateRole(["admin", "receptionist"]),
+  bulkPermanentDeleteSmsTemplates
+);
 
 // Toggle SMS Template Status (Admin only)
 router.patch("/:id/toggle", authenticateRole(["admin","receptionist"]), toggleSmsTemplateStatus);
