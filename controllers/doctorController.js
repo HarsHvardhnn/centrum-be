@@ -368,6 +368,11 @@ const getAllDoctors = async (req, res) => {
 const getDoctorById = async (req, res) => {
   try {
     const { id } = req.params;
+    // Optional: date for which to return shift timing (YYYY-MM-DD). Default: today in Poland.
+    const dateParam = req.query.date;
+    const requestedDate = dateParam
+      ? toZonedTime(new Date(dateParam + "T12:00:00.000Z"), POLAND_TIMEZONE)
+      : getCurrentDatePoland();
 
     let query = {};
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -386,9 +391,27 @@ const getDoctorById = async (req, res) => {
       });
     }
 
+    // That day's shift timing from DoctorSchedule (date-based), not hardcoded weekly pattern
+    const schedule = await DoctorSchedule.findOne({
+      doctorId: doctor._id,
+      date: {
+        $gte: getStartOfDayPoland(requestedDate),
+        $lte: getEndOfDayPoland(requestedDate),
+      },
+      isActive: true,
+    }).lean();
+
+    const shiftsForDate = schedule?.timeBlocks?.length
+      ? {
+          date: format(requestedDate, "yyyy-MM-dd"),
+          timeBlocks: schedule.timeBlocks.filter((b) => b.isActive !== false).map((b) => ({ startTime: b.startTime, endTime: b.endTime })),
+        }
+      : null;
+
     res.status(200).json({
       success: true,
       doctor,
+      shiftsForDate,
     });
   } catch (error) {
     console.error("Error fetching doctor:", error);
