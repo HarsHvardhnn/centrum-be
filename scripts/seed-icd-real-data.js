@@ -55,8 +55,8 @@ function parseCsv(content) {
     headers.forEach((h, j) => {
       row[h] = values[j] ?? "";
     });
-    const code = row.code ?? row.code_number ?? row.icd_code ?? "";
-    const full_name = row.full_name ?? row.fullname ?? row.name ?? row.long_description ?? row.description ?? row.title ?? "";
+    const code = row.code ?? row.code_number ?? row.icd_code ?? row.prcdrcd ?? "";
+    const full_name = row.full_name ?? row.fullname ?? row.name ?? row.long_description ?? row.longdescription ?? row.longdesc ?? row.description ?? row.title ?? "";
     if (code && full_name) rows.push({ code, full_name });
   }
   return rows;

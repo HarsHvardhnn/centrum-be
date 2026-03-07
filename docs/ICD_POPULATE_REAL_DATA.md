@@ -4,42 +4,55 @@ This document describes how to fill the **Icd10Master** and **Icd9Master** colle
 
 ---
 
-## 1. Required format
+## 1. Where to get the data (direct links)
 
-Both import methods expect data in this shape:
+You need two files: one for ICD-10 (diagnoses) and one for ICD-9 (procedures). Below are **ready-to-use** sources you can download and use with the seed script or the `/api/icd/seed` endpoint.
+
+### ICD-10 (diagnoses) – ready-to-use CSV
+
+| Source | Link | What to do |
+|--------|------|------------|
+| **GitHub (Bobrovskiy)** | **[Download diagnosis.csv](https://raw.githubusercontent.com/Bobrovskiy/ICD-10-CSV/master/2020/diagnosis.csv)** | CSV has columns `Code` and `LongDescription`. The seed script accepts these as-is (no need to rename). ~14 MB, ~70k rows. |
+| **GitHub (2019 same repo)** | **[Download 2019 diagnosis.csv](https://raw.githubusercontent.com/Bobrovskiy/ICD-10-CSV/master/2019/diagnosis.csv)** | Same format if you prefer 2019. |
+
+**Steps:**
+
+1. Open the link and save as `icd10.csv` (or use browser “Save as” / `curl -o icd10.csv "https://raw.githubusercontent.com/Bobrovskiy/ICD-10-CSV/master/2020/diagnosis.csv"`).
+2. Run:  
+   `node scripts/seed-icd-real-data.js --icd10=icd10.csv`  
+   or upload `icd10.csv` to **POST /api/icd/seed** (form field `icd10`).
+
+### ICD-9 (procedures) – ready-to-use CSV
+
+| Source | Link | What to do |
+|--------|------|------------|
+| **NBER (official-style data)** | **[ICD-9 procedure codes page](https://www.nber.org/research/data/icd-9-cm-diagnosis-and-procedure-codes)** | On that page, under “Surgical Procedure”, click **CSV** for the year you want (e.g. 2015). Direct file: `https://data.nber.org/data/ICD9ProviderDiagnosticCodes/2015/icd9sg2015.csv` |
+| **Direct 2015 procedure CSV** | **https://data.nber.org/data/ICD9ProviderDiagnosticCodes/2015/icd9sg2015.csv** | Columns: `prcdrcd` (code), `longdesc` (description). The seed script accepts these as-is. ~3,882 procedure codes. |
+
+**Steps:**
+
+1. Download the CSV (e.g. save as `icd9.csv`). If the NBER link asks for a description page, use the main page link above and pick the CSV from the table.
+2. Run:  
+   `node scripts/seed-icd-real-data.js --icd9=icd9.csv`  
+   or upload `icd9.csv` to **POST /api/icd/seed** (form field `icd9`).
+
+### If the NBER CSV link doesn’t work
+
+- Go to **[NBER ICD-9-CM data](https://www.nber.org/research/data/icd-9-cm-diagnosis-and-procedure-codes)**.
+- In the table, find the row for the year you want (e.g. 2015).
+- Under **Surgical Procedure**, click the **CSV** link — it will download a file like `icd9sg2015.csv`.
+- Use that file as `icd9.csv` in the steps above.
+
+---
+
+## 2. Required format (for other files)
+
+If you use a different source, both import methods expect:
 
 - **ICD-10:** `code` (e.g. `E11`), `full_name` (e.g. `Type 2 diabetes mellitus`).
 - **ICD-9:** same — `code` (e.g. `45.13`), `full_name` (e.g. `Colonoscopy`).
 
-CSV must have a header row. Supported column names (case-insensitive): `code`, `full_name` (or `fullName`, `name`, `Long Description`, `description`, `title`). The seed script also accepts tab-separated files.
-
----
-
-## 2. Where to get real-life data
-
-### ICD-10 (diagnoses)
-
-- **CMS (US):**  
-  [CMS ICD-10-CM](https://www.cms.gov/medicare/coding-billing/icd-10-codes/2024-icd-10-cm) — Code Tables / Code Descriptions (ZIP). Extract and convert to CSV with columns `code` and `full_name`.
-- **CDC NCHS:**  
-  [CDC ICD-10-CM](https://www.cdc.gov/nchs/icd/icd-10-cm.htm) — same data, often in TXT/CSV. Normalize to `code`, `full_name`.
-- **WHO:**  
-  [ICD-10 versions](https://icdcdn.who.int/icd10/index.html) — ClaML (XML) or tabular; you may need a small script to convert to CSV.
-- **Third-party (e.g. GitHub):**  
-  Search for “ICD-10 CSV” or “ICD-10 JSON”; ensure the source is reputable and the dataset has `code` + description. Map the description column to `full_name`.
-
-### ICD-9 (procedures)
-
-- **CMS (US):**  
-  [ICD-9-CM Procedure Codes](https://www.cms.gov/medicare/coding-billing/icd-10-codes/icd-9-cm-diagnosis-procedure-codes-abbreviated-and-full-code-titles) — full and abbreviated titles; pick procedure files and convert to `code`, `full_name`.
-- **HCUP (AHRQ):**  
-  Procedure code files (e.g. [Procedure Classes](https://hcup-us.ahrq.gov/toolssoftware/procedure/procedure.jsp)) — often include ICD-9 procedure codes; map to `code` and `full_name`.
-- **GitHub:**  
-  Repositories such as [drobbins/ICD9](https://github.com/drobbins/ICD9) provide ICD-9 in text/CSV; confirm it is **procedure** codes if your app uses ICD-9 only for procedures.
-
-After downloading, ensure your file has:
-- One row per code.
-- A header row with something that maps to `code` and `full_name` (see above).
+CSV must have a header row. The seed script also accepts these column names (case-insensitive): `Code`, `LongDescription` / `Long description`, `full_name`, `name`, `description`, `title`; for NBER procedure CSV: `prcdrcd` (code), `longdesc` (description). Tab-separated files are supported.
 
 ---
 

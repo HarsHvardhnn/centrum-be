@@ -217,8 +217,8 @@ function parseCsv(str) {
 const BATCH_SIZE = 1000;
 
 function normalizeRow(row) {
-  const code = (row.code || row.Code || "").toString().trim();
-  const full_name = (row.full_name ?? row.fullName ?? row.name ?? "").toString().trim();
+  const code = (row.code || row.Code || row.prcdrcd || "").toString().trim();
+  const full_name = (row.full_name ?? row.fullName ?? row.name ?? row.longdescription ?? row.long_description ?? row.longdesc ?? "").toString().trim();
   return { code, full_name };
 }
 
