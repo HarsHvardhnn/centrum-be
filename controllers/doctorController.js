@@ -295,40 +295,56 @@ const getAllDoctors = async (req, res) => {
       .limit(limitNum)
       .lean();
 
+    // Who has an active schedule today (Poland)? Use DoctorSchedule so status reflects real schedule.
+    const doctorIds = doctors.map((d) => d._id);
+    const todayPoland = getCurrentDatePoland();
+    const todayStr = format(todayPoland, "yyyy-MM-dd"); // DoctorSchedule stores date as string
+    const schedulesToday = await DoctorSchedule.find({
+      doctorId: { $in: doctorIds },
+      date: todayStr,
+      isActive: true,
+      timeBlocks: { $elemMatch: { isActive: true } },
+    })
+      .select("doctorId")
+      .lean();
+    const hasScheduleTodaySet = new Set(schedulesToday.map((s) => s.doctorId.toString()));
 
-    const formattedDoctors = doctors.map((doc) => ({
-      _id: doc._id,
-      id: doc.d_id,
-      slug: doc.slug, // Add slug for SEO URLs
-      name: `${doc.name.first} ${doc.name.last}`,
-      nameObj: {
-        first: doc.name.first,
-        last: doc.name.last
-      },
-      specialty:
-        doc.specialization && doc.specialization[0]
-          ? doc.specialization[0]
-          : "General",
-      department: doc.department || "", // Include the department in the response
-      available: doc.isAvailable,
-      status: doc.isAvailable ? "Available" : "Unavailable",
-      experience: doc.experience || 0,
-      experienceText: doc.experience ? `${doc.experience} years` : "0 years",
-      image: doc.profilePicture,
-      visitType: "Consultation",
-      date: new Date().toISOString().split("T")[0],
-      qualifications: doc.qualifications || [],
-      specializations: doc.specialization || [],
-      bio: doc?.bio || "",
-      shortDescription: doc?.shortDescription || "",
-      consultationFee: doc.consultationFee || 0,
-      offlineConsultationFee: doc.offlineConsultationFee || 0,
-      onlineConsultationFee: doc.onlineConsultationFee || 0,
-      ratings: {
-        average: doc.averageRating || 0,
-        total: doc.ratings || 0
-      }
-    }));
+    const formattedDoctors = doctors.map((doc) => {
+      const hasScheduleToday = hasScheduleTodaySet.has(doc._id.toString());
+      return {
+        _id: doc._id,
+        id: doc.d_id,
+        slug: doc.slug, // Add slug for SEO URLs
+        name: `${doc.name.first} ${doc.name.last}`,
+        nameObj: {
+          first: doc.name.first,
+          last: doc.name.last
+        },
+        specialty:
+          doc.specialization && doc.specialization[0]
+            ? doc.specialization[0]
+            : "General",
+        department: doc.department || "", // Include the department in the response
+        available: hasScheduleToday,
+        status: hasScheduleToday ? "Available" : "Unavailable",
+        experience: doc.experience || 0,
+        experienceText: doc.experience ? `${doc.experience} years` : "0 years",
+        image: doc.profilePicture,
+        visitType: "Consultation",
+        date: new Date().toISOString().split("T")[0],
+        qualifications: doc.qualifications || [],
+        specializations: doc.specialization || [],
+        bio: doc?.bio || "",
+        shortDescription: doc?.shortDescription || "",
+        consultationFee: doc.consultationFee || 0,
+        offlineConsultationFee: doc.offlineConsultationFee || 0,
+        onlineConsultationFee: doc.onlineConsultationFee || 0,
+        ratings: {
+          average: doc.averageRating || 0,
+          total: doc.ratings || 0
+        }
+      };
+    });
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(totalDocs / limitNum);

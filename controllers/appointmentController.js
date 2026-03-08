@@ -2685,12 +2685,6 @@ exports.rescheduleAppointment = async (req, res) => {
 
 exports.getAppointmentsDashboard = async (req, res) => {
   try {
-    // Authorization check for doctors - they can only see their own appointments
-    if (req.user && req.user.role === "doctor") {
-      // Add doctor filter to only show appointments for the authenticated doctor
-      req.query.doctor = req.user.id || req.user.d_id;
-    }
-
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const sortBy = req.query.sortBy || "date";
@@ -2698,53 +2692,82 @@ exports.getAppointmentsDashboard = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    // Get today's date at 00:00:00 in Poland timezone
+    // Upcoming: from today 00:00 in Poland timezone, exclude cancelled
     const todayUTC = new Date();
     const todayInPoland = toZonedTime(todayUTC, "Europe/Warsaw");
     const today = new Date(todayInPoland);
     today.setHours(0, 0, 0, 0);
 
-    // Query only upcoming appointments
     const filter = {
       status: { $nin: ["cancelled"] },
       date: { $gte: today },
     };
 
-    // Add doctor filter if provided (for doctor authorization)
-    if (req.query.doctor) {
-      filter.doctor = req.query.doctor;
+    // Doctor token → only that doctor's appointments. Admin/receptionist → all.
+    if (req.user && req.user.role === "doctor") {
+      filter.doctor = req.user.id || req.user.d_id;
     }
 
     const appointments = await Appointment.find(filter)
       .sort({ [sortBy]: order })
       .skip(skip)
       .limit(limit)
-      .populate("doctor patient bookedBy");
+      .populate("doctor", "name profilePicture")
+      .populate("patient", "name")
+      .lean();
 
     const total = await Appointment.countDocuments(filter);
 
     const formattedAppointments = await Promise.all(
       appointments.map(async (appt) => {
         const doctorUser = appt.doctor;
-        console.log(doctorUser, "doctorUser");
-        const doctorProfile = await doctor
-          .findOne({
-            _id: doctorUser._id,
-          })
-          .populate("specialization");
-        console.log(doctorProfile, "doctorProfile");
+        let doctorName = "Unassigned";
+        let specialty = "General";
+        let avatar = "/api/placeholder/40/40";
+
+        if (doctorUser) {
+          doctorName = `${doctorUser.name?.first || ""} ${doctorUser.name?.last || ""}`.trim() || "Doctor";
+          avatar = doctorUser.profilePicture || avatar;
+          const doctorProfile = await doctor
+            .findOne({ _id: doctorUser._id })
+            .populate("specialization")
+            .lean();
+          specialty = doctorProfile?.specialization?.[0]?.name || "General";
+        }
+
+        const fromReg = appt.registrationData;
+        const patientName = appt.patient
+          ? `${appt.patient.name?.first || ""} ${appt.patient.name?.last || ""}`.trim()
+          : (fromReg?.firstName || fromReg?.lastName
+            ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
+            : fromReg?.name || null);
+
+        const dateStr = new Date(appt.date).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
+        const timeStr = `${appt.startTime || ""} - ${appt.endTime || ""}`.trim();
 
         return {
           id: appt._id,
-          name: `Dr. ${doctorUser.name.first} ${doctorUser.name.last}`,
-          specialty: doctorProfile?.specialization?.[0]?.name || "General",
-          avatar: doctorUser.profilePicture || `/api/placeholder/40/40`,
-          date: new Date(appt.date).toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          }),
-          time: `${appt.startTime} - ${appt.endTime}`,
+          appointmentId: appt._id,
+          name: doctorName,
+          specialty,
+          avatar,
+          date: dateStr,
+          time: timeStr,
+          doctor: {
+            id: doctorUser?._id,
+            name: doctorName,
+            specialty,
+            avatar,
+          },
+          patientName: patientName || null,
+          status: appt.status || "booked",
+          mode: appt.mode || "offline",
+          startTime: appt.startTime,
+          endTime: appt.endTime,
         };
       })
     );
