@@ -21,6 +21,7 @@ router.get("/:id", patientController.getPatientById);
 router.get("/", patientController.getAllPatients);
 router.get("/data/simple", patientController.getPatientsList);
 router.get("/data/appointments", patientController.getAppointmentsList);
+router.get("/:patientId/visits", authorizeRoles(["doctor", "receptionist", "admin", "patient"]), patientController.getPatientVisits);
 // router.get('/details/:id', async (req, res) => {
 //   try {
 //     const patient = await User.findById(req.params.id)

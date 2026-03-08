@@ -1966,6 +1966,62 @@ exports.removePatientEmail = async (req, res) => {
   }
 };
 
+/**
+ * GET /patients/:patientId/visits
+ * Returns all visits (appointments) for a patient in a simple shape for modals: date, time, doctor, visit type.
+ * Auth: doctor, receptionist, admin, or patient (only their own).
+ */
+exports.getPatientVisits = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({ success: false, message: "Nieprawidłowy format ID pacjenta" });
+    }
+    if (req.user?.role === "patient" && req.user.id !== patientId) {
+      return res.status(403).json({ success: false, message: "Brak dostępu do wizyt innego pacjenta" });
+    }
+
+    const appointments = await Appointment.find({ patient: patientId })
+      .populate("doctor", "name")
+      .sort({ date: -1, startTime: 1 })
+      .lean();
+
+    const visits = appointments.map((a) => {
+      const doctorName = a.doctor?.name
+        ? `${a.doctor.name.first || ""} ${a.doctor.name.last || ""}`.trim()
+        : null;
+      const visitType = a.consultation?.consultationType || (a.mode === "online" ? "Konsultacja online" : a.mode === "offline" ? "Konsultacja w przychodni" : null) || a.mode || "—";
+      return {
+        visitId: a._id,
+        date: a.date ? new Date(a.date).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" }) : null,
+        time: a.startTime && a.endTime ? `${a.startTime} – ${a.endTime}` : a.startTime || null,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        doctor: {
+          id: a.doctor?._id,
+          name: doctorName,
+        },
+        visitType,
+        mode: a.mode || null,
+        status: a.status || null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: visits.length,
+      data: visits,
+    });
+  } catch (err) {
+    console.error("Error fetching patient visits:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Nie udało się pobrać wizyt",
+      error: err.message,
+    });
+  }
+};
+
 exports.getAppointmentsList = async (req, res) => {
   try {
     // Extract query parameters
