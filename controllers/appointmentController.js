@@ -2289,7 +2289,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         id: appt._id.toString(),
         name: name || "—",
         patient_id: appt.patient?._id?.toString() || null,
-        "p-id": appt.patient?.patientId ?? null,
+        patientId: appt.patient?.patientId ?? null,
         patientLessVisit,
         username: appt.patient?.name?.first
           ? `@${appt.patient.name.first.toLowerCase()}`
