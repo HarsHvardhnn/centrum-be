@@ -1305,6 +1305,9 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       (patient.documents || []).filter((doc) => doc.document_type === "report");
     const consultation = appointment?.consultation || patient.consultations || {};
 
+    const isInternational = !!(patient.isInternationalPatient ?? appointment?.registrationData?.isInternationalPatient ?? appointment?.metadata?.isInternational);
+    const documentId = (patient.internationalPatientDocumentKey ?? appointment?.registrationData?.internationalPatientDocumentKey) || null;
+
     const formattedPatient = {
       name: nameStr,
       pesel,
@@ -1327,6 +1330,8 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "Brak obserwacji",
       reports,
       appointmentId: appointment?._id || null,
+      isInternational,
+      documentId: isInternational ? documentId : null,
     };
 
     return res.status(200).json(formattedPatient);
