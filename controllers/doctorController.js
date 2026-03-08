@@ -295,12 +295,14 @@ const getAllDoctors = async (req, res) => {
       .limit(limitNum)
       .lean();
 
-    // Who has an active schedule today (Poland)? Match same way as getDoctorById (date range) or by date string.
+    // Who has an active schedule today (Poland) AND current time is within one of today's slots?
     const doctorIds = doctors.map((d) => d._id);
     const todayPoland = getCurrentDatePoland();
     const startToday = getStartOfDayPoland(todayPoland);
     const endToday = getEndOfDayPoland(todayPoland);
     const todayStr = format(todayPoland, "yyyy-MM-dd");
+    const currentTimeStr = format(todayPoland, "HH:mm"); // e.g. "21:00" for 9pm Poland
+
     const schedulesToday = await DoctorSchedule.find({
       doctorId: { $in: doctorIds },
       $or: [
@@ -310,12 +312,21 @@ const getAllDoctors = async (req, res) => {
       isActive: true,
       timeBlocks: { $elemMatch: { isActive: true } },
     })
-      .select("doctorId")
+      .select("doctorId timeBlocks")
       .lean();
-    const hasScheduleTodaySet = new Set(schedulesToday.map((s) => s.doctorId.toString()));
+
+    // Available only if current time (Poland) falls within at least one active time block (startTime <= now < endTime)
+    const isCurrentlyAvailableSet = new Set();
+    schedulesToday.forEach((s) => {
+      const blocks = s.timeBlocks || [];
+      const inSlot = blocks.some(
+        (b) => b.isActive !== false && currentTimeStr >= (b.startTime || "00:00") && currentTimeStr < (b.endTime || "24:00")
+      );
+      if (inSlot) isCurrentlyAvailableSet.add(s.doctorId.toString());
+    });
 
     const formattedDoctors = doctors.map((doc) => {
-      const hasScheduleToday = hasScheduleTodaySet.has(doc._id.toString());
+      const available = isCurrentlyAvailableSet.has(doc._id.toString());
       return {
         _id: doc._id,
         id: doc.d_id,
@@ -330,8 +341,8 @@ const getAllDoctors = async (req, res) => {
             ? doc.specialization[0]
             : "General",
         department: doc.department || "", // Include the department in the response
-        available: hasScheduleToday,
-        status: hasScheduleToday ? "Available" : "Unavailable",
+        available,
+        status: available ? "Available" : "Unavailable",
         experience: doc.experience || 0,
         experienceText: doc.experience ? `${doc.experience} years` : "0 years",
         image: doc.profilePicture,

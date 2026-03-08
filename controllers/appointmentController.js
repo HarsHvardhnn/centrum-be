@@ -2254,7 +2254,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const appointments = await Appointment.find(query)
-      .populate("patient", "name email profilePicture sex dob")
+      .populate("patient", "name email profilePicture sex dob patientId")
       .populate("doctor", "name email")
       .sort({ date: 1, startTime: 1 })
       .skip(skip)
@@ -2284,10 +2284,13 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         (appt.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni") ||
         null;
 
+      const patientLessVisit = !appt.patient || !appt.patient._id;
       return {
         id: appt._id.toString(),
         name: name || "—",
         patient_id: appt.patient?._id?.toString() || null,
+        "p-id": appt.patient?.patientId ?? null,
+        patientLessVisit,
         username: appt.patient?.name?.first
           ? `@${appt.patient.name.first.toLowerCase()}`
           : (fromReg?.firstName ? `@${String(fromReg.firstName).toLowerCase()}` : "—"),
