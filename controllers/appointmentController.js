@@ -4138,16 +4138,27 @@ exports.getAppointments = async (req, res) => {
       }
     }
 
-    // Doctor filter
-    if (doctorId) {
-      // Validate doctorId format
-      if (!mongoose.Types.ObjectId.isValid(doctorId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid doctor ID format"
-        });
+    // Doctor filter: accept doctorId as User _id or as doctor d_id (resolve to User _id for appointment query)
+    let resolvedDoctorId = null;
+    if (doctorId && String(doctorId).trim()) {
+      const idStr = String(doctorId).trim();
+      if (mongoose.Types.ObjectId.isValid(idStr)) {
+        const doctorUser = await user.findOne(
+          { role: "doctor", $or: [{ _id: new mongoose.Types.ObjectId(idStr) }, { d_id: idStr }] },
+          { _id: 1 }
+        ).lean();
+        if (doctorUser) {
+          resolvedDoctorId = doctorUser._id;
+        } else {
+          resolvedDoctorId = new mongoose.Types.ObjectId(idStr);
+        }
+      } else {
+        const doctorUser = await user.findOne({ role: "doctor", d_id: idStr }, { _id: 1 }).lean();
+        if (doctorUser) resolvedDoctorId = doctorUser._id;
       }
-      query.doctor = new mongoose.Types.ObjectId(doctorId);
+      if (resolvedDoctorId) {
+        query.doctor = resolvedDoctorId;
+      }
     }
 
     // Appointment ID filter
@@ -4209,15 +4220,8 @@ exports.getAppointments = async (req, res) => {
         }
       }
 
-      if (doctorId) {
-        // Validate doctorId format
-        if (!mongoose.Types.ObjectId.isValid(doctorId)) {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid doctor ID format"
-          });
-        }
-        matchConditions.doctor = new mongoose.Types.ObjectId(doctorId);
+      if (resolvedDoctorId) {
+        matchConditions.doctor = resolvedDoctorId;
       }
 
       if (appointmentId) {
@@ -4478,7 +4482,7 @@ exports.getAppointments = async (req, res) => {
       try {
         appointmentQuery = {
         patient: { $ne: null },
-        ...(doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {}),
+        ...(resolvedDoctorId ? { doctor: resolvedDoctorId } : {}),
         ...(appointmentId ? { _id: new mongoose.Types.ObjectId(appointmentId) } : {}),
         ...(status && status !== "all" && status !== "no_appointment" ? 
           status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
