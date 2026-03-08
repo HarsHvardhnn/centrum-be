@@ -43,6 +43,7 @@ const permanentDeleteRoutes = require("./routes/permanent-delete-routes");
 const patientPortalRoutes = require("./routes/patient-portal-routes");
 const icdRoutes = require("./routes/icd-routes");
 const adminIcdRoutes = require("./routes/admin-icd-routes");
+const visitTemplatesRoutes = require("./routes/visit-templates-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -225,6 +226,7 @@ app.use("/api/email-preview", emailPreviewRoutes);
 app.use("/api/permanent-delete", permanentDeleteRoutes);
 app.use("/api/patient-portal", patientPortalRoutes);
 app.use("/api", icdRoutes);
+app.use("/api/visit-templates", visitTemplatesRoutes);
 app.use("/admin", adminIcdRoutes);
 
 // Test route for SEO (can be removed later)

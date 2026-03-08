@@ -175,6 +175,8 @@ exports.generateVisitCard = async (req, res) => {
     const medicalCodes = await getVisitMedicalCodes(appointmentId);
     const diagnoses = medicalCodes.diagnoses || [];
     const procedures = medicalCodes.procedures || [];
+    // Medications for this visit (show at beginning of documentation when present)
+    const medications = appointment.medications || [];
 
     // Spec: file naming karta_wizyty_PESEL_DATE.pdf
     const peselForFile = (patient.govtId && String(patient.govtId).replace(/\D/g, "")) || (patient.npesei && String(patient.npesei).replace(/\s/g, "_")) || "brak";
@@ -196,14 +198,14 @@ exports.generateVisitCard = async (req, res) => {
     const visitEndTime = appointment.endTime || "";
     const visitTimeDisplay = visitEndTime ? `${visitTime} - ${visitEndTime}` : visitTime;
 
-    // Get doctor's name
-    let doctorName = "Dr. ";
+    // Get doctor's name (no "Dr." prefix – show "Lekarz: Imię Nazwisko" only)
+    let doctorName = "";
     if (appointment.doctor) {
-      doctorName += `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
+      doctorName = `${appointment.doctor.name.first} ${appointment.doctor.name.last}`.trim();
     } else {
-      doctorName += req.user
-        ? `${req.user.name.first} ${req.user.name.last}`
-        : "Harsh Vardhan Chawla";
+      doctorName = req.user
+        ? `${req.user.name.first} ${req.user.name.last}`.trim()
+        : "";
     }
 
     // Get patient's full name
@@ -228,7 +230,14 @@ exports.generateVisitCard = async (req, res) => {
     const address =
       addressParts.length > 0
         ? addressParts.join(", ")
-        : "Złota 44/1, Warszawa, mazowieckie, 00-000, Polska";
+        : "-";
+
+    // Visit/consultation type for "Rodzaj wizyty"
+    const visitTypeLabel =
+      appointment.consultation?.consultationType ||
+      appointment.metadata?.visitType ||
+      (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) ||
+      "—";
 
     // Get patient's phone
     const phone = patient.phone || patient.phoneFormatted || "730953325";
@@ -263,8 +272,8 @@ exports.generateVisitCard = async (req, res) => {
                 font-family: 'Arial', sans-serif;
                 margin: 0;
                 padding: 15px;
-                font-size: 10px;
-                line-height: 1.2;
+                font-size: 12px;
+                line-height: 1.35;
                 color: #333;
                 background: white;
             }
@@ -315,7 +324,7 @@ exports.generateVisitCard = async (req, res) => {
             
             .company-info {
                 text-align: right;
-                font-size: 8px;
+                font-size: 10px;
                 line-height: 1.2;
             }
             
@@ -351,7 +360,7 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .section-title {
-                font-size: 10px;
+                font-size: 12px;
                 font-weight: bold;
                 color: #2c3e50;
                 margin-bottom: 8px;
@@ -360,8 +369,8 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .info-row {
-                margin-bottom: 4px;
-                font-size: 9px;
+                margin-bottom: 5px;
+                font-size: 11px;
             }
             
             .info-label {
@@ -372,7 +381,7 @@ exports.generateVisitCard = async (req, res) => {
             
             .visit-card-title {
                 text-align: center;
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
                 color: #2c3e50;
                 margin: 15px 0 10px 0;
@@ -395,13 +404,13 @@ exports.generateVisitCard = async (req, res) => {
                 font-weight: bold;
                 color: #2c3e50;
                 margin-bottom: 5px;
-                font-size: 9px;
+                font-size: 11px;
                 page-break-after: avoid;
             }
             
             .consultation-content {
-                font-size: 9px;
-                line-height: 1.3;
+                font-size: 11px;
+                line-height: 1.4;
                 word-wrap: break-word;
                 white-space: pre-wrap;
             }
@@ -538,7 +547,7 @@ exports.generateVisitCard = async (req, res) => {
                         <span>${dob}</span>
                     </div>
                     <div class="info-row">
-                        <span class="info-label">Adres zamieszkania:</span>
+                        <span class="info-label">Adres:</span>
                         <span>${address}</span>
                     </div>
                     <div class="info-row">
@@ -569,14 +578,24 @@ exports.generateVisitCard = async (req, res) => {
                         <span class="info-label">Lekarz:</span>
                         <span>${doctorName}</span>
                     </div>
+                    <div class="info-row">
+                        <span class="info-label">Rodzaj wizyty:</span>
+                        <span>${visitTypeLabel}</span>
+                    </div>
                 </div>
             </div>
             
             <div class="visit-card-title">KARTA WIZYTY</div>
             
-            ${diagnoses.length > 0 || procedures.length > 0 ? `
+            ${medications.length > 0 || diagnoses.length > 0 || procedures.length > 0 ? `
             <div class="consultation-item" style="margin-bottom: 12px;">
-              <div class="section-title" style="margin-top: 10px;">Rozpoznania i procedury</div>
+              <div class="section-title" style="margin-top: 10px;">Leki, rozpoznania i procedury</div>
+              ${medications.length > 0 ? `
+              <div class="info-row" style="margin-bottom: 6px;"><span class="info-label">Leki:</span></div>
+              <div style="margin-left: 0; margin-bottom: 8px;">
+                ${medications.map((m) => `<div class="info-row">${m.name || ""}${m.dosage ? " – " + m.dosage : ""}${m.frequency ? ", " + m.frequency : ""}</div>`).join("")}
+              </div>
+              ` : ""}
               ${diagnoses.length > 0 ? `
               <div class="info-row" style="margin-bottom: 6px;"><span class="info-label">ICD-10 (Rozpoznania):</span></div>
               <div style="margin-left: 0; margin-bottom: 8px;">
@@ -593,41 +612,36 @@ exports.generateVisitCard = async (req, res) => {
             ` : ""}
             
             <div class="consultation-section">
+                ${consultationData.interview ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Wywiad z pacjentem:</div>
-                    <div class="consultation-content">${
-                      consultationData.interview || "Brak danych wywiadu"
-                    }</div>
+                    <div class="consultation-content">${consultationData.interview}</div>
                 </div>
-                
+                ` : ""}
+                ${consultationData.physicalExamination ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Badanie przedmiotowe:</div>
-                    <div class="consultation-content">${
-                      consultationData.physicalExamination ||
-                      "Brak danych badania"
-                    }</div>
+                    <div class="consultation-content">${consultationData.physicalExamination}</div>
                 </div>
-                
+                ` : ""}
+                ${consultationData.treatment ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Zastosowane leczenie:</div>
-                    <div class="consultation-content">${
-                      consultationData.treatment || "Brak danych leczenia"
-                    }</div>
+                    <div class="consultation-content">${consultationData.treatment}</div>
                 </div>
-                
+                ` : ""}
+                ${consultationData.recommendations ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Zalecenia:</div>
-                    <div class="consultation-content">${
-                      consultationData.recommendations || "Brak zaleceń"
-                    }</div>
+                    <div class="consultation-content">${consultationData.recommendations}</div>
                 </div>
-                
+                ` : ""}
+                ${consultationData.description ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Notatki:</div>
-                    <div class="consultation-content">${
-                      consultationData.description || "Brak notatek"
-                    }</div>
+                    <div class="consultation-content">${consultationData.description}</div>
                 </div>
+                ` : ""}
             </div>
         </div><div class="footer">
 
@@ -673,14 +687,17 @@ exports.generateVisitCard = async (req, res) => {
       margin: {
         top: "15mm",
         right: "0mm",
-        bottom: "0mm",
+        bottom: "18mm",
         left: "0mm",
       },
       displayHeaderFooter: true,
       footerTemplate: `
-        <div style="width: 100%; height: 7px; display: flex; margin: 0; padding: 0;">
-          <div style="width: 72.33%; height: 100%; background: #008C8C;"></div>
-          <div style="width: 27.67%; height: 100%; background: #2c3e50;"></div>
+        <div style="width: 100%; font-size: 10px; color: #333;">
+          <div style="width: 100%; height: 7px; display: flex; margin: 0; padding: 0;">
+            <div style="width: 72.33%; height: 100%; background: #008C8C;"></div>
+            <div style="width: 27.67%; height: 100%; background: #2c3e50;"></div>
+          </div>
+          <div style="text-align: right; padding: 4px 15px 0 0;">Strona <span class="pageNumber"></span> z <span class="totalPages"></span></div>
         </div>
       `,
       headerTemplate: "<div></div>",
