@@ -295,13 +295,18 @@ const getAllDoctors = async (req, res) => {
       .limit(limitNum)
       .lean();
 
-    // Who has an active schedule today (Poland)? Use DoctorSchedule so status reflects real schedule.
+    // Who has an active schedule today (Poland)? Match same way as getDoctorById (date range) or by date string.
     const doctorIds = doctors.map((d) => d._id);
     const todayPoland = getCurrentDatePoland();
-    const todayStr = format(todayPoland, "yyyy-MM-dd"); // DoctorSchedule stores date as string
+    const startToday = getStartOfDayPoland(todayPoland);
+    const endToday = getEndOfDayPoland(todayPoland);
+    const todayStr = format(todayPoland, "yyyy-MM-dd");
     const schedulesToday = await DoctorSchedule.find({
       doctorId: { $in: doctorIds },
-      date: todayStr,
+      $or: [
+        { date: { $gte: startToday, $lte: endToday } },
+        { date: todayStr },
+      ],
       isActive: true,
       timeBlocks: { $elemMatch: { isActive: true } },
     })
