@@ -22,7 +22,9 @@
     "view:cron-logs-failed": "node scripts/view-cron-logs.js --failed-only",
     "setup:sms-consent": "node scripts/setup-test-sms-consent.js",
     "test:forgot-password": "node scripts/test-forgot-password.js",
-    "create:test-users": "node scripts/create-test-user-for-password-reset.js"
+    "create:test-users": "node scripts/create-test-user-for-password-reset.js",
+    "seed:icd-client-xml": "node scripts/seed-icd-from-client-xml.js",
+    "seed:icd-client-xml:replace": "node scripts/seed-icd-from-client-xml.js --replace"
   },
   "keywords": [],
   "author": "",
@@ -41,6 +43,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "express-validator": "^7.2.1",
+    "fast-xml-parser": "^5.4.2",
     "fs": "^0.0.1-security",
     "google-auth-library": "^9.15.1",
     "googleapis": "^148.0.0",
