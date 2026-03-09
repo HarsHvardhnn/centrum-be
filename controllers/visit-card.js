@@ -198,25 +198,26 @@ exports.generateVisitCard = async (req, res) => {
     const visitEndTime = appointment.endTime || "";
     const visitTimeDisplay = visitEndTime ? `${visitTime} - ${visitEndTime}` : visitTime;
 
-    // Get doctor's name (no "Dr." prefix – show "Lekarz: Imię Nazwisko" only)
+    // Get doctor's name (no "Dr." prefix – show "Lekarz: Name Surname" only)
     let doctorName = "";
     if (appointment.doctor) {
-      doctorName = `${appointment.doctor.name.first} ${appointment.doctor.name.last}`.trim();
+      doctorName = `${appointment.doctor.name.first || ""} ${appointment.doctor.name.last || ""}`.trim();
     } else {
       doctorName = req.user
-        ? `${req.user.name.first} ${req.user.name.last}`.trim()
+        ? `${req.user.name.first || ""} ${req.user.name.last || ""}`.trim()
         : "";
     }
+    doctorName = doctorName.replace(/^\s*Dr\.?\s*/i, "").trim();
 
     // Get patient's full name
     const patientName =
       `${patient.name?.first || ""} ${patient.name?.last || ""}`.trim() ||
       "Jan Kowalski";
 
-    // Get patient's date of birth
+    // Get patient's date of birth (null if missing – row hidden)
     const dob = patient.dateOfBirth
       ? new Date(patient.dateOfBirth).toLocaleDateString("pl-PL")
-      : "6.01.2004";
+      : null;
 
     // Get patient's address - construct from available fields
     const addressParts = [];
@@ -227,10 +228,11 @@ exports.generateVisitCard = async (req, res) => {
     if (patient.pinCode) addressParts.push(patient.pinCode);
     if (patient.country) addressParts.push(patient.country);
 
+    // No default address – use "—" when missing (do not show hardcoded address)
     const address =
       addressParts.length > 0
         ? addressParts.join(", ")
-        : "-";
+        : null;
 
     // Visit/consultation type for "Rodzaj wizyty"
     const visitTypeLabel =
@@ -239,16 +241,17 @@ exports.generateVisitCard = async (req, res) => {
       (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) ||
       "—";
 
-    // Get patient's phone
-    const phone = patient.phone || patient.phoneFormatted || "730953325";
+    // Get patient's phone (no default – row hidden if missing)
+    const phone = (patient.phone || patient.phoneFormatted || "").trim() || null;
 
-    // Get patient gender
+    // Get patient gender (null when not set – row hidden)
+    const sex = (patient.sex || "").trim();
     const gender =
-      patient.sex === "Male"
+      /^male$/i.test(sex)
         ? "Mężczyzna"
-        : patient.sex === "Female"
+        : /^female$/i.test(sex)
         ? "Kobieta"
-        : "ADD gender!!";
+        : null;
 
     // Get logo as base64
     const logoBase64 = await getLogoBase64();
@@ -272,8 +275,8 @@ exports.generateVisitCard = async (req, res) => {
                 font-family: 'Arial', sans-serif;
                 margin: 0;
                 padding: 15px;
-                font-size: 12px;
-                line-height: 1.35;
+                font-size: 13px;
+                line-height: 1.4;
                 color: #333;
                 background: white;
             }
@@ -360,7 +363,7 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .section-title {
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: bold;
                 color: #2c3e50;
                 margin-bottom: 8px;
@@ -369,8 +372,8 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .info-row {
-                margin-bottom: 5px;
-                font-size: 11px;
+                margin-bottom: 6px;
+                font-size: 12px;
             }
             
             .info-label {
@@ -381,7 +384,7 @@ exports.generateVisitCard = async (req, res) => {
             
             .visit-card-title {
                 text-align: center;
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
                 color: #2c3e50;
                 margin: 15px 0 10px 0;
@@ -404,13 +407,13 @@ exports.generateVisitCard = async (req, res) => {
                 font-weight: bold;
                 color: #2c3e50;
                 margin-bottom: 5px;
-                font-size: 11px;
+                font-size: 12px;
                 page-break-after: avoid;
             }
             
             .consultation-content {
-                font-size: 11px;
-                line-height: 1.4;
+                font-size: 12px;
+                line-height: 1.45;
                 word-wrap: break-word;
                 white-space: pre-wrap;
             }
@@ -530,58 +533,22 @@ exports.generateVisitCard = async (req, res) => {
             <div class="main-content">
                 <div class="left-column">
                     <div class="section-title">DANE PACJENTA</div>
-                    <div class="info-row">
-                        <span class="info-label">Imię i nazwisko:</span>
-                        <span>${patientName}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Płeć:</span>
-                        <span>${gender}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">PESEL:</span>
-                        <span>${patient.govtId || "04526398512"}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Data urodzenia:</span>
-                        <span>${dob}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Adres:</span>
-                        <span>${address}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Numer telefonu:</span>
-                        <span>${phone}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">ID Pacjenta:</span>
-                        <span>${patient.patientId || "P-174945520900"}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Adres E-mail:</span>
-                        <span>${patient.email || ""}</span>
-                    </div>
+                    ${patientName ? `<div class="info-row"><span class="info-label">Imię i nazwisko:</span><span>${patientName}</span></div>` : ""}
+                    ${gender ? `<div class="info-row"><span class="info-label">Płeć:</span><span>${gender}</span></div>` : ""}
+                    ${patient.govtId ? `<div class="info-row"><span class="info-label">PESEL:</span><span>${patient.govtId}</span></div>` : ""}
+                    ${dob ? `<div class="info-row"><span class="info-label">Data urodzenia:</span><span>${dob}</span></div>` : ""}
+                    ${address ? `<div class="info-row"><span class="info-label">Adres:</span><span>${address}</span></div>` : ""}
+                    ${phone ? `<div class="info-row"><span class="info-label">Numer telefonu:</span><span>${phone}</span></div>` : ""}
+                    ${(patient.patientId && patient.patientId.toString().trim()) ? `<div class="info-row"><span class="info-label">ID Pacjenta:</span><span>${patient.patientId}</span></div>` : ""}
+                    ${(patient.email && patient.email.trim()) ? `<div class="info-row"><span class="info-label">Adres E-mail:</span><span>${patient.email.trim()}</span></div>` : ""}
                 </div>
                 
                 <div class="right-column">
                     <div class="section-title">SZCZEGÓŁY WIZYTY:</div>
-                    <div class="info-row">
-                        <span class="info-label">Data wizyty:</span>
-                        <span>${visitDate}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Godzina wizyty:</span>
-                        <span>${visitTimeDisplay}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Lekarz:</span>
-                        <span>${doctorName}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Rodzaj wizyty:</span>
-                        <span>${visitTypeLabel}</span>
-                    </div>
+                    ${visitDate ? `<div class="info-row"><span class="info-label">Data wizyty:</span><span>${visitDate}</span></div>` : ""}
+                    ${visitTimeDisplay ? `<div class="info-row"><span class="info-label">Godzina wizyty:</span><span>${visitTimeDisplay}</span></div>` : ""}
+                    ${doctorName ? `<div class="info-row"><span class="info-label">Lekarz:</span><span>${doctorName}</span></div>` : ""}
+                    ${visitTypeLabel && visitTypeLabel !== "—" ? `<div class="info-row"><span class="info-label">Rodzaj wizyty:</span><span>${visitTypeLabel}</span></div>` : ""}
                 </div>
             </div>
             
@@ -692,12 +659,12 @@ exports.generateVisitCard = async (req, res) => {
       },
       displayHeaderFooter: true,
       footerTemplate: `
-        <div style="width: 100%; font-size: 10px; color: #333;">
+        <div style="width: 100%; font-size: 11px; color: #333;">
           <div style="width: 100%; height: 7px; display: flex; margin: 0; padding: 0;">
             <div style="width: 72.33%; height: 100%; background: #008C8C;"></div>
             <div style="width: 27.67%; height: 100%; background: #2c3e50;"></div>
           </div>
-          <div style="text-align: right; padding: 4px 15px 0 0;">Strona <span class="pageNumber"></span> z <span class="totalPages"></span></div>
+          <div style="text-align: right; padding: 6px 15px 0 0; font-weight: 500;">Strona <span class="pageNumber"></span> z <span class="totalPages"></span></div>
         </div>
       `,
       headerTemplate: "<div></div>",

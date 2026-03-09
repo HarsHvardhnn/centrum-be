@@ -943,11 +943,11 @@ exports.generateInvoice = async (req, res) => {
              <div class="info-row">
   <span class="info-label">Płeć:</span>
   <span>
-    ${bill.patient?.sex === "Male" 
-      ? "Mężczyzna" 
-      : bill.patient?.sex === "Female" 
-        ? "Kobieta" 
-        : "Inna"}
+    ${/^male$/i.test(bill.patient?.sex || "")
+      ? "Mężczyzna"
+      : /^female$/i.test(bill.patient?.sex || "")
+        ? "Kobieta"
+        : "—"}
   </span>
 </div>
 
@@ -960,7 +960,7 @@ exports.generateInvoice = async (req, res) => {
                     <span>${bill.patient?.dateOfBirth ? new Date(bill.patient.dateOfBirth).toLocaleDateString('pl-PL') : ""}</span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Adres zamieszkania:</span>
+                    <span class="info-label">Adres:</span>
                     <span>${patientAddress}</span>
                 </div>
                 <div class="info-row">
