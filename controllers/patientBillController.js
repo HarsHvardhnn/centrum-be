@@ -973,7 +973,7 @@ exports.generateInvoice = async (req, res) => {
                 </div>
                 <div class="info-row">
                     <span class="info-label">Adres E-mail:</span>
-                    <span>${bill.patient?.email || ""}</span>
+                    <span>${bill.patient?.email?.trim() || "—"}</span>
                 </div>
             </div>
             

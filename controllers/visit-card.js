@@ -174,13 +174,14 @@ exports.generateVisitCard = async (req, res) => {
     // Get patient's phone
     const phone = patient.phone || patient.phoneFormatted || "730953325";
 
-    // Get patient gender
+    // Get patient gender (case-insensitive; fallback when not set)
+    const sex = (patient.sex || "").trim();
     const gender =
-      patient.sex === "Male"
+      /^male$/i.test(sex)
         ? "Mężczyzna"
-        : patient.sex === "Female"
+        : /^female$/i.test(sex)
         ? "Kobieta"
-        : "ADD gender!!";
+        : "—";
 
     // Get logo as base64
     const logoBase64 = await getLogoBase64();
@@ -492,7 +493,7 @@ exports.generateVisitCard = async (req, res) => {
                     </div>
                     <div class="info-row">
                         <span class="info-label">Adres E-mail:</span>
-                        <span>${patient.email || ""}</span>
+                        <span>${patient.email?.trim() || "—"}</span>
                     </div>
                 </div>
                 
