@@ -9,6 +9,10 @@ const consultationSchema = new mongoose.Schema({
     enum: ["Clinic Consulting", "Online Consultation", "Home Visit", "Konsultacja w przychodni",
       "Konsultacja online", "Wizyta domowa"],
   },
+  /** Visit reason display name (Polish), e.g. "Konsultacja pierwszorazowa". Primary field for Rodzaj wizyty. */
+  visitReason: { type: String, default: null },
+  /** True after doctor has confirmed or changed the visit type; required before completing the visit. */
+  visitTypeVerified: { type: Boolean, default: false },
   consultationDate: Date,
   consultationNotes: String,
   description: String,

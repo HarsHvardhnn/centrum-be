@@ -16,6 +16,7 @@ const { validateInternationalDocument } = require("../utils/internationalDocumen
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
+const { getOnlineRegistrationVisitReason } = require("../config/visitReasons");
 // const doctor = require("../models/user-entity/doctor");
 // const Service = require("../models/service");
 // const PatientService = require("../models/patientService");
@@ -604,9 +605,14 @@ exports.bookAppointment = async (req, res) => {
       notes: message || "",
       registrationData,
       tempPesel: tempPesel,
+      consultation: {
+        visitReason: getOnlineRegistrationVisitReason(),
+        visitTypeVerified: false,
+      },
       metadata: {
         ...(linkedPatientId ? {} : { toBeCompleted: true }),
         ...(isInternational ? { isInternational: true } : {}),
+        visitType: getOnlineRegistrationVisitReason(),
       },
     });
 

@@ -234,8 +234,9 @@ exports.generateVisitCard = async (req, res) => {
         ? addressParts.join(", ")
         : null;
 
-    // Visit/consultation type for "Rodzaj wizyty"
+    // Visit/consultation type for "Rodzaj wizyty" (prefer visitReason from dictionary)
     const visitTypeLabel =
+      appointment.consultation?.visitReason ||
       appointment.consultation?.consultationType ||
       appointment.metadata?.visitType ||
       (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) ||

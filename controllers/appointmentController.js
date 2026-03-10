@@ -25,6 +25,10 @@ const { createStandardizedDocument } = require("./patientController");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
+const {
+  getVisitReasons: getVisitReasonsConfig,
+  getOnlineRegistrationVisitReason,
+} = require("../config/visitReasons");
 const { validatePesel } = require("../utils/peselValidation");
 const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 
@@ -1189,6 +1193,7 @@ exports.createAppointment = async (req, res) => {
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
       registrationType: registrationTypeBody, // Optional: "online registration" | "receptionist registration" | "admin registration" | "offline registration"
+      visitReason, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
     } = req.body;
 
     let name = `${firstName} ${lastName}`;
@@ -1402,6 +1407,8 @@ exports.createAppointment = async (req, res) => {
     const registrationTypeResolved = registrationTypeBody && validRegistrationTypes.includes(registrationTypeBody)
       ? registrationTypeBody
       : (createdBy === "admin" ? "admin registration" : createdBy === "receptionist" ? "receptionist registration" : createdBy === "doctor" ? "offline registration" : "online registration");
+    const resolvedVisitReason =
+      (visitReason && visitReason.trim()) || req.body.metadata?.visitType?.trim() || null;
     const appointment = new Appointment({
       doctor: doctorId,
       patient: patient._id,
@@ -1418,11 +1425,15 @@ exports.createAppointment = async (req, res) => {
       createdByRole: createdByRole,
       mode: visitMode,
       notes: message || "",
+      consultation: resolvedVisitReason
+        ? { visitReason: resolvedVisitReason, visitTypeVerified: false }
+        : undefined,
       metadata: {
         ...(req.body.metadata || {}),
         overrideConflicts: overrideConflicts,
         receptionistOverride: req.user && req.user.role === "receptionist",
-      }
+        ...(resolvedVisitReason ? { visitType: resolvedVisitReason } : {}),
+      },
     });
 
     await appointment.save();
@@ -1548,7 +1559,11 @@ exports.createReceptionAppointment = async (req, res) => {
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
+      visitReason, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
     } = req.body;
+
+    const resolvedVisitReasonReception =
+      (visitReason && visitReason.trim()) || req.body.metadata?.visitType?.trim() || null;
 
     let name = `${firstName} ${lastName}`;
     let time = startTime;
@@ -1673,11 +1688,15 @@ exports.createReceptionAppointment = async (req, res) => {
         createdByRole: createdByRole,
         mode: visitMode,
         notes: message || "",
+        consultation: resolvedVisitReasonReception
+          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: false }
+          : undefined,
         metadata: {
           ...(req.body.metadata || {}),
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
-        }
+          ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+        },
       });
       await appointment.save();
 
@@ -1763,11 +1782,15 @@ exports.createReceptionAppointment = async (req, res) => {
         mode: visitMode,
         notes: message || "",
         registrationData,
+        consultation: resolvedVisitReasonReception
+          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: false }
+          : undefined,
         metadata: {
           ...(req.body.metadata || {}),
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
-        }
+          ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+        },
       });
       await appointment.save();
     }
@@ -2279,6 +2302,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
             ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
             : fromReg?.name || "");
       const consultationType =
+        appt.consultation?.visitReason ||
         appt.consultation?.consultationType ||
         appt.metadata?.visitType ||
         (appt.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni") ||
@@ -2307,6 +2331,8 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         endTime: appt.endTime || null,
         consultationType,
         visitType: consultationType,
+        visitReason: consultationType,
+        visitTypeVerified: Boolean(appt.consultation?.visitTypeVerified),
       };
     });
 
@@ -2395,6 +2421,25 @@ exports.updateAppointmentStatus = async (req, res) => {
         success: false,
         message: "Doctor details not found",
       });
+    }
+
+    // Before completing: require visit type to be set and verified by doctor
+    if (status === "completed") {
+      const visitReasonResolved =
+        appointment.consultation?.visitReason ||
+        appointment.consultation?.consultationType ||
+        appointment.metadata?.visitType;
+      const hasVisitReason = visitReasonResolved && String(visitReasonResolved).trim();
+      const verified = Boolean(appointment.consultation?.visitTypeVerified);
+      if (!hasVisitReason || !verified) {
+        return res.status(400).json({
+          success: false,
+          message: "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić lub zmienić rodzaj wizyty przed zamknięciem.",
+          code: "VISIT_TYPE_NOT_VERIFIED",
+          visitReasonSet: !!hasVisitReason,
+          visitTypeVerified: verified,
+        });
+      }
     }
 
     // Update appointment status
@@ -3866,6 +3911,14 @@ exports.updateConsultation = async (req, res) => {
 
     // Prepare consultation update data
     const consultationUpdate = {
+      visitReason:
+        consultationData.visitReason !== undefined
+          ? (consultationData.visitReason && consultationData.visitReason.trim()) || null
+          : appointment.consultation?.visitReason,
+      visitTypeVerified:
+        consultationData.visitTypeVerified !== undefined
+          ? Boolean(consultationData.visitTypeVerified)
+          : appointment.consultation?.visitTypeVerified,
       consultationType:
         consultationData.consultationType ||
         appointment.consultation?.consultationType,
@@ -3933,10 +3986,16 @@ exports.updateConsultation = async (req, res) => {
       consultationUpdate.consultationDate = new Date();
     }
 
-    // Update the appointment
+    const updatePayload = { consultation: consultationUpdate };
+    if (consultationUpdate.visitReason) {
+      updatePayload.metadata = {
+        ...(appointment.metadata && typeof appointment.metadata === "object" ? appointment.metadata : {}),
+        visitType: consultationUpdate.visitReason,
+      };
+    }
     const updatedAppointment = await Appointment.findByIdAndUpdate(
       id,
-      { consultation: consultationUpdate },
+      updatePayload,
       { new: true, runValidators: true }
     );
 
@@ -4719,6 +4778,28 @@ exports.getAppointments = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch appointments",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get visit reason dictionary (categories + types) for registration and doctor verification.
+ * All values are in Polish. FE: show category dropdown → then type dropdown; send displayName as visitReason.
+ * @route GET /api/appointments/visit-reasons
+ */
+exports.getVisitReasons = async (req, res) => {
+  try {
+    const categories = getVisitReasonsConfig();
+    res.status(200).json({
+      success: true,
+      data: { categories },
+    });
+  } catch (error) {
+    console.error("Error fetching visit reasons:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się pobrać słownika rodzajów wizyt",
       error: error.message,
     });
   }

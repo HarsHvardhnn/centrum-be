@@ -46,6 +46,15 @@ router.post(
   appointmentController.createReceptionAppointment
 );
 
+// @route   GET /api/appointments/visit-reasons
+// @desc    Get visit reason dictionary (categories + types, Polish) for registration and doctor verification
+// @access  Private (doctor, receptionist, admin)
+router.get(
+  "/visit-reasons",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getVisitReasons
+);
+
 // @route   GET /api/appointments/doctor/:doctorId
 // @desc    Get all appointments for a doctor
 // @access  Private

@@ -12,8 +12,20 @@ function escapeRegex(str) {
 }
 
 /**
+ * Build a regex pattern so that "801" matches "80.1", "8.01", "801" (period-agnostic code search).
+ * Each character of the query (after removing periods) is matched with optional \. between them.
+ */
+function codePatternWithOptionalPeriods(query) {
+  const withoutPeriods = query.replace(/\./g, "");
+  if (!withoutPeriods) return null;
+  const pattern = withoutPeriods.split("").map((c) => escapeRegex(c)).join("\\.?");
+  return new RegExp("^" + pattern, "i");
+}
+
+/**
  * GET /icd10/search?q=...
  * Returns [{ code, name }, ...] (name = full_name).
+ * Code search: query without periods matches stored codes with periods (e.g. 801 → 80.1).
  */
 exports.searchIcd10 = async (req, res) => {
   try {
@@ -21,12 +33,12 @@ exports.searchIcd10 = async (req, res) => {
     if (!q) {
       return res.status(200).json([]);
     }
-    const re = new RegExp(escapeRegex(q), "i");
+    const codeRe = codePatternWithOptionalPeriods(q);
+    const nameRe = new RegExp(escapeRegex(q), "i");
+    const conditions = [{ full_name: nameRe }];
+    if (codeRe) conditions.push({ code: codeRe });
     const items = await Icd10Master.find({
-      $or: [
-        { code: re },
-        { full_name: re },
-      ],
+      $or: conditions,
     })
       .select("code full_name")
       .limit(MAX_SEARCH_RESULTS)
@@ -45,6 +57,7 @@ exports.searchIcd10 = async (req, res) => {
 /**
  * GET /icd9/search?q=...
  * Returns [{ code, name }, ...].
+ * Code search: query without periods matches stored codes with periods (e.g. 802 → 80.2).
  */
 exports.searchIcd9 = async (req, res) => {
   try {
@@ -52,12 +65,12 @@ exports.searchIcd9 = async (req, res) => {
     if (!q) {
       return res.status(200).json([]);
     }
-    const re = new RegExp(escapeRegex(q), "i");
+    const codeRe = codePatternWithOptionalPeriods(q);
+    const nameRe = new RegExp(escapeRegex(q), "i");
+    const conditions = [{ full_name: nameRe }];
+    if (codeRe) conditions.push({ code: codeRe });
     const items = await Icd9Master.find({
-      $or: [
-        { code: re },
-        { full_name: re },
-      ],
+      $or: conditions,
     })
       .select("code full_name")
       .limit(MAX_SEARCH_RESULTS)
