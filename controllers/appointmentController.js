@@ -4458,6 +4458,8 @@ exports.getAppointments = async (req, res) => {
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
           role: appointment.createdByRole != null ? appointment.createdByRole : "online",
           visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
+          visitReason: appointment.consultation?.visitReason || appointment.consultation?.consultationType || appointment.metadata?.visitType || (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) || null,
+          visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         };
       });
 
@@ -4661,6 +4663,8 @@ exports.getAppointments = async (req, res) => {
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
           role: appointment.createdByRole != null ? appointment.createdByRole : "online",
           visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
+          visitReason: appointment.consultation?.visitReason || appointment.consultation?.consultationType || appointment.metadata?.visitType || (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) || null,
+          visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         });
       });
 
