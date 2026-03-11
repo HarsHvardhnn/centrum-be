@@ -2490,14 +2490,22 @@ exports.updateAppointmentStatus = async (req, res) => {
 exports.rescheduleAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
-    const { 
-      newDate, 
-      newStartTime, 
-      newEndTime, 
-      consultationType, 
+    const {
+      newDate: bodyNewDate,
+      newStartTime: bodyNewStartTime,
+      newEndTime: bodyNewEndTime,
+      date,
+      startTime,
+      endTime,
+      consultationType,
       smsToBeSent, // Used for this reschedule's notifications (one-time use)
       persistSmsConsent = false, // If true, skip sending all notifications (email and SMS); if false, send notifications based on smsToBeSent
     } = req.body;
+
+    // Accept both naming conventions: newDate/newStartTime/newEndTime or date/startTime/endTime
+    const newDate = bodyNewDate || date;
+    const newStartTime = bodyNewStartTime || startTime;
+    const newEndTime = bodyNewEndTime || endTime;
 
     // Validate required fields
     if (!newDate || !newStartTime) {
