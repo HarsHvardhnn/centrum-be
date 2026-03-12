@@ -1995,7 +1995,7 @@ exports.getPatientVisits = async (req, res) => {
       const doctorName = a.doctor?.name
         ? `${a.doctor.name.first || ""} ${a.doctor.name.last || ""}`.trim()
         : null;
-      const visitType = a.consultation?.consultationType || (a.mode === "online" ? "Konsultacja online" : a.mode === "offline" ? "Konsultacja w przychodni" : null) || a.mode || "—";
+      const visitType = a.consultation?.visitReason || a.consultation?.consultationType || a.metadata?.visitType || (a.mode === "online" ? "Konsultacja online" : a.mode === "offline" ? "Konsultacja w przychodni" : null) || a.mode || "—";
       return {
         visitId: a._id,
         date: a.date ? new Date(a.date).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" }) : null,

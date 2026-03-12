@@ -33,7 +33,7 @@ This document describes how the frontend should use the **visit reason dictionar
 |--------|-----|------|
 | GET | `/api/appointments/visit-reasons` | doctor, receptionist, admin |
 
-**Response (200):**
+**Response (200) – categorised format:**
 
 ```json
 {
@@ -46,20 +46,89 @@ This document describes how the frontend should use the **visit reason dictionar
         "types": [
           { "id": "pierwszorazowa", "displayName": "Konsultacja pierwszorazowa" },
           { "id": "kontrolna", "displayName": "Konsultacja kontrolna" },
-          { "id": "online", "displayName": "Konsultacja online" }
+          { "id": "po zabiegu", "displayName": "Konsultacja po zabiegu" },
+          { "id": "pilna", "displayName": "Konsultacja pilna" },
+          { "id": "online", "displayName": "Konsultacja online" },
+          { "id": "lekarska", "displayName": "Konsultacja lekarska" }
         ]
       },
       {
         "id": "Badania",
         "label": "Badania",
         "types": [
-          { "id": "badanie USG", "displayName": "Badanie USG" }
+          { "id": "badanie USG", "displayName": "Badanie USG" },
+          { "id": "badanie EKG", "displayName": "Badanie EKG" },
+          { "id": "Holter EKG – założenie", "displayName": "Holter EKG – założenie" },
+          { "id": "Holter EKG – zdjęcie", "displayName": "Holter EKG – zdjęcie" },
+          { "id": "Holter ciśnieniowy – założenie", "displayName": "Holter ciśnieniowy – założenie" },
+          { "id": "Holter ciśnieniowy – zdjęcie", "displayName": "Holter ciśnieniowy – zdjęcie" }
+        ]
+      },
+      {
+        "id": "Procedury",
+        "label": "Procedury",
+        "types": [
+          { "id": "usunięcie szwów", "displayName": "Usunięcie szwów" },
+          { "id": "zmiana opatrunku", "displayName": "Zmiana opatrunku" },
+          { "id": "iniekcja", "displayName": "Iniekcja" },
+          { "id": "pobranie materiału", "displayName": "Pobranie materiału" }
+        ]
+      },
+      {
+        "id": "Zabieg",
+        "label": "Zabieg",
+        "types": [
+          { "id": "zabieg chirurgiczny", "displayName": "Zabieg chirurgiczny" },
+          { "id": "usunięcie zmiany", "displayName": "Usunięcie zmiany" },
+          { "id": "nacięcie ropnia", "displayName": "Nacięcie ropnia" }
+        ]
+      },
+      {
+        "id": "Administracyjne",
+        "label": "Administracyjne",
+        "types": [
+          { "id": "odbiór wyników", "displayName": "Odbiór wyników" },
+          { "id": "omówienie wyników", "displayName": "Omówienie wyników" },
+          { "id": "recepta", "displayName": "Recepta" },
+          { "id": "zaświadczenie", "displayName": "Zaświadczenie" },
+          { "id": "skierowanie", "displayName": "Skierowanie" },
+          { "id": "zwolnienie", "displayName": "Zwolnienie" },
+          { "id": "wydanie dokumentacji medycznej", "displayName": "Wydanie dokumentacji medycznej" },
+          { "id": "sprawa administracyjna", "displayName": "Sprawa administracyjna" }
         ]
       }
     ]
   }
 }
 ```
+
+**TypeScript / frontend types (for categorised display):**
+
+```ts
+interface VisitReasonType {
+  id: string;
+  displayName: string;
+}
+
+interface VisitReasonCategory {
+  id: string;
+  label: string;
+  types: VisitReasonType[];
+}
+
+interface VisitReasonsResponse {
+  success: boolean;
+  data: {
+    categories: VisitReasonCategory[];
+  };
+}
+```
+
+**How to show categorised:**
+
+1. First dropdown: list `data.categories`, show `category.label` (e.g. "Konsultacja", "Badania").
+2. After user picks a category: list `category.types`, show `type.displayName` (e.g. "Konsultacja pierwszorazowa").
+3. On submit: send the selected **`type.displayName`** as `visitReason` in the request body.
 
 **Frontend usage:**
 
