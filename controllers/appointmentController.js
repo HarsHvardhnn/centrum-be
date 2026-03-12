@@ -2293,6 +2293,19 @@ exports.getAppointmentsByDoctor = async (req, res) => {
       Appointment.countDocuments(pozostaloWizytQuery),
     ]);
 
+    // patientId is on Patient discriminator; populate uses User and omits it. Fetch from Patient model.
+    const patientIds = [...new Set(appointments.map((a) => a.patient?._id?.toString()).filter(Boolean))];
+    const patientIdMap = new Map();
+    if (patientIds.length > 0) {
+      const patients = await patient
+        .find({ _id: { $in: patientIds.map((id) => new mongoose.Types.ObjectId(id)) } })
+        .select("patientId")
+        .lean();
+      patients.forEach((p) => {
+        if (p._id) patientIdMap.set(p._id.toString(), p.patientId != null ? String(p.patientId).trim() : null);
+      });
+    }
+
     const rd = (a) => a?.registrationData;
     const transformed = appointments.map((appt) => {
       const fromReg = rd(appt);
@@ -2309,11 +2322,14 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         null;
 
       const patientLessVisit = !appt.patient || !appt.patient._id;
+      const patientIdValue = appt.patient?._id
+        ? (patientIdMap.get(appt.patient._id.toString()) ?? null)
+        : null;
       return {
         id: appt._id.toString(),
         name: name || "—",
         patient_id: appt.patient?._id?.toString() || null,
-        patientId: appt.patient?.patientId ?? null,
+        patientId: patientIdValue,
         patientLessVisit,
         username: appt.patient?.name?.first
           ? `@${appt.patient.name.first.toLowerCase()}`
