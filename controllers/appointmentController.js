@@ -2277,7 +2277,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const appointments = await Appointment.find(query)
-      .populate("patient", "name email profilePicture sex dob patientId")
+      .populate("patient", "name dateOfBirth email profilePicture sex patientId")
       .populate("doctor", "name email")
       .sort({ date: 1, startTime: 1 })
       .skip(skip)

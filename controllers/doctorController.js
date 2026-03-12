@@ -246,50 +246,197 @@ const addDoctor = async (req, res) => {
 };
 
 /**
- * Get all doctors
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get all doctors with optional filters (search, specialization, department, date, status, visitType, availability, experience).
+ * See docs/BACKEND_DOCTORS_LIST_FILTERS.md.
  */
 const getAllDoctors = async (req, res) => {
   try {
-    // Extract query parameters
     const {
+      search,
       specialization,
+      department,
+      date: dateParam,
+      status: statusParam,
+      visitType: visitTypeParam,
+      availability: availabilityParam,
+      experience: experienceParam,
       page = 1,
       limit = 10,
       sortBy = "name.first",
       sortOrder = "asc",
     } = req.query;
 
-    // Convert page and limit to integers
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
-
-    // Calculate skip value for pagination
     const skip = (pageNum - 1) * limitNum;
 
-    // Create base query for doctors
-    let query = { role: "doctor" };
+    let query = { role: "doctor", deleted: false };
 
-    // Add department filter if provided
-    if (specialization) {
-    
-        query = {
-          role: "doctor",
-          specialization: { $in: [specialization] },
-        };}
+    // Search: name (first/last) or email, case-insensitive
+    if (search && String(search).trim()) {
+      const term = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(term, "i");
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { "name.first": re },
+          { "name.last": re },
+          { email: re },
+        ],
+      });
+    }
 
-    // Create sort configuration
+    // Specialization: doctor has this specialization ID
+    if (specialization && String(specialization).trim()) {
+      const specId = String(specialization).trim();
+      if (mongoose.Types.ObjectId.isValid(specId)) {
+        query.specialization = { $in: [new mongoose.Types.ObjectId(specId)] };
+      }
+    }
+
+    // Department: exact match
+    if (department && String(department).trim()) {
+      query.department = String(department).trim();
+    }
+
+    // Experience: minimum years
+    if (experienceParam !== undefined && experienceParam !== "" && !isNaN(Number(experienceParam))) {
+      query.experience = { $gte: Number(experienceParam) };
+    }
+
+    // Date / status / visitType: restrict to doctors who have matching appointment(s)
+    let doctorIdsFromAppointments = null;
+    if (dateParam || statusParam || visitTypeParam) {
+      const apptQuery = {};
+      if (dateParam) {
+        const d = new Date(dateParam);
+        if (!isNaN(d.getTime())) {
+          const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setHours(23, 59, 59, 999);
+          apptQuery.date = { $gte: dayStart, $lte: dayEnd };
+        }
+      }
+      if (statusParam && String(statusParam).trim()) {
+        apptQuery.status = String(statusParam).trim().toLowerCase();
+      }
+      if (visitTypeParam && String(visitTypeParam).trim()) {
+        const vt = String(visitTypeParam).trim();
+        apptQuery.$or = [
+          { "consultation.visitReason": vt },
+          { "consultation.consultationType": vt },
+          { "metadata.visitType": vt },
+        ];
+      }
+      const apptDocs = await appointment.find(apptQuery).select("doctor").lean();
+      const ids = [...new Set(apptDocs.map((a) => a.doctor && a.doctor.toString()).filter(Boolean))];
+      if (ids.length === 0) {
+        return res.status(200).json({
+          success: true,
+          count: 0,
+          doctors: [],
+          pagination: {
+            total: 0,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false,
+            nextPage: null,
+            prevPage: null,
+          },
+        });
+      }
+      doctorIdsFromAppointments = ids.map((id) => new mongoose.Types.ObjectId(id));
+      query._id = { $in: doctorIdsFromAppointments };
+    }
+
+    // Availability: currently available (in active slot now) or unavailable
+    if (availabilityParam === "true" || availabilityParam === "false") {
+      const todayPoland = getCurrentDatePoland();
+      const startToday = getStartOfDayPoland(todayPoland);
+      const endToday = getEndOfDayPoland(todayPoland);
+      const todayStr = format(todayPoland, "yyyy-MM-dd");
+      const currentTimeStr = format(todayPoland, "HH:mm");
+      const schedulesToday = await DoctorSchedule.find({
+        $or: [
+          { date: { $gte: startToday, $lte: endToday } },
+          { date: todayStr },
+        ],
+        isActive: true,
+        timeBlocks: { $elemMatch: { isActive: true } },
+      })
+        .select("doctorId")
+        .lean();
+      const availableIds = new Set();
+      schedulesToday.forEach((s) => {
+        const blocks = s.timeBlocks || [];
+        const inSlot = blocks.some(
+          (b) => b.isActive !== false && currentTimeStr >= (b.startTime || "00:00") && currentTimeStr < (b.endTime || "24:00")
+        );
+        if (inSlot && s.doctorId) availableIds.add(s.doctorId.toString());
+      });
+      const availableObjectIds = [...availableIds].map((id) => new mongoose.Types.ObjectId(id));
+      if (availabilityParam === "true") {
+        if (availableObjectIds.length === 0) {
+          return res.status(200).json({
+            success: true,
+            count: 0,
+            doctors: [],
+            pagination: {
+              total: 0,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPrevPage: false,
+              nextPage: null,
+              prevPage: null,
+            },
+          });
+        }
+        if (doctorIdsFromAppointments) {
+          const intersection = doctorIdsFromAppointments.filter((id) => availableIds.has(id.toString()));
+          if (intersection.length === 0) {
+            return res.status(200).json({
+              success: true,
+              count: 0,
+              doctors: [],
+              pagination: {
+                total: 0,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: 0,
+                hasNextPage: false,
+                hasPrevPage: false,
+                nextPage: null,
+                prevPage: null,
+              },
+            });
+          }
+          query._id = { $in: intersection };
+        } else {
+          query._id = { $in: availableObjectIds };
+        }
+      } else {
+        if (doctorIdsFromAppointments) {
+          const notAvailable = doctorIdsFromAppointments.filter((id) => !availableIds.has(id.toString()));
+          query._id = { $in: notAvailable };
+        } else {
+          query._id = { $nin: availableObjectIds };
+        }
+      }
+    }
+
     const sortConfig = {};
     sortConfig[sortBy] = sortOrder === "desc" ? -1 : 1;
 
-    // Count total documents for pagination metadata
     const totalDocs = await User.countDocuments(query);
 
-    // Find doctors based on query with pagination and sorting
-    const doctors = await User.find({ ...query, deleted: false })
+    const doctors = await User.find(query)
       .populate("specialization")
-      .select('name specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating')
+      .select("name email specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating department")
       .sort(sortConfig)
       .skip(skip)
       .limit(limitNum)
