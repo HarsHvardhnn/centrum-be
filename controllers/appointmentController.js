@@ -2570,15 +2570,27 @@ exports.rescheduleAppointment = async (req, res) => {
       });
     }
 
-    // Get doctor and patient details
-    const doctorDetails = await doctor.findById(appointment.doctor._id);
-    let patientDetails = await user.findById(appointment.patient._id);
+    // Visit-only appointments may have no patient; doctor is required for reschedule
+    if (!appointment.doctor) {
+      return res.status(400).json({
+        success: false,
+        message: "Nie można przełożyć wizyty bez przypisanego lekarza",
+      });
+    }
 
-    if (!doctorDetails || !patientDetails) {
+    const doctorId = appointment.doctor._id || appointment.doctor;
+    const doctorDetails = await doctor.findById(doctorId);
+    if (!doctorDetails) {
       return res.status(404).json({
         success: false,
-        message: "Nie znaleziono szczegółów lekarza lub pacjenta",
+        message: "Nie znaleziono szczegółów lekarza",
       });
+    }
+
+    let patientDetails = null;
+    if (appointment.patient) {
+      const patientId = appointment.patient._id || appointment.patient;
+      patientDetails = await user.findById(patientId);
     }
 
     // Note: persistSmsConsent field is now used to skip sending notifications
@@ -2606,7 +2618,7 @@ exports.rescheduleAppointment = async (req, res) => {
     endOfDay.setHours(23, 59, 59, 999);
 
     const existingAppointment = await Appointment.findOne({
-      doctor: appointment.doctor._id,
+      doctor: doctorId,
       date: { $gte: startOfDay, $lte: endOfDay },
       startTime: newStartTime,
       status: "booked",
@@ -2642,7 +2654,7 @@ exports.rescheduleAppointment = async (req, res) => {
     
     if (persistSmsConsent) {
       console.log("Skipping all notifications for reschedule: persistSmsConsent is true");
-    } else if (patientDetails.email && emailRegex.test(patientDetails.email)) {
+    } else if (patientDetails?.email && emailRegex.test(patientDetails.email)) {
       try {
         const formattedDate = formatDateForSMS(appointmentDate);
         const formattedTime = formatTimeForSMS(newStartTime);
@@ -2683,10 +2695,10 @@ exports.rescheduleAppointment = async (req, res) => {
       // Use smsToBeSent if provided, otherwise fall back to patient's database consent
       const shouldSendSMS = smsToBeSent !== undefined 
         ? Boolean(smsToBeSent) 
-        : Boolean(patientDetails.smsConsentAgreed);
+        : Boolean(patientDetails?.smsConsentAgreed);
       
-      const hasPhone = Boolean(patientDetails.phone);
-      const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email);
+      const hasPhone = Boolean(patientDetails?.phone);
+      const hasValidEmail = Boolean(patientDetails?.email) && emailRegex.test(patientDetails?.email || "");
       
       // For reschedule, send both email and SMS if consent is given and both channels are available
       const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
