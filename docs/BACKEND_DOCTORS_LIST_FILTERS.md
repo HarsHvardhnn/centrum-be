@@ -12,18 +12,20 @@ This document specifies the query parameters and behavior for the doctors list e
 
 ---
 
-## Query parameters
+## Query parameters (frontend Lista lekarzy)
+
+The frontend sends only non-empty values. All are optional.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `search` | string | Search by doctor name (first/last) or email. Case-insensitive partial match. |
-| `specialization` | string | Specialization ID (ObjectId). Return only doctors who have this specialization in their `specialization` array. |
-| `department` | string | Department name (exact). Return only doctors with this `department` (e.g. "Cardiology", "Pediatrics"). |
-| `date` | string (ISO date) | Return only doctors who have at least one appointment on this date. Use with `status` / `visitType` to narrow. |
-| `status` | string | Appointment status (e.g. `booked`, `completed`, `cancelled`). When used with `date`, only doctors with an appointment on that date with this status. When used without `date`, doctors who have any appointment with this status. |
-| `visitType` | string | Visit reason display name (e.g. `Konsultacja pierwszorazowa`). When used with `date`, only doctors with an appointment on that date with this visit type. When used without `date`, doctors who have any such appointment. |
-| `availability` | string | `"true"` = only doctors currently available (in an active time block now). `"false"` = only doctors currently unavailable. Omit = no filter. |
-| `experience` | number (string) | Minimum years of experience. Return only doctors with `experience >= value`. |
+| `search` | string | Search by doctor name (first/last) or email. Case-insensitive partial match. (Header "Szukaj lekarza" / "Imię specjalisty".) |
+| `specialization` | string | **ID (ObjectId)** or **name** (e.g. `Kardiolog`, `Dermatolog`, `Neurolog`, `Pediatra`). If valid ObjectId, filter by ID; otherwise lookup Specialization by name (case-insensitive) and filter doctors who have that specialization. |
+| `department` | string | Department name (exact). Return only doctors with this `department`. |
+| `date` | string (YYYY-MM-DD) | Return only doctors who have at least one appointment on this date. Use with `status` / `visitType` to narrow. ("Filtruj według wizyty" → data.) |
+| `status` | string | Appointment status. **Polish accepted:** `Zaplanowane`, `Zarezerwowana` → booked; `Anulowane` → cancelled; `Zakończone` → completed. Backend values (`booked`, `cancelled`, `completed`, etc.) also accepted. When used with `date`, only doctors with an appointment on that date with this status. |
+| `visitType` | string | Visit type (e.g. `Konsultacja`, `Zabieg`, `Kontrola`). Matches `consultation.visitReason` (and related fields) by **case-insensitive regex** so e.g. "Konsultacja" matches "Konsultacja pierwszorazowa". When used with `date`, only doctors with an appointment on that date with this visit type. |
+| `availability` | string | `"true"` = only doctors currently available (in an active time block now, Poland time). `"false"` = only unavailable. Omit = no filter. ("Pokaż tylko dostępnych Lekarzy".) |
+| `experience` | number (string) | Minimum years of experience. Return only doctors with `experience >= value`. (Reserved in UI.) |
 | `page` | number | Page number (default 1). |
 | `limit` | number | Items per page (default 10). |
 | `sortBy` | string | Sort field (default `name.first`). |
@@ -115,12 +117,12 @@ All filters are **ANDed**: only doctors matching every provided filter are retur
 
 ## Checklist
 
-- [ ] `search`: regex on name + email, case-insensitive
-- [ ] `specialization`: by ID (ObjectId), match in `specialization` array
-- [ ] `department`: exact match on `department`
-- [ ] `experience`: min years `experience >= value`
-- [ ] `date`: restrict to doctors with ≥1 appointment on that date
-- [ ] `status`: restrict to doctors with ≥1 appointment with that status (optionally on `date`)
-- [ ] `visitType`: restrict to doctors with ≥1 appointment with that visit reason (optionally on `date`)
-- [ ] `availability`: restrict to currently available or unavailable doctors
-- [ ] All filters ANDed; response shape unchanged; pagination based on filtered total
+- [x] `search`: regex on name + email, case-insensitive
+- [x] `specialization`: by ID (ObjectId) or by name (e.g. Kardiolog); match in `specialization` array
+- [x] `department`: exact match on `department`
+- [x] `experience`: min years `experience >= value`
+- [x] `date`: restrict to doctors with ≥1 appointment on that date
+- [x] `status`: restrict to doctors with ≥1 appointment with that status (Polish labels mapped to backend enum; optionally on `date`)
+- [x] `visitType`: restrict to doctors with ≥1 appointment with matching visit reason (regex match; optionally on `date`)
+- [x] `availability`: restrict to currently available or unavailable doctors (Poland time, active slot)
+- [x] All filters ANDed; response shape unchanged; pagination based on filtered total

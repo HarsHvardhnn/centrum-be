@@ -11,6 +11,7 @@ const { generateUniqueSlug } = require("../utils/slugUtils");
 const UserService = require("../models/userServices");
 const DoctorSchedule = require("../models/doctorSchedule");
 const ScheduleException = require("../models/scheduleException");
+const Specialization = require("../models/specialization");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
@@ -286,11 +287,32 @@ const getAllDoctors = async (req, res) => {
       });
     }
 
-    // Specialization: doctor has this specialization ID
+    // Specialization: by ID (ObjectId) or by name (e.g. Kardiolog, Dermatolog)
     if (specialization && String(specialization).trim()) {
-      const specId = String(specialization).trim();
-      if (mongoose.Types.ObjectId.isValid(specId)) {
-        query.specialization = { $in: [new mongoose.Types.ObjectId(specId)] };
+      const specVal = String(specialization).trim();
+      if (mongoose.Types.ObjectId.isValid(specVal) && String(new mongoose.Types.ObjectId(specVal)) === specVal) {
+        query.specialization = { $in: [new mongoose.Types.ObjectId(specVal)] };
+      } else {
+        const specDocs = await Specialization.find({ name: new RegExp(`^${specVal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).select("_id").lean();
+        const specIds = (specDocs || []).map((s) => s._id);
+        if (specIds.length === 0) {
+          return res.status(200).json({
+            success: true,
+            count: 0,
+            doctors: [],
+            pagination: {
+              total: 0,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPrevPage: false,
+              nextPage: null,
+              prevPage: null,
+            },
+          });
+        }
+        query.specialization = { $in: specIds };
       }
     }
 
@@ -319,14 +341,27 @@ const getAllDoctors = async (req, res) => {
         }
       }
       if (statusParam && String(statusParam).trim()) {
-        apptQuery.status = String(statusParam).trim().toLowerCase();
+        const raw = String(statusParam).trim();
+        const statusMap = {
+          zaplanowane: "booked",
+          zarezerwowana: "booked",
+          anulowane: "cancelled",
+          zakończone: "completed",
+          booked: "booked",
+          cancelled: "cancelled",
+          completed: "completed",
+          checkedin: "checkedIn",
+          "no-show": "no-show",
+        };
+        apptQuery.status = statusMap[raw.toLowerCase()] || raw.toLowerCase();
       }
       if (visitTypeParam && String(visitTypeParam).trim()) {
-        const vt = String(visitTypeParam).trim();
+        const vt = String(visitTypeParam).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const vtRe = new RegExp(vt, "i");
         apptQuery.$or = [
-          { "consultation.visitReason": vt },
-          { "consultation.consultationType": vt },
-          { "metadata.visitType": vt },
+          { "consultation.visitReason": vtRe },
+          { "consultation.consultationType": vtRe },
+          { "metadata.visitType": vtRe },
         ];
       }
       const apptDocs = await appointment.find(apptQuery).select("doctor").lean();
