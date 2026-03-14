@@ -2183,6 +2183,7 @@ exports.getAppointmentsList = async (req, res) => {
         _id: appointment._id,
         doctor_id: appointment?.doctor?._id,
         patient_id: appointment.patient?._id ?? null,
+        patientId: appointment.patient?.patientId ?? null,
         mode: appointment.mode || "offline",
         startTime: appointment.startTime,
         endTime: appointment.endTime,

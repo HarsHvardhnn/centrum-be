@@ -4159,6 +4159,10 @@ exports.getAppointments = async (req, res) => {
       isClinicIp,
       // Clinic-only filter: when true and isClinicIp=true, return only patient-less (visit-only) appointments
       patientLessOnly,
+      // Appointment type (visit reason): filter by consultation.visitReason / metadata.visitType (e.g. "Konsultacja pierwszorazowa" or category "Konsultacja")
+      visitType: visitTypeParam,
+      // Consultation form: "online" | "offline" – filter by appointment.mode
+      mode: modeParam,
     } = req.query;
 
     // Derived flags
@@ -4304,6 +4308,19 @@ exports.getAppointments = async (req, res) => {
           }
           matchConditions.date.$lte = endDateObj;
         }
+        // When only startDate is sent (no endDate), treat as single "displayed day": that full day only so appointments for that day are returned
+        if (startDate && !endDate) {
+          const parts = String(startDate).trim().split("-");
+          if (parts.length >= 3) {
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            const d = parseInt(parts[2], 10);
+            if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+              matchConditions.date.$gte = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
+              matchConditions.date.$lte = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
+            }
+          }
+        }
       }
 
       if (resolvedDoctorId) {
@@ -4319,6 +4336,28 @@ exports.getAppointments = async (req, res) => {
           });
         }
         matchConditions._id = new mongoose.Types.ObjectId(appointmentId);
+      }
+
+      // Visit type filter (appointment types / Rodzaj wizyty): match consultation.visitReason or metadata.visitType
+      if (visitTypeParam && String(visitTypeParam).trim()) {
+        const vt = String(visitTypeParam).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const vtRe = new RegExp(vt, "i");
+        matchConditions.$and = matchConditions.$and || [];
+        matchConditions.$and.push({
+          $or: [
+            { "consultation.visitReason": vtRe },
+            { "metadata.visitType": vtRe },
+            { "consultation.consultationType": vtRe },
+          ],
+        });
+      }
+
+      // Consultation form filter (in-person vs online): appointment.mode
+      if (modeParam && String(modeParam).trim()) {
+        const modeVal = String(modeParam).trim().toLowerCase();
+        if (modeVal === "online" || modeVal === "offline") {
+          matchConditions.mode = modeVal;
+        }
       }
 
       // Pipeline: match first (include all appointment filters), then lookup patient/doctor.
@@ -4442,6 +4481,7 @@ exports.getAppointments = async (req, res) => {
         }
 
         const hasPatient = patientData && (patientData._id || patientData.id);
+        const mode = appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline";
         return {
           id: appointment._id,
           _id: appointment._id,
@@ -4450,7 +4490,8 @@ exports.getAppointments = async (req, res) => {
           endTime: appointment.endTime,
           meetLink: appointment?.joining_link || "",
           status: appointment.status,
-          mode: appointment.mode,
+          mode,
+          modeDisplay: mode === "online" ? "online" : "in-person",
           checkIn: appointment.checkedIn,
           checkInDate: appointment.checkInDate,
           patient: hasPatient
