@@ -607,7 +607,7 @@ exports.bookAppointment = async (req, res) => {
       tempPesel: tempPesel,
       consultation: {
         visitReason: getOnlineRegistrationVisitReason(),
-        visitTypeVerified: false,
+        visitTypeVerified: true,
       },
       metadata: {
         ...(linkedPatientId ? {} : { toBeCompleted: true }),

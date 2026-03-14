@@ -129,11 +129,34 @@ exports.listGlobalTemplates = async (req, res) => {
   }
 };
 
+function normalizeDiagnoses(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter((d) => d && (d.code != null || d.name != null))
+    .map((d) => ({
+      code: String(d.code != null ? d.code : "").trim(),
+      name: String(d.name != null ? d.name : "").trim(),
+      isPrimary: Boolean(d.isPrimary),
+    }))
+    .filter((d) => d.code || d.name);
+}
+
+function normalizeProcedures(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter((p) => p && (p.code != null || p.name != null))
+    .map((p) => ({
+      code: String(p.code != null ? p.code : "").trim(),
+      name: String(p.name != null ? p.name : "").trim(),
+    }))
+    .filter((p) => p.code || p.name);
+}
+
 exports.createGlobalTemplate = async (req, res) => {
   try {
     const doctorId = ensureDoctor(req, res);
     if (typeof doctorId === "undefined") return;
-    const { name, sections } = req.body;
+    const { name, sections, diagnoses, procedures } = req.body;
     if (!name || typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ success: false, message: "Pole name (nazwa szablonu globalnego) jest wymagane" });
     }
@@ -148,6 +171,8 @@ exports.createGlobalTemplate = async (req, res) => {
         recommendations: typeof sec.recommendations === "string" ? sec.recommendations : "",
         notes: typeof sec.notes === "string" ? sec.notes : "",
       },
+      diagnoses: normalizeDiagnoses(diagnoses),
+      procedures: normalizeProcedures(procedures),
     });
     return res.status(201).json({ success: true, data: doc });
   } catch (err) {
@@ -168,13 +193,15 @@ exports.updateGlobalTemplate = async (req, res) => {
     if (!template) {
       return res.status(404).json({ success: false, message: "Szablon nie znaleziony" });
     }
-    const { name, sections } = req.body;
+    const { name, sections, diagnoses, procedures } = req.body;
     if (name !== undefined && typeof name === "string") template.name = name.trim();
     if (typeof sections === "object" && sections !== null) {
       SECTION_KEYS.forEach((key) => {
         if (typeof sections[key] === "string") template.sections[key] = sections[key];
       });
     }
+    if (diagnoses !== undefined) template.diagnoses = normalizeDiagnoses(diagnoses);
+    if (procedures !== undefined) template.procedures = normalizeProcedures(procedures);
     await template.save();
     return res.status(200).json({ success: true, data: template });
   } catch (err) {

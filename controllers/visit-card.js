@@ -195,8 +195,7 @@ exports.generateVisitCard = async (req, res) => {
 
     // Format visit time (spec: Start Time and End Time)
     const visitTime = appointment.startTime || "10:00";
-    const visitEndTime = appointment.endTime || "";
-    const visitTimeDisplay = visitEndTime ? `${visitTime} - ${visitEndTime}` : visitTime;
+    const visitTimeDisplay = visitTime;
 
     // Get doctor's name (no "Dr." prefix – show "Lekarz: Name Surname" only)
     let doctorName = "";
@@ -219,16 +218,21 @@ exports.generateVisitCard = async (req, res) => {
       ? new Date(patient.dateOfBirth).toLocaleDateString("pl-PL")
       : null;
 
-    // Get patient's address - construct from available fields
+    // Get patient's address: street, postal code, city, province, country
+    // e.g. "Testowa 4A/9, 26-110 Skarżysko-Kamienna, świętokrzyskie, Poland"
     const addressParts = [];
-    if (patient.address) addressParts.push(patient.address);
-    if (patient.city) addressParts.push(patient.city);
-    if (patient.district) addressParts.push(patient.district);
-    if (patient.state) addressParts.push(patient.state);
-    if (patient.pinCode) addressParts.push(patient.pinCode);
-    if (patient.country) addressParts.push(patient.country);
+    if (patient.address && String(patient.address).trim()) addressParts.push(patient.address.trim());
+    if (patient.pinCode && patient.city) {
+      addressParts.push(`${String(patient.pinCode).trim()} ${String(patient.city).trim()}`);
+    } else if (patient.pinCode) {
+      addressParts.push(String(patient.pinCode).trim());
+    } else if (patient.city && String(patient.city).trim()) {
+      addressParts.push(patient.city.trim());
+    }
+    if (patient.state && String(patient.state).trim()) addressParts.push(patient.state.trim());
+    if (patient.district && String(patient.district).trim() && !patient.state) addressParts.push(patient.district.trim());
+    if (patient.country && String(patient.country).trim()) addressParts.push(patient.country.trim());
 
-    // No default address – use "—" when missing (do not show hardcoded address)
     const address =
       addressParts.length > 0
         ? addressParts.join(", ")
@@ -375,12 +379,20 @@ exports.generateVisitCard = async (req, res) => {
             .info-row {
                 margin-bottom: 6px;
                 font-size: 12px;
+                display: flex;
+                align-items: flex-start;
             }
             
             .info-label {
                 font-weight: bold;
-                display: inline-block;
+                flex-shrink: 0;
                 width: 100px;
+            }
+            
+            .info-value {
+                flex: 1;
+                min-width: 0;
+                text-align: left;
             }
             
             .visit-card-title {
@@ -534,48 +546,49 @@ exports.generateVisitCard = async (req, res) => {
             <div class="main-content">
                 <div class="left-column">
                     <div class="section-title">DANE PACJENTA</div>
-                    ${patientName ? `<div class="info-row"><span class="info-label">Imię i nazwisko:</span><span>${patientName}</span></div>` : ""}
-                    ${gender ? `<div class="info-row"><span class="info-label">Płeć:</span><span>${gender}</span></div>` : ""}
-                    ${patient.govtId ? `<div class="info-row"><span class="info-label">PESEL:</span><span>${patient.govtId}</span></div>` : ""}
-                    ${dob ? `<div class="info-row"><span class="info-label">Data urodzenia:</span><span>${dob}</span></div>` : ""}
-                    ${address ? `<div class="info-row"><span class="info-label">Adres:</span><span>${address}</span></div>` : ""}
-                    ${phone ? `<div class="info-row"><span class="info-label">Numer telefonu:</span><span>${phone}</span></div>` : ""}
-                    ${(patient.patientId && patient.patientId.toString().trim()) ? `<div class="info-row"><span class="info-label">ID Pacjenta:</span><span>${patient.patientId}</span></div>` : ""}
-                    ${(patient.email && patient.email.trim()) ? `<div class="info-row"><span class="info-label">Adres E-mail:</span><span>${patient.email.trim()}</span></div>` : ""}
+                    ${patientName ? `<div class="info-row"><span class="info-label">Imię i nazwisko:</span><span class="info-value">${patientName}</span></div>` : ""}
+                    ${gender ? `<div class="info-row"><span class="info-label">Płeć:</span><span class="info-value">${gender}</span></div>` : ""}
+                    ${patient.govtId ? `<div class="info-row"><span class="info-label">PESEL:</span><span class="info-value">${patient.govtId}</span></div>` : ""}
+                    ${dob ? `<div class="info-row"><span class="info-label">Data urodzenia:</span><span class="info-value">${dob}</span></div>` : ""}
+                    ${address ? `<div class="info-row"><span class="info-label">Adres:</span><span class="info-value">${address}</span></div>` : ""}
+                    ${phone ? `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">${phone}</span></div>` : ""}
+                    ${(patient.patientId && patient.patientId.toString().trim()) ? `<div class="info-row"><span class="info-label">ID Pacjenta:</span><span class="info-value">${patient.patientId}</span></div>` : ""}
+                    ${(patient.email && patient.email.trim()) ? `<div class="info-row"><span class="info-label">Adres E-mail:</span><span class="info-value">${patient.email.trim()}</span></div>` : ""}
                 </div>
                 
                 <div class="right-column">
                     <div class="section-title">SZCZEGÓŁY WIZYTY:</div>
-                    ${visitDate ? `<div class="info-row"><span class="info-label">Data wizyty:</span><span>${visitDate}</span></div>` : ""}
-                    ${visitTimeDisplay ? `<div class="info-row"><span class="info-label">Godzina wizyty:</span><span>${visitTimeDisplay}</span></div>` : ""}
-                    ${doctorName ? `<div class="info-row"><span class="info-label">Lekarz:</span><span>${doctorName}</span></div>` : ""}
-                    ${visitTypeLabel && visitTypeLabel !== "—" ? `<div class="info-row"><span class="info-label">Rodzaj wizyty:</span><span>${visitTypeLabel}</span></div>` : ""}
+                    ${visitDate ? `<div class="info-row"><span class="info-label">Data wizyty:</span><span class="info-value">${visitDate}</span></div>` : ""}
+                    ${visitTimeDisplay ? `<div class="info-row"><span class="info-label">Godzina wizyty:</span><span class="info-value">${visitTimeDisplay}</span></div>` : ""}
+                    ${doctorName ? `<div class="info-row"><span class="info-label">Lekarz:</span><span class="info-value">${doctorName}</span></div>` : ""}
+                    ${visitTypeLabel && visitTypeLabel !== "—" ? `<div class="info-row"><span class="info-label">Rodzaj wizyty:</span><span class="info-value">${visitTypeLabel}</span></div>` : ""}
                 </div>
             </div>
             
             <div class="visit-card-title">KARTA WIZYTY</div>
             
-            ${medications.length > 0 || diagnoses.length > 0 || procedures.length > 0 ? `
-            <div class="consultation-item" style="margin-bottom: 12px;">
-              <div class="section-title" style="margin-top: 10px;">Leki, rozpoznania i procedury</div>
-              ${medications.length > 0 ? `
-              <div class="info-row" style="margin-bottom: 6px;"><span class="info-label">Leki:</span></div>
-              <div style="margin-left: 0; margin-bottom: 8px;">
+            ${medications.length > 0 ? `
+            <div class="consultation-item">
+              <div class="consultation-label">Leki:</div>
+              <div class="consultation-content">
                 ${medications.map((m) => `<div class="info-row">${m.name || ""}${m.dosage ? " – " + m.dosage : ""}${m.frequency ? ", " + m.frequency : ""}</div>`).join("")}
               </div>
-              ` : ""}
-              ${diagnoses.length > 0 ? `
-              <div class="info-row" style="margin-bottom: 6px;"><span class="info-label">ICD-10 (Rozpoznania):</span></div>
-              <div style="margin-left: 0; margin-bottom: 8px;">
-                ${diagnoses.map((d) => `<div class="info-row">${d.code} – ${d.name}${d.isPrimary ? " <strong>(Główne)</strong>" : ""}</div>`).join("")}
+            </div>
+            ` : ""}
+            ${diagnoses.length > 0 ? `
+            <div class="consultation-item">
+              <div class="consultation-label">Rozpoznanie:</div>
+              <div class="consultation-content">
+                ${diagnoses.map((d) => `<div class="info-row">${d.code} – ${d.name}${d.isPrimary ? " <strong>(główne)</strong>" : ""}</div>`).join("")}
               </div>
-              ` : ""}
-              ${procedures.length > 0 ? `
-              <div class="info-row" style="margin-bottom: 6px;"><span class="info-label">ICD-9 (Procedury):</span></div>
-              <div style="margin-left: 0;">
+            </div>
+            ` : ""}
+            ${procedures.length > 0 ? `
+            <div class="consultation-item">
+              <div class="consultation-label">Procedury:</div>
+              <div class="consultation-content">
                 ${procedures.map((p) => `<div class="info-row">${p.code} – ${p.name}</div>`).join("")}
               </div>
-              ` : ""}
             </div>
             ` : ""}
             
@@ -602,6 +615,12 @@ exports.generateVisitCard = async (req, res) => {
                 <div class="consultation-item">
                     <div class="consultation-label">Zalecenia:</div>
                     <div class="consultation-content">${consultationData.recommendations}</div>
+                </div>
+                ` : ""}
+                ${consultationData.consultationNotes && String(consultationData.consultationNotes).trim() ? `
+                <div class="consultation-item">
+                    <div class="consultation-label">Kontrola:</div>
+                    <div class="consultation-content">${consultationData.consultationNotes}</div>
                 </div>
                 ` : ""}
                 ${consultationData.description ? `

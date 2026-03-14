@@ -1426,7 +1426,7 @@ exports.createAppointment = async (req, res) => {
       mode: visitMode,
       notes: message || "",
       consultation: resolvedVisitReason
-        ? { visitReason: resolvedVisitReason, visitTypeVerified: false }
+        ? { visitReason: resolvedVisitReason, visitTypeVerified: true }
         : undefined,
       metadata: {
         ...(req.body.metadata || {}),
@@ -1689,7 +1689,7 @@ exports.createReceptionAppointment = async (req, res) => {
         mode: visitMode,
         notes: message || "",
         consultation: resolvedVisitReasonReception
-          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: false }
+          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: true }
           : undefined,
         metadata: {
           ...(req.body.metadata || {}),
@@ -1783,7 +1783,7 @@ exports.createReceptionAppointment = async (req, res) => {
         notes: message || "",
         registrationData,
         consultation: resolvedVisitReasonReception
-          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: false }
+          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: true }
           : undefined,
         metadata: {
           ...(req.body.metadata || {}),
@@ -2406,7 +2406,7 @@ exports.getAppointmentsByPatient = async (req, res) => {
 exports.updateAppointmentStatus = async (req, res) => {
   try {
     const { appointmentId } = req.params;
-    const { status } = req.body;
+    const { status, visitTypeVerified: bodyVisitTypeVerified } = req.body;
 
     if (!["booked", "cancelled", "completed", "checkedIn", "no-show"].includes(status)) {
       return res.status(400).json({
@@ -2437,6 +2437,12 @@ exports.updateAppointmentStatus = async (req, res) => {
         success: false,
         message: "Doctor details not found",
       });
+    }
+
+    // Allow verifying visit type in the same request when completing (so frontend can send status: "completed" + visitTypeVerified: true in one call)
+    if (status === "completed" && bodyVisitTypeVerified === true) {
+      if (!appointment.consultation) appointment.consultation = {};
+      appointment.consultation.visitTypeVerified = true;
     }
 
     // Before completing: require visit type to be set and verified by doctor
