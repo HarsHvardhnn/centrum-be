@@ -4632,11 +4632,25 @@ exports.getAppointments = async (req, res) => {
         return age;
       };
 
-      // Rows from appointments: with patient, or visit-only (patient null)
+      // Non-clinic: one row per patient, showing only that patient's first visit (earliest date + time)
+      const sortedByFirstVisit = [...allAppointments].sort((a, b) => {
+        const dA = new Date(a.date);
+        const dB = new Date(b.date);
+        if (dA.getTime() !== dB.getTime()) return dA.getTime() - dB.getTime();
+        return (a.startTime || "00:00").localeCompare(b.startTime || "00:00");
+      });
+      const firstVisitByPatient = new Map(); // patientId -> appointment (first chronologically)
+      sortedByFirstVisit.forEach((apt) => {
+        const pid = apt.patient?._id?.toString();
+        if (!pid) return;
+        if (!firstVisitByPatient.has(pid)) {
+          firstVisitByPatient.set(pid, apt);
+        }
+      });
+
       const appointmentRows = [];
       const patientIdsInAppointments = new Set();
-
-      allAppointments.forEach((appointment) => {
+      firstVisitByPatient.forEach((appointment) => {
         const patientId = appointment.patient?._id?.toString();
         if (patientId) {
           patientIdsInAppointments.add(patientId);
