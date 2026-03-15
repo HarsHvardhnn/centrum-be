@@ -16,6 +16,13 @@ router.get(
   scheduleController.getSchedule
 );
 
+// Permanently delete by schedule document _id (use from Edit Schedule modal; must be before :doctorId/:date)
+router.delete(
+  "/schedule/id/:scheduleId",
+  authorizeRoles(["doctor", "admin", "receptionist"]),
+  scheduleController.deleteScheduleById
+);
+
 router.delete(
   "/schedule/:doctorId/:date",
   authorizeRoles(["doctor", "admin", "receptionist"]),
