@@ -23,6 +23,18 @@ function codePatternWithOptionalPeriods(query) {
 }
 
 /**
+ * When the user types only digits (and optional periods), also match codes that have
+ * an optional letter prefix (e.g. "802" matches "K80.2", "K802", "M802").
+ * Returns a regex like ^[A-Za-z]*8\.?0\.?2 or null if query is not digits-only.
+ */
+function codePatternWithOptionalLetterPrefix(query) {
+  const withoutPeriods = query.replace(/\./g, "").trim();
+  if (!withoutPeriods || !/^\d+$/.test(withoutPeriods)) return null;
+  const pattern = withoutPeriods.split("").map((c) => escapeRegex(c)).join("\\.?");
+  return new RegExp("^[A-Za-z]*" + pattern, "i");
+}
+
+/**
  * GET /icd10/search?q=...
  * Returns [{ code, name }, ...] (name = full_name).
  * Code search: query without periods matches stored codes with periods (e.g. 801 → 80.1).
@@ -34,9 +46,11 @@ exports.searchIcd10 = async (req, res) => {
       return res.status(200).json([]);
     }
     const codeRe = codePatternWithOptionalPeriods(q);
+    const codeWithLetterRe = codePatternWithOptionalLetterPrefix(q);
     const nameRe = new RegExp(escapeRegex(q), "i");
     const conditions = [{ full_name: nameRe }];
     if (codeRe) conditions.push({ code: codeRe });
+    if (codeWithLetterRe) conditions.push({ code: codeWithLetterRe });
     const items = await Icd10Master.find({
       $or: conditions,
     })
@@ -66,9 +80,11 @@ exports.searchIcd9 = async (req, res) => {
       return res.status(200).json([]);
     }
     const codeRe = codePatternWithOptionalPeriods(q);
+    const codeWithLetterRe = codePatternWithOptionalLetterPrefix(q);
     const nameRe = new RegExp(escapeRegex(q), "i");
     const conditions = [{ full_name: nameRe }];
     if (codeRe) conditions.push({ code: codeRe });
+    if (codeWithLetterRe) conditions.push({ code: codeWithLetterRe });
     const items = await Icd9Master.find({
       $or: conditions,
     })

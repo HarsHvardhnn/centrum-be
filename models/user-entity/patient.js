@@ -127,6 +127,11 @@ const patientSchema = new mongoose.Schema({
   weight: Number,
   height: Number,
   roomNumber: Number,
+  // Extended vitals (Parametry życiowe – rozszerzenie)
+  bloodPressureSystolic: { type: Number, default: null },
+  bloodPressureDiastolic: { type: Number, default: null },
+  pulse: { type: Number, default: null },
+  oxygenSaturation: { type: Number, default: null },
   isRisky: Boolean,
   treatmentStatus: {
     type: String

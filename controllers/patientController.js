@@ -1069,6 +1069,10 @@ exports.getPatientDetails = async (req, res) => {
       temperature: patient?.temperature || "",
       weight: patient?.weight || "",
       height: patient?.height || "",
+      bloodPressureSystolic: patient?.bloodPressureSystolic ?? null,
+      bloodPressureDiastolic: patient?.bloodPressureDiastolic ?? null,
+      pulse: patient?.pulse ?? null,
+      oxygenSaturation: patient?.oxygenSaturation ?? null,
       // New fields
       isAdult: patient.isAdult,
       contactPerson: patient.contactPerson || null,

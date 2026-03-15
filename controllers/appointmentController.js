@@ -3081,6 +3081,10 @@ exports.updateAppointmentDetails = async (req, res) => {
       treatmentStatus,
       roomNumber,
       id: patientId,
+      bloodPressureSystolic,
+      bloodPressureDiastolic,
+      pulse,
+      oxygenSaturation,
     } = patientData;
 
     console.log("patient id ", roomNumber, riskStatus, treatmentStatus);
@@ -3098,6 +3102,10 @@ exports.updateAppointmentDetails = async (req, res) => {
             treatmentStatus,
             roomNumber,
             riskStatus,
+            bloodPressureSystolic: bloodPressureSystolic ?? null,
+            bloodPressureDiastolic: bloodPressureDiastolic ?? null,
+            pulse: pulse ?? null,
+            oxygenSaturation: oxygenSaturation ?? null,
           },
           { new: true }
         );
@@ -3581,10 +3589,14 @@ exports.getAppointmentDetails = async (req, res) => {
           patientId: patientData?.patientId || null,
           age: patientData?.age || null,
           dateOfBirth: patientData?.dateOfBirth || null,
-          height: patientData?.height || null,
-          weight: patientData?.weight || null,
-          bloodPressure: patientData?.bloodPressure || null,
-          temperature: patientData?.temperature || null,
+          height: patientData?.height ?? null,
+          weight: patientData?.weight ?? null,
+          bloodPressure: patientData?.bloodPressure ?? null,
+          temperature: patientData?.temperature ?? null,
+          bloodPressureSystolic: patientData?.bloodPressureSystolic ?? null,
+          bloodPressureDiastolic: patientData?.bloodPressureDiastolic ?? null,
+          pulse: patientData?.pulse ?? null,
+          oxygenSaturation: patientData?.oxygenSaturation ?? null,
           riskStatus: patientData?.riskStatus || null,
           treatmentStatus: patientData?.treatmentStatus || null,
           roomNumber: patientData?.roomNumber || null,
