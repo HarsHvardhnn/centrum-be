@@ -1030,7 +1030,7 @@ const sendAppointmentStatusSMS = async (
   status
 ) => {
   try {
-    if (!hasPatientConsentedToSMS(patientDetails)) {
+    if (!patientDetails || !hasPatientConsentedToSMS(patientDetails)) {
       console.log("Patient has not consented to SMS notifications");
       return {
         success: false,
@@ -1094,6 +1094,9 @@ const sendAppointmentConfirmationSMS = async (
   doctorDetails
 ) => {
   try {
+    if (!patientDetails) {
+      return { success: false, error: "No patient details" };
+    }
     // Get patient's phone number
     const phoneNumber = patientDetails.phone;
 
@@ -2654,89 +2657,85 @@ exports.rescheduleAppointment = async (req, res) => {
     await appointment.save();
 
     // Send email notification if patient has email
-    // If persistSmsConsent is true, skip all notifications
+    // If persistSmsConsent is true, skip all notifications. If no patient (visit-only), skip.
     let emailSent = false;
+    let smsResult = null;
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    
+
     if (persistSmsConsent) {
       console.log("Skipping all notifications for reschedule: persistSmsConsent is true");
-    } else if (patientDetails?.email && emailRegex.test(patientDetails.email)) {
-      try {
-        const formattedDate = formatDateForSMS(appointmentDate);
-        const formattedTime = formatTimeForSMS(newStartTime);
-        const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
-
-        const emailData = {
-          patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
-          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-          oldDate: oldFormattedDate,
-          oldTime: oldStartTime,
-          newDate: formattedDate,
-          newTime: newStartTime,
-          department: doctorDetails.specialization || "General",
-          mode: appointment.mode,
-        };
-
-        await sendEmail({
-          to: patientDetails.email,
-          subject: "Zmiana Terminu Wizyty – Centrum Medyczne 7",
-          html: createRescheduleEmailHtml(emailData),
-          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została przełożona z ${oldFormattedDate} o godz ${oldStartTime} na ${formattedDate} o godz ${newStartTime}.`,
-        });
-
-        console.log(`Reschedule confirmation email sent to ${patientDetails.email}`);
-        emailSent = true;
-      } catch (emailError) {
-        console.error("Failed to send reschedule email:", emailError);
-      }
-    }
-
-    // Send SMS notification based on smsToBeSent (one-time use for this reschedule)
-    // If persistSmsConsent is true, skip all notifications
-    let smsResult = null;
-    
-    if (persistSmsConsent) {
-      console.log("Skipping SMS notification: persistSmsConsent is true");
+    } else if (!patientDetails) {
+      console.log("Skipping notifications for reschedule: no patient (visit-only or patient not found)");
     } else {
-      // Use smsToBeSent if provided, otherwise fall back to patient's database consent
-      const shouldSendSMS = smsToBeSent !== undefined 
-        ? Boolean(smsToBeSent) 
-        : Boolean(patientDetails?.smsConsentAgreed);
-      
-      const hasPhone = Boolean(patientDetails?.phone);
-      const hasValidEmail = Boolean(patientDetails?.email) && emailRegex.test(patientDetails?.email || "");
-      
-      // For reschedule, send both email and SMS if consent is given and both channels are available
-      const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
-      
-      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails?.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
-      
-      if (shouldSendBoth) {
-      console.log("Sending SMS notification for rescheduled appointment");
-      try {
-        const formattedDate = formatDateForSMS(appointmentDate);
-        const formattedTime = formatTimeForSMS(newStartTime);
-        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz. ${formattedTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+      // patientDetails is non-null here
+      if (patientDetails.email && emailRegex.test(patientDetails.email)) {
+        try {
+          const formattedDate = formatDateForSMS(appointmentDate);
+          const formattedTime = formatTimeForSMS(newStartTime);
+          const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
 
-        const batchId = uuidv4();
-        await MessageReceipt.create({
-          content: message,
-          batchId,
-          recipient: {
-            userId: patientDetails._id.toString(),
-            phone: patientDetails.phone,
-          },
-          status: "PENDING",
-        });
+          const emailData = {
+            patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
+            doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+            oldDate: oldFormattedDate,
+            oldTime: oldStartTime,
+            newDate: formattedDate,
+            newTime: newStartTime,
+            department: doctorDetails.specialization || "General",
+            mode: appointment.mode,
+          };
 
-        smsResult = await sendSMS(patientDetails.phone, message);
-        console.log("SMS sent successfully for rescheduled appointment");
-      } catch (smsError) {
-        console.error(
-          "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
-          smsError
-        );
+          await sendEmail({
+            to: patientDetails.email,
+            subject: "Zmiana Terminu Wizyty – Centrum Medyczne 7",
+            html: createRescheduleEmailHtml(emailData),
+            text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została przełożona z ${oldFormattedDate} o godz ${oldStartTime} na ${formattedDate} o godz ${newStartTime}.`,
+          });
+
+          console.log(`Reschedule confirmation email sent to ${patientDetails.email}`);
+          emailSent = true;
+        } catch (emailError) {
+          console.error("Failed to send reschedule email:", emailError);
+        }
       }
+
+      // Send SMS notification based on smsToBeSent (one-time use) or patient's DB consent
+      const shouldSendSMS =
+        smsToBeSent !== undefined
+          ? Boolean(smsToBeSent)
+          : Boolean(patientDetails.smsConsentAgreed);
+      const hasPhone = Boolean(patientDetails.phone);
+      const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email || "");
+      const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
+
+      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
+
+      if (shouldSendBoth) {
+        console.log("Sending SMS notification for rescheduled appointment");
+        try {
+          const formattedDate = formatDateForSMS(appointmentDate);
+          const formattedTime = formatTimeForSMS(newStartTime);
+          const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz. ${formattedTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+
+          const batchId = uuidv4();
+          await MessageReceipt.create({
+            content: message,
+            batchId,
+            recipient: {
+              userId: patientDetails._id.toString(),
+              phone: patientDetails.phone,
+            },
+            status: "PENDING",
+          });
+
+          smsResult = await sendSMS(patientDetails.phone, message);
+          console.log("SMS sent successfully for rescheduled appointment");
+        } catch (smsError) {
+          console.error(
+            "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
+            smsError
+          );
+        }
       } else {
         if (!shouldSendSMS) {
           console.log(`SMS not sent - consent not given for this reschedule (smsToBeSent: ${smsToBeSent}).`);
