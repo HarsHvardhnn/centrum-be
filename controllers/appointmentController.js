@@ -2709,7 +2709,7 @@ exports.rescheduleAppointment = async (req, res) => {
       // For reschedule, send both email and SMS if consent is given and both channels are available
       const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
       
-      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
+      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails?.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
       
       if (shouldSendBoth) {
       console.log("Sending SMS notification for rescheduled appointment");
