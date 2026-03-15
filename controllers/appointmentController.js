@@ -4176,11 +4176,17 @@ exports.getAppointments = async (req, res) => {
       isClinicIp,
       // Clinic-only filter: when true and isClinicIp=true, return only patient-less (visit-only) appointments
       patientLessOnly,
-      // Appointment type (visit reason): filter by consultation.visitReason / metadata.visitType (e.g. "Konsultacja pierwszorazowa" or category "Konsultacja")
+      // Appointment type (visit reason): filter by consultation.visitReason / metadata.visitType (e.g. "Konsultacja pierwszorazowa" or "Badanie USG")
       visitType: visitTypeParam,
+      visitReason: visitReasonParam,
       // Consultation form: "online" | "offline" – filter by appointment.mode
       mode: modeParam,
     } = req.query;
+
+    // Support both visitReason and visitType query params (same filter)
+    const visitReasonOrType =
+      (visitReasonParam && String(visitReasonParam).trim()) ||
+      (visitTypeParam && String(visitTypeParam).trim());
 
     // Derived flags
     const visitOnlyFilter =
@@ -4355,9 +4361,9 @@ exports.getAppointments = async (req, res) => {
         matchConditions._id = new mongoose.Types.ObjectId(appointmentId);
       }
 
-      // Visit type filter (appointment types / Rodzaj wizyty): match consultation.visitReason or metadata.visitType
-      if (visitTypeParam && String(visitTypeParam).trim()) {
-        const vt = String(visitTypeParam).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Visit type / visit reason filter (Rodzaj wizyty): match consultation.visitReason or metadata.visitType
+      if (visitReasonOrType) {
+        const vt = String(visitReasonOrType).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const vtRe = new RegExp(vt, "i");
         matchConditions.$and = matchConditions.$and || [];
         matchConditions.$and.push({
@@ -4626,6 +4632,19 @@ exports.getAppointments = async (req, res) => {
       // Build appointment query. Non-clinic: only appointments with a patient (exclude visit-only). Clinic (isClinicIp true) includes visit-only in its branch above.
       let appointmentQuery;
       try {
+        const visitReasonMatch = visitReasonOrType
+          ? (() => {
+              const vt = String(visitReasonOrType).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const vtRe = new RegExp(vt, "i");
+              return {
+                $or: [
+                  { "consultation.visitReason": vtRe },
+                  { "metadata.visitType": vtRe },
+                  { "consultation.consultationType": vtRe },
+                ],
+              };
+            })()
+          : {};
         appointmentQuery = {
         patient: { $ne: null },
         ...(resolvedDoctorId ? { doctor: resolvedDoctorId } : {}),
@@ -4657,6 +4676,7 @@ exports.getAppointments = async (req, res) => {
               },
             }
           : {}),
+        ...visitReasonMatch,
         };
       } catch (dateError) {
         return res.status(400).json({
