@@ -804,6 +804,88 @@ exports.generateVisitCard = async (req, res) => {
 };
 
 /**
+ * Get all visit cards for a patient (from all their appointments that have a visit-card report).
+ * @param {Object} req - Express request object with patientId parameter
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON with array of visit cards, each with appointment context
+ */
+exports.getVisitCardsByPatientId = async (req, res) => {
+  try {
+    const patientId = req.params.patientId;
+
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID format",
+      });
+    }
+
+    // Patient can only access their own visit cards
+    if (req.user && req.user.role === "patient" && req.user._id.toString() !== patientId) {
+      return res.status(403).json({
+        success: false,
+        message: "Nieautoryzowany dostęp do danych tego pacjenta",
+      });
+    }
+
+    const appointments = await Appointment.find({ patient: patientId })
+      .populate("doctor", "name.first name.last")
+      .sort({ date: -1, startTime: -1 })
+      .lean()
+      .exec();
+
+    const visitCardsList = [];
+
+    for (const apt of appointments) {
+      const reports = apt.reports || [];
+      const cards = reports.filter(
+        (r) => r.type === "Visit Card" || r.type === "visit-card"
+      );
+      for (const card of cards) {
+        const url = card.fileUrl || card.url || card.downloadUrl;
+        if (!url) continue;
+        visitCardsList.push({
+          appointmentId: apt._id,
+          date: apt.date,
+          startTime: apt.startTime,
+          endTime: apt.endTime,
+          status: apt.status,
+          doctor: apt.doctor
+            ? {
+                id: apt.doctor._id,
+                name: `${apt.doctor.name?.first || ""} ${apt.doctor.name?.last || ""}`.trim(),
+              }
+            : null,
+          visitCard: {
+            reportId: card._id,
+            url,
+            name: card.name || card.fileName || "Karta wizyty",
+            type: card.type || card.documentType || "visit-card",
+            createdAt: card.uploadedAt || card.updatedAt || card.createdAt,
+          },
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        patientId,
+        visitCards: visitCardsList,
+        total: visitCardsList.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching visit cards by patient:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Nie udało się pobrać kart wizyty",
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Get visit cards by appointment ID
  * @param {Object} req - Express request object with appointmentId parameter
  * @param {Object} res - Express response object

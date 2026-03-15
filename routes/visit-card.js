@@ -17,6 +17,13 @@ router.get(
   visitCardController.getVisitCardByAppointment
 );
 
+// Get all visit cards for a patient (by patient ID)
+router.get(
+  "/patient/:patientId",
+  authorizeRoles(["doctor", "receptionist", "admin", "patient"]),
+  visitCardController.getVisitCardsByPatientId
+);
+
 // Legacy routes for backward compatibility
 router.post(
   "/:patientId",
