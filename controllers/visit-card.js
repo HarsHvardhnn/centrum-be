@@ -246,8 +246,11 @@ exports.generateVisitCard = async (req, res) => {
       (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) ||
       "—";
 
-    // Get patient's phone (no default – row hidden if missing)
-    const phone = (patient.phone || patient.phoneFormatted || "").trim() || null;
+    // Get patient's phone (no placeholder – show nothing or "—" when missing)
+    let phone = (patient.phone || patient.phoneFormatted || "").trim() || null;
+    if (phone && (/^__no_phone/i.test(phone) || /__no_phone/i.test(phone))) {
+      phone = null;
+    }
 
     // Get patient gender (null when not set – row hidden)
     const sex = (patient.sex || "").trim();
@@ -359,7 +362,7 @@ exports.generateVisitCard = async (req, res) => {
             .main-content {
                 display: flex;
                 gap: 30px;
-                margin-bottom: 15px;
+                margin-bottom: 10px;
                 page-break-inside: avoid;
             }
             
@@ -371,13 +374,13 @@ exports.generateVisitCard = async (req, res) => {
                 font-size: 13px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 8px;
+                margin-bottom: 5px;
                 text-transform: uppercase;
                 page-break-after: avoid;
             }
             
             .info-row {
-                margin-bottom: 6px;
+                margin-bottom: 4px;
                 font-size: 12px;
                 display: flex;
                 align-items: flex-start;
@@ -400,33 +403,33 @@ exports.generateVisitCard = async (req, res) => {
                 font-size: 18px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin: 15px 0 10px 0;
-                padding: 8px 0;
+                margin: 10px 0 6px 0;
+                padding: 4px 0;
                 page-break-inside: avoid;
                 page-break-after: avoid;
             }
             
             .consultation-section {
-                margin-bottom: 15px;
+                margin-bottom: 6px;
                 page-break-inside: auto;
             }
             
             .consultation-item {
-                margin-bottom: 15px;
+                margin-bottom: 6px;
                 page-break-inside: avoid;
             }
             
             .consultation-label {
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 5px;
+                margin-bottom: 2px;
                 font-size: 12px;
                 page-break-after: avoid;
             }
             
             .consultation-content {
                 font-size: 12px;
-                line-height: 1.45;
+                line-height: 1.35;
                 word-wrap: break-word;
                 white-space: pre-wrap;
             }
@@ -551,7 +554,7 @@ exports.generateVisitCard = async (req, res) => {
                     ${patient.govtId ? `<div class="info-row"><span class="info-label">PESEL:</span><span class="info-value">${patient.govtId}</span></div>` : ""}
                     ${dob ? `<div class="info-row"><span class="info-label">Data urodzenia:</span><span class="info-value">${dob}</span></div>` : ""}
                     ${address ? `<div class="info-row"><span class="info-label">Adres:</span><span class="info-value">${address}</span></div>` : ""}
-                    ${phone ? `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">${phone}</span></div>` : ""}
+                    ${phone ? `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">${phone}</span></div>` : `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">—</span></div>`}
                     ${(patient.patientId && patient.patientId.toString().trim()) ? `<div class="info-row"><span class="info-label">ID Pacjenta:</span><span class="info-value">${patient.patientId}</span></div>` : ""}
                     ${(patient.email && patient.email.trim()) ? `<div class="info-row"><span class="info-label">Adres E-mail:</span><span class="info-value">${patient.email.trim()}</span></div>` : ""}
                 </div>
