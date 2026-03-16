@@ -1757,6 +1757,7 @@ exports.createReceptionAppointment = async (req, res) => {
           return res.status(400).json({ success: false, message: "Nieprawidłowy format adresu e-mail" });
         }
       }
+      const isInternational = req.body.isInternational === true || String(req.body.isInternational || "").toLowerCase() === "true";
       const nameParts = name.trim().split(" ");
       const registrationData = {
         name: name.trim(),
@@ -1767,6 +1768,7 @@ exports.createReceptionAppointment = async (req, res) => {
         dateOfBirth: dob || null,
         smsConsentAgreed: !!smsConsentAgreed,
         consents: [],
+        isInternationalPatient: isInternational,
       };
       appointment = new Appointment({
         doctor: doctorId,
@@ -1793,6 +1795,7 @@ exports.createReceptionAppointment = async (req, res) => {
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
           ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+          isInternational: isInternational,
         },
       });
       await appointment.save();
