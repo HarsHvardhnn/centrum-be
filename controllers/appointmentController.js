@@ -2781,14 +2781,14 @@ exports.getAppointmentsDashboard = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    // Upcoming: from today 00:00 in Poland timezone, exclude cancelled
+    // Upcoming only: from today 00:00 in Poland timezone; status = booked (reserved) only, no completed/cancelled/etc.
     const todayUTC = new Date();
     const todayInPoland = toZonedTime(todayUTC, "Europe/Warsaw");
     const today = new Date(todayInPoland);
     today.setHours(0, 0, 0, 0);
 
     const filter = {
-      status: { $nin: ["cancelled"] },
+      status: "booked",
       date: { $gte: today },
     };
 

@@ -754,6 +754,13 @@ exports.getPatientsList = async (req, res) => {
           )
         : patient.age || 0;
 
+      // Identification: PESEL for local patients, document ID for international
+      const pesel = patient.govtId || "";
+      const isInternational = !!patient.isInternationalPatient;
+      const documentId = isInternational
+        ? patient.internationalPatientDocumentKey || patient.npesei || null
+        : null;
+
       return {
         id: patient.patientId || `#${Math.floor(Math.random() * 10000000)}`,
         name:
@@ -773,7 +780,9 @@ exports.getPatientsList = async (req, res) => {
         status: patient.status || "w trakcie leczenia",
         doctor: doctorName,
         _id: patient._id,
-        isInternational: !!patient.isInternationalPatient
+        isInternational,
+        pesel,
+        documentId,
       };
     });
 
