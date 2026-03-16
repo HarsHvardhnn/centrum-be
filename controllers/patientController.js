@@ -318,6 +318,9 @@ exports.createPatient = async (req, res) => {
     const calculatedAge = calculateAge(dateOfBirth);
     // console.log("Calculated age:", calculatedAge);
 
+    const defaultPassword = "defaultPassword123";
+    const hashedDefaultPassword = await bcrypt.hash(defaultPassword, 10);
+
     const newPatient = new patient({
       name: {
         first: fullName.split(" ")[0],
@@ -327,7 +330,7 @@ exports.createPatient = async (req, res) => {
       patientId: `P-${new Date().getTime()}`,
       phone: phoneNumber, // Store phone number without leading zeros
       phoneCode: phoneCode || "+48", // Store phone code, default to +48
-      password: "defaultPassword123",
+      password: hashedDefaultPassword,
       role: "patient",
       signupMethod: "email",
       profilePicture: null,

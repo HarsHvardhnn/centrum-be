@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 
+// Login lockout (patient and other roles): max attempts then temporary lock
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -152,12 +156,11 @@ userSchema.methods.incLoginAttempts = function() {
   }
   
   const updates = { $inc: { loginAttempts: 1 } };
-  
-  // After 5 failed attempts, lock for 2 hours
-  if (this.loginAttempts + 1 >= 5 && !this.isLocked()) {
-    updates.$set = { lockUntil: Date.now() + 2 * 60 * 60 * 1000 }; // 2 hours
+
+  if (this.loginAttempts + 1 >= MAX_LOGIN_ATTEMPTS && !this.isLocked()) {
+    updates.$set = { lockUntil: Date.now() + LOCK_DURATION_MS };
   }
-  
+
   return this.updateOne(updates);
 };
 

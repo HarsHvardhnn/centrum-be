@@ -10,6 +10,7 @@ const createChatRoom = require("../utils/createChatroom");
 const user = require("../models/user-entity/user");
 const { sendSMS } = require("../utils/smsapi");
 const jwtConfig = require("../config/jwtConfig");
+const { validatePesel } = require("../utils/peselValidation");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -271,23 +272,63 @@ const verifyOTP = async (req, res) => {
   }
 };
 
-// 3. LOGIN: Standard email/password login
+// 3. LOGIN: Standard email/PESEL-password login
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, pesel, govtId } = req.body;
     const ipAddress = req.ip;
     const device = req.headers["user-agent"] || "unknown";
     const enforceSingleSession = req.body.enforceSingleSession || false;
 
-    // Validate input
-    if (!email || !password) {
+    // Validate input – require password and at least one identifier (email or PESEL/govtId)
+    if (!password || (!email && !pesel && !govtId)) {
       return res
         .status(400)
-        .json({ message: "Email i hasło są wymagane" });
+        .json({ message: "Email lub PESEL oraz hasło są wymagane" });
     }
 
-    // Find the user
-    const user = await User.findOne({ email,deleted: false });
+    // Resolve identifier: email or PESEL/govtId (11 digits, validated format)
+    const emailTrimmed = email && String(email).trim();
+    const peselRaw = pesel || govtId || null;
+    const peselDigits =
+      peselRaw && String(peselRaw).replace(/\D/g, "").length === 11
+        ? String(peselRaw).replace(/\D/g, "")
+        : null;
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // PESEL format validation when logging in with PESEL
+    if (peselDigits) {
+      const peselValidation = validatePesel(peselDigits);
+      if (!peselValidation.valid) {
+        return res.status(400).json({
+          message: peselValidation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
+        });
+      }
+    }
+
+    let user = null;
+    if (emailTrimmed && emailRegex.test(emailTrimmed)) {
+      // Standard email login
+      user = await User.findOne({ email: emailTrimmed.toLowerCase(), deleted: false });
+    } else if (peselDigits) {
+      // Login by PESEL (govtId) – mainly for patients
+      user = await User.findOne({ govtId: peselDigits, deleted: false });
+    } else if (emailTrimmed) {
+      // Fallback: treat non-email identifier as PESEL if it looks like 11 digits
+      const maybePesel = emailTrimmed.replace(/\D/g, "");
+      if (maybePesel.length === 11) {
+        const peselValidation = validatePesel(maybePesel);
+        if (!peselValidation.valid) {
+          return res.status(400).json({
+            message: peselValidation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
+          });
+        }
+        user = await User.findOne({ govtId: maybePesel, deleted: false });
+      } else {
+        user = await User.findOne({ email: emailTrimmed.toLowerCase(), deleted: false });
+      }
+    }
 
     // Check if user exists
     if (!user) {
@@ -302,30 +343,23 @@ const login = async (req, res) => {
     //   });
     // }
 
-    // Check if user is locked out
+    // Check if user is locked out (5 failed attempts → lock for 2 hours; see User model)
     if (user.isLocked()) {
-      return res.status(423).json({ 
+      return res.status(423).json({
         message: "Konto zostało zablokowane z powodu zbyt wielu nieudanych prób logowania. Spróbuj ponownie później.",
-        lockedUntil: user.lockUntil
+        lockedUntil: user.lockUntil,
       });
     }
 
-    // Check if password matches
+    // Passwords must be stored hashed; only bcrypt comparison is allowed
     let passwordMatches = false;
-
     if (user && user.password) {
       passwordMatches = await bcrypt
         .compare(password, user.password)
-        .catch(() => false); // if bcrypt throws for any reason, treat it as false
-
-      // fallback to normal string comparison
-      if (!passwordMatches && password === user.password) {
-        passwordMatches = true;
-      }
+        .catch(() => false);
     }
-    
+
     if (!passwordMatches) {
-      // Increment login attempts for wrong password
       await user.incLoginAttempts();
       return res.status(401).json({ message: "Nieprawidłowe dane logowania" });
     }

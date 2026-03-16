@@ -1334,8 +1334,9 @@ exports.createAppointment = async (req, res) => {
         });
       }
 
-      // If patient not found, create new patient
+      // If patient not found, create new patient (password stored hashed only)
       if (!patient) {
+        const hashedTemporaryPassword = await bcrypt.hash(temporaryPassword, 10);
         const newPatient = new user({
           name: {
             first: firstName,
@@ -1343,7 +1344,7 @@ exports.createAppointment = async (req, res) => {
           },
           email: emailToSave,
           phone: phoneNumber,
-          password: temporaryPassword,
+          password: hashedTemporaryPassword,
           role: "patient",
           signupMethod: "email",
           dateOfBirth: dob,
