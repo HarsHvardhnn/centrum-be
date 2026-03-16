@@ -3497,9 +3497,10 @@ exports.deleteReport = async (req, res) => {
 };
 
 /**
- * Get consents for a visit (appointment).
- * For visits with a linked patient: returns patient.consents.
- * For visit-only (no patient): returns appointment.registrationData.consents.
+ * Get consents and basic visit/patient data for a visit (appointment).
+ * For visits with a linked patient: returns patient consents + patient details.
+ * For visit-only: returns registrationData.consents + registrationData fields.
+ * FE can use this to display and update name, email, phone, etc. (update via PUT appointment details or complete-registration).
  *
  * GET /appointments/:visitId/consents
  */
@@ -3526,11 +3527,22 @@ exports.getVisitConsents = async (req, res) => {
 
     let consents = [];
     let source = "registration";
+    let patientData = {
+      name: null,
+      firstName: null,
+      lastName: null,
+      email: null,
+      phone: null,
+      phoneCode: null,
+      sex: null,
+      dateOfBirth: null,
+      govtId: null,
+    };
 
     if (appointment.patient && appointment.patient._id) {
       const patientDoc = await patient
         .findById(appointment.patient._id)
-        .select("consents")
+        .select("consents name email phone phoneCode sex dateOfBirth govtId")
         .lean();
       if (patientDoc) {
         source = "patient";
@@ -3544,13 +3556,39 @@ exports.getVisitConsents = async (req, res) => {
             consents = [];
           }
         }
+        const first = patientDoc.name?.first || "";
+        const last = patientDoc.name?.last || "";
+        patientData = {
+          name: [first, last].filter(Boolean).join(" ") || null,
+          firstName: first || null,
+          lastName: last || null,
+          email: patientDoc.email && String(patientDoc.email).trim() ? patientDoc.email.trim() : null,
+          phone: patientDoc.phone && String(patientDoc.phone).trim() ? patientDoc.phone : null,
+          phoneCode: patientDoc.phoneCode && String(patientDoc.phoneCode).trim() ? patientDoc.phoneCode : null,
+          sex: patientDoc.sex && String(patientDoc.sex).trim() ? patientDoc.sex : null,
+          dateOfBirth: patientDoc.dateOfBirth ? patientDoc.dateOfBirth : null,
+          govtId: patientDoc.govtId && String(patientDoc.govtId).trim() ? patientDoc.govtId : null,
+        };
       }
     }
 
-    if (source === "registration" && appointment.registrationData?.consents) {
-      consents = Array.isArray(appointment.registrationData.consents)
-        ? appointment.registrationData.consents
-        : [];
+    if (source === "registration" && appointment.registrationData) {
+      const rd = appointment.registrationData;
+      if (Array.isArray(rd.consents)) consents = rd.consents;
+      const firstName = rd.firstName != null ? String(rd.firstName).trim() : (rd.name ? String(rd.name).trim().split(" ")[0] : null);
+      const lastName = rd.lastName != null ? String(rd.lastName).trim() : (rd.name && rd.name.trim().split(" ").length > 1 ? rd.name.trim().split(" ").slice(1).join(" ") : null);
+      const fullName = rd.name && String(rd.name).trim() ? rd.name.trim() : [firstName, lastName].filter(Boolean).join(" ") || null;
+      patientData = {
+        name: fullName,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        email: rd.email && String(rd.email).trim() ? rd.email.trim() : null,
+        phone: rd.phone && String(rd.phone).trim() ? rd.phone : null,
+        phoneCode: rd.phoneCode && String(rd.phoneCode).trim() ? rd.phoneCode : null,
+        sex: rd.sex && String(rd.sex).trim() ? rd.sex : null,
+        dateOfBirth: rd.dateOfBirth ? rd.dateOfBirth : null,
+        govtId: rd.govtId && String(rd.govtId).trim() ? rd.govtId : null,
+      };
     }
 
     return res.status(200).json({
@@ -3558,6 +3596,7 @@ exports.getVisitConsents = async (req, res) => {
       visitId,
       source,
       consents,
+      patientData,
     });
   } catch (error) {
     console.error("Error fetching visit consents:", error);
