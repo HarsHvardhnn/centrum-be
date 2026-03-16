@@ -1758,6 +1758,8 @@ exports.createReceptionAppointment = async (req, res) => {
         }
       }
       const isInternational = req.body.isInternational === true || String(req.body.isInternational || "").toLowerCase() === "true";
+      const isWalkin = !!(req.body.isWalkin === true || String(req.body.isWalkin || "").toLowerCase() === "true" || req.body.metadata?.isWalkin === true || req.body.metadata?.isWalkin === "true");
+      const needsAttention = !!(req.body.needsAttention === true || String(req.body.needsAttention || "").toLowerCase() === "true" || req.body.metadata?.needsAttention === true || req.body.metadata?.needsAttention === "true");
       const nameParts = name.trim().split(" ");
       const registrationData = {
         name: name.trim(),
@@ -1769,6 +1771,8 @@ exports.createReceptionAppointment = async (req, res) => {
         smsConsentAgreed: !!smsConsentAgreed,
         consents: [],
         isInternationalPatient: isInternational,
+        isWalkin,
+        needsAttention,
       };
       appointment = new Appointment({
         doctor: doctorId,
@@ -1796,6 +1800,8 @@ exports.createReceptionAppointment = async (req, res) => {
           receptionistOverride: req.user && req.user.role === "receptionist",
           ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
           isInternational: isInternational,
+          isWalkin,
+          needsAttention,
         },
       });
       await appointment.save();
@@ -1969,7 +1975,12 @@ exports.completeRegistration = async (req, res) => {
     // Consents: prefer request body, fallback to visit's registrationData (from online booking)
     const consentsFromVisit = Array.isArray(appointment.registrationData?.consents) ? appointment.registrationData.consents : [];
 
-    const isInternational = req.body.isInternationalPatient === true || String(req.body.isInternationalPatient || "").toLowerCase() === "true";
+    // isInternational: from body or from visit (so complete-registration keeps visit's flag when FE doesn't send it)
+    const fromBody = req.body.isInternationalPatient === true || String(req.body.isInternationalPatient || "").toLowerCase() === "true";
+    const fromVisit = !!(appointment.registrationData?.isInternationalPatient ?? appointment.metadata?.isInternational);
+    const isInternational = req.body.isInternationalPatient !== undefined && req.body.isInternationalPatient !== null && req.body.isInternationalPatient !== ""
+      ? fromBody
+      : fromVisit || fromBody;
     let patientDoc = null;
     let isExisting = false;
     let peselWarning = null;
@@ -2107,6 +2118,7 @@ exports.completeRegistration = async (req, res) => {
       else if (consentsFromVisit.length) updates.consents = consentsFromVisit;
       if (req.body.isInternationalPatient === true && !patientDoc.npesei) updates.npesei = patient.generateNpesei();
       if (req.body.isInternationalPatient !== undefined) updates.isInternationalPatient = !!req.body.isInternationalPatient;
+      else updates.isInternationalPatient = !!isInternational;
       if (Object.keys(updates).length > 0) {
         await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
       }
@@ -2125,7 +2137,9 @@ exports.completeRegistration = async (req, res) => {
       const streetVal = (req.body.street != null && req.body.street !== "undefined") ? String(req.body.street).trim() : "";
       const zipCodeVal = (req.body.zipCode != null && req.body.zipCode !== "undefined") ? String(req.body.zipCode).trim() : "";
       const cityVal = (req.body.city != null && req.body.city !== "undefined") ? String(req.body.city).trim() : "";
-      const isInternationalPatient = !!req.body.isInternationalPatient;
+      const isInternationalPatient = (req.body.isInternationalPatient !== undefined && req.body.isInternationalPatient !== null && req.body.isInternationalPatient !== "")
+        ? !!(req.body.isInternationalPatient === true || String(req.body.isInternationalPatient).toLowerCase() === "true")
+        : !!isInternational;
       const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
       const newPatient = new patient({
