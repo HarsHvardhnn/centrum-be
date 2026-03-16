@@ -280,11 +280,11 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             body {
-                font-family: 'Arial', sans-serif;
+                font-family: 'Arial', Helvetica, sans-serif;
                 margin: 0;
                 padding: 15px;
-                font-size: 13px;
-                line-height: 1.4;
+                font-size: 14px;
+                line-height: 1.45;
                 color: #333;
                 background: white;
             }
@@ -327,7 +327,7 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .company-name {
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
                 color: #2c3e50;
                 line-height: 1.1;
@@ -335,8 +335,8 @@ exports.generateVisitCard = async (req, res) => {
             
             .company-info {
                 text-align: right;
-                font-size: 10px;
-                line-height: 1.2;
+                font-size: 11px;
+                line-height: 1.3;
             }
             
             .separator-line {
@@ -371,7 +371,7 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .section-title {
-                font-size: 13px;
+                font-size: 15px;
                 font-weight: bold;
                 color: #2c3e50;
                 margin-bottom: 5px;
@@ -381,7 +381,7 @@ exports.generateVisitCard = async (req, res) => {
             
             .info-row {
                 margin-bottom: 4px;
-                font-size: 12px;
+                font-size: 14px;
                 display: flex;
                 align-items: flex-start;
             }
@@ -389,7 +389,7 @@ exports.generateVisitCard = async (req, res) => {
             .info-label {
                 font-weight: bold;
                 flex-shrink: 0;
-                width: 100px;
+                width: 120px;
             }
             
             .info-value {
@@ -400,7 +400,7 @@ exports.generateVisitCard = async (req, res) => {
             
             .visit-card-title {
                 text-align: center;
-                font-size: 18px;
+                font-size: 20px;
                 font-weight: bold;
                 color: #2c3e50;
                 margin: 10px 0 6px 0;
@@ -423,15 +423,20 @@ exports.generateVisitCard = async (req, res) => {
                 font-weight: bold;
                 color: #2c3e50;
                 margin-bottom: 2px;
-                font-size: 12px;
+                font-size: 14px;
                 page-break-after: avoid;
             }
             
             .consultation-content {
-                font-size: 12px;
-                line-height: 1.35;
+                font-size: 14px;
+                line-height: 1.4;
                 word-wrap: break-word;
                 white-space: pre-wrap;
+            }
+            
+            .diagnosis-line {
+                margin-bottom: 2px;
+                line-height: 1.35;
             }
             
             /* Content wrapper for proper spacing */
@@ -443,11 +448,11 @@ exports.generateVisitCard = async (req, res) => {
             bottom: 0;
             left: 0;
             right: 0;
-            height: 25px;
+            height: 28px;
             display: flex;
             align-items: center;
             padding: 0;
-            font-size: 8px;
+            font-size: 10px;
             page-break-inside: avoid;
         }
         
@@ -582,7 +587,7 @@ exports.generateVisitCard = async (req, res) => {
             <div class="consultation-item">
               <div class="consultation-label">Rozpoznanie:</div>
               <div class="consultation-content">
-                ${diagnoses.map((d) => `<div class="info-row">${d.code} – ${d.name}${d.isPrimary ? " <strong>(główne)</strong>" : ""}</div>`).join("")}
+                ${diagnoses.map((d) => d.isPrimary ? `<div class="diagnosis-line"><strong>${d.code} – ${d.name} (główne)</strong></div>` : `<div class="diagnosis-line">${d.code} – ${d.name}</div>`).join("")}
               </div>
             </div>
             ` : ""}
@@ -620,12 +625,10 @@ exports.generateVisitCard = async (req, res) => {
                     <div class="consultation-content">${consultationData.recommendations}</div>
                 </div>
                 ` : ""}
-                ${consultationData.consultationNotes && String(consultationData.consultationNotes).trim() ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Kontrola:</div>
-                    <div class="consultation-content">${consultationData.consultationNotes}</div>
+                    <div class="consultation-content">${consultationData.consultationNotes && String(consultationData.consultationNotes).trim() ? consultationData.consultationNotes : "brak"}</div>
                 </div>
-                ` : ""}
                 ${consultationData.description ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Notatki:</div>

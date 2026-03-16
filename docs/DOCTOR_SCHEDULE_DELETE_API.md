@@ -52,7 +52,7 @@ Authorization: Bearer <jwt>
 | Place | What to do |
 |-------|------------|
 | **Calendar day cell** | For a day that has a schedule, show e.g. "Edytuj" and "Usuń na stałe". On "Usuń na stałe" → confirm → call delete API (see below). |
-| **Edit Schedule modal** | When the user opens "Edytuj Harmonogram" for a date, you have the schedule object (with `_id`). Add a button "Usuń na stałe" / "Permanently delete". On confirm → call delete by ID. |
+| **Edit Schedule modal** | When the user opens "Edytuj Harmonogram" for a date, you have the schedule object (with `_id` and `timeBlocks`). You can: (1) add **"Usuń na stałe"** for the whole day → delete by ID; (2) for each time period (e.g. 1:00 PM–3:00 PM), add **"Delete"** → call delete single block by `scheduleId` + block index (see section 3 and FE brief below). |
 
 ### 3. Which delete endpoint to call
 
@@ -185,13 +185,106 @@ DELETE /api/schedule/schedule/507f1f77bcf86cd799439011/2026-03-15
 
 ---
 
+## 3. Delete a single time block (one period within the day)
+
+Use this when the schedule has **multiple time blocks** (e.g. 1:00 PM–3:00 PM and 4:00 PM–5:00 PM) and the user wants to remove **only one** period and keep the rest. The block is identified by its **index** in `schedule.timeBlocks` (0-based).
+
+**Request**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| **DELETE** | `/api/schedule/schedule/id/:scheduleId/blocks/:blockIndex` | Remove the time block at that index. If no blocks remain, the schedule document is deleted. |
+
+**URL example**
+
+```http
+DELETE /api/schedule/schedule/id/6789abcdef01234567890123/blocks/0
+Authorization: Bearer <jwt>
+```
+
+- **scheduleId** – MongoDB `_id` of the schedule document (same as in GET list / Edit modal).
+- **blockIndex** – 0-based index of the block in `timeBlocks` (e.g. `0` = first block, `1` = second).
+
+**Response 200 (block removed; other blocks remain)**
+
+```json
+{
+  "success": true,
+  "message": "Time block deleted",
+  "data": {
+    "deletedBlock": { "startTime": "13:00", "endTime": "15:00" },
+    "scheduleId": "6789abcdef01234567890123",
+    "remainingBlocks": [
+      { "startTime": "16:00", "endTime": "17:00", "isActive": true }
+    ]
+  }
+}
+```
+
+**Response 200 (last block removed; schedule deleted)**
+
+```json
+{
+  "success": true,
+  "message": "Time block deleted; schedule had no remaining blocks and was removed",
+  "data": {
+    "deletedBlock": { "startTime": "13:00", "endTime": "15:00" },
+    "scheduleDeleted": true
+  }
+}
+```
+
+**Errors**
+
+| Status | Condition |
+|--------|-----------|
+| **400** | Invalid `scheduleId` or invalid `blockIndex` (not a non-negative integer). |
+| **403** | Doctor tries to modify another doctor’s schedule. |
+| **404** | Schedule not found, or `blockIndex` out of range. |
+| **500** | Server error. |
+
+---
+
 ## Summary for frontend
 
 | Action | Endpoint | When to use |
 |--------|----------|-------------|
-| Permanent delete from Edit modal | **DELETE** `/api/schedule/schedule/id/:scheduleId` | You have the schedule object and its `_id`. |
-| Permanent delete by doctor + date | **DELETE** `/api/schedule/schedule/:doctorId/:date` | You only have doctor id and date. |
+| Delete **one time period** (block) | **DELETE** `/api/schedule/schedule/id/:scheduleId/blocks/:blockIndex` | You have the schedule and want to remove a single block (e.g. 1:00 PM–3:00 PM); other blocks stay. |
+| Permanent delete **entire day** (by schedule id) | **DELETE** `/api/schedule/schedule/id/:scheduleId` | You have the schedule object and want to remove the whole day. |
+| Permanent delete **entire day** (by doctor + date) | **DELETE** `/api/schedule/schedule/:doctorId/:date` | You only have doctor id and date. |
 
-Both endpoints remove the schedule document from the database permanently. After a successful delete, refresh the calendar or update local state so the deleted day no longer shows a block.
+After any successful delete, refresh the calendar or update local state (e.g. remove the block from `schedule.timeBlocks`, or remove the day if `scheduleDeleted: true` or entire schedule was deleted).
 
 For a step-by-step guide on **how to add the delete option on the calendar** (GET list, where to show the button, which endpoint to call, example flows), see the section **"How the frontend can offer delete on the calendar"** at the top of this document.
+
+---
+
+## Frontend brief: delete a specific time period (not the whole day)
+
+**Goal:** In the Edit Schedule modal (or wherever you show a day’s time blocks), show each time period with a **Delete** option so the user can remove e.g. “1:00 PM – 3:00 PM” and keep “4:00 PM – 5:00 PM”.
+
+**Data you already have:** From `GET /api/schedule/schedule/:doctorId?startDate=...&endDate=...` each schedule has:
+
+- `_id` – schedule document id  
+- `timeBlocks` – array of `{ startTime, endTime, isActive }`, in order (index 0, 1, 2, …)
+
+**UI:**
+
+- For each block in `schedule.timeBlocks`, render e.g.  
+  **"1:00 PM – 3:00 PM (active) [Delete]"**  
+  **"4:00 PM – 5:00 PM (active) [Delete]"**
+- One **Delete** per block; “Usuń” / “Delete” is the active action for that row.
+
+**When the user clicks Delete for a block:**
+
+1. Confirm: e.g. “Czy na pewno usunąć ten przedział czasowy?” (Remove this time period?).
+2. On confirm, call:  
+   `DELETE /api/schedule/schedule/id/${schedule._id}/blocks/${blockIndex}`  
+   with `Authorization: Bearer <token>`.  
+   Use the **index** of that block in `timeBlocks` (0 for first, 1 for second, etc.).
+3. On **200**:
+   - If `data.scheduleDeleted === true`: remove this day from the calendar (or close modal and refetch).
+   - Else: update local state so that block is removed from `schedule.timeBlocks` (or replace schedule with `data.remainingBlocks`), and re-render the list so the deleted period disappears; the other blocks stay.
+4. On **4xx/5xx**: show the API error message.
+
+**Example:** Schedule has two blocks: index 0 = 13:00–15:00, index 1 = 16:00–17:00. User deletes the first → call `DELETE .../blocks/0` → backend returns `remainingBlocks: [{ startTime: "16:00", endTime: "17:00", ... }]`; FE updates the schedule for that day to show only 4:00 PM – 5:00 PM.

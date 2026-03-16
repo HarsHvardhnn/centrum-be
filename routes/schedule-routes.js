@@ -16,6 +16,13 @@ router.get(
   scheduleController.getSchedule
 );
 
+// Delete a single time block from a schedule (must be before delete by scheduleId only)
+router.delete(
+  "/schedule/id/:scheduleId/blocks/:blockIndex",
+  authorizeRoles(["doctor", "admin", "receptionist"]),
+  scheduleController.deleteScheduleTimeBlock
+);
+
 // Permanently delete by schedule document _id (use from Edit Schedule modal; must be before :doctorId/:date)
 router.delete(
   "/schedule/id/:scheduleId",

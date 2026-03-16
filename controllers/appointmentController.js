@@ -4376,6 +4376,11 @@ exports.getAppointments = async (req, res) => {
           matchConditions.status = status.toLowerCase();
         }
       }
+      // When filtering for visit-only (patientLessOnly=true) and no explicit status is provided,
+      // default to excluding cancelled visits so reception sees only active (non-cancelled) visit-only appointments.
+      if (visitOnlyFilter && (!status || status === "all")) {
+        matchConditions.status = { $ne: "cancelled" };
+      }
 
       if (startDate || endDate) {
         matchConditions.date = {};
