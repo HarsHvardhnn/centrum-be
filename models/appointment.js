@@ -222,11 +222,16 @@ const appointmentSchema = new mongoose.Schema(
     metadata: {
       visitType: String,
       isInternational: Boolean,
+      isInternationalPatient: Boolean,
       toBeCompleted: Boolean, // true when online booking created visit only (no patient linked); complete at reception
       isWalkin: Boolean,
       needsAttention: Boolean,
       enableRepeats: Boolean,
       isNewPatient: Boolean,
+      documentCountry: String,
+      documentType: String,
+      documentNumber: String,
+      internationalPatientDocumentKey: String,
       consultationFee: {
         type: Number,
         default: 0

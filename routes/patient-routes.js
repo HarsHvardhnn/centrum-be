@@ -17,6 +17,7 @@ router.put("/:id", upload.array("files", 10), patientController.updatePatient);
 
 router.get("/by-pesel", patientController.checkPeselExists);
 router.get("/by-pesel/details", patientController.getPatientDetailsByPesel);
+router.get("/by-document", patientController.checkDocumentExists);
 router.get("/:id", patientController.getPatientById);
 router.get("/", patientController.getAllPatients);
 router.get("/data/simple", patientController.getPatientsList);

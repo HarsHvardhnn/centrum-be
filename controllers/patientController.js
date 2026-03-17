@@ -2,7 +2,7 @@ const bcrypt = require("bcrypt");
 const patient = require("../models/user-entity/patient");
 const { default: mongoose } = require("mongoose");
 const { validatePesel } = require("../utils/peselValidation");
-const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
+const { validateInternationalDocument, validateDocumentKey, validateDocumentNumber, normalizeDocumentKey, normalizeDocumentNumber } = require("../utils/internationalDocumentValidation");
 const doctor = require("../models/user-entity/doctor");
 const Appointment = require("../models/appointment");
 const VisitDiagnosis = require("../models/visitDiagnosis");
@@ -471,6 +471,113 @@ exports.checkPeselExists = async (req, res) => {
     });
   } catch (error) {
     console.error("Check PESEL error:", error);
+    res.status(500).json({ success: false, message: "Błąd serwera" });
+  }
+};
+
+/**
+ * Check if an international patient document exists (by document key or document number).
+ * Searches both Patient collection and Appointment metadata (visit-only / temp data).
+ * GET /api/patients/by-document?internationalPatientDocumentKey=... 
+ *  OR GET /api/patients/by-document?documentNumber=...
+ */
+exports.checkDocumentExists = async (req, res) => {
+  try {
+    const keyRaw = req.query.internationalPatientDocumentKey ?? req.query.documentKey;
+    const documentNumberRaw = req.query.documentNumber;
+
+    const keyTrimmed = keyRaw != null && keyRaw !== "" ? normalizeDocumentKey(keyRaw) : "";
+    const documentNumberTrimmed = documentNumberRaw != null && documentNumberRaw !== "" ? normalizeDocumentNumber(documentNumberRaw) : "";
+
+    if (!keyTrimmed && !documentNumberTrimmed) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj internationalPatientDocumentKey lub documentNumber.",
+      });
+    }
+
+    let existsInPatient = false;
+    let existsInAppointment = false;
+    let patientRecord = null;
+    let appointmentCount = 0;
+
+    if (keyTrimmed) {
+      const keyValidation = validateDocumentKey(keyTrimmed);
+      if (!keyValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: keyValidation.warning || "Nieprawidłowy klucz dokumentu.",
+        });
+      }
+      patientRecord = await patient.findOne({
+        internationalPatientDocumentKey: keyTrimmed,
+        deleted: { $ne: true },
+      }).lean();
+      existsInPatient = !!patientRecord;
+      appointmentCount = await Appointment.countDocuments({
+        "metadata.internationalPatientDocumentKey": keyTrimmed,
+      });
+      existsInAppointment = appointmentCount > 0;
+    }
+
+    if (documentNumberTrimmed && !existsInPatient && !existsInAppointment) {
+      const numValidation = validateDocumentNumber(documentNumberTrimmed);
+      if (!numValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: numValidation.warning || "Nieprawidłowy numer dokumentu.",
+        });
+      }
+      patientRecord = await patient.findOne({
+        documentNumber: documentNumberTrimmed,
+        deleted: { $ne: true },
+      }).lean();
+      existsInPatient = !!patientRecord;
+      appointmentCount = await Appointment.countDocuments({
+        "metadata.documentNumber": documentNumberTrimmed,
+      });
+      existsInAppointment = appointmentCount > 0;
+    }
+
+    const exists = existsInPatient || existsInAppointment;
+
+    if (!exists) {
+      return res.status(200).json({
+        success: true,
+        exists: false,
+        message: "Dokument o podanych danych nie występuje w systemie.",
+        foundIn: { patient: false, appointmentMetadata: false },
+      });
+    }
+
+    const response = {
+      success: true,
+      exists: true,
+      message: "Dokument o podanych danych występuje w systemie.",
+      foundIn: { patient: existsInPatient, appointmentMetadata: existsInAppointment },
+    };
+
+    if (patientRecord) {
+      response.patientId = patientRecord.patientId || patientRecord._id?.toString();
+      response.patient = {
+        _id: patientRecord._id,
+        patientId: patientRecord.patientId,
+        name: patientRecord.name,
+        documentNumber: patientRecord.documentNumber ?? null,
+        internationalPatientDocumentKey: patientRecord.internationalPatientDocumentKey ?? null,
+        documentCountry: patientRecord.documentCountry ?? null,
+        documentType: patientRecord.documentType ?? null,
+      };
+    }
+    if (existsInAppointment && keyTrimmed) {
+      response.appointmentMetadataMatches = appointmentCount;
+    } else if (existsInAppointment && documentNumberTrimmed) {
+      response.appointmentMetadataMatches = appointmentCount;
+    }
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error("Check document exists error:", error);
     res.status(500).json({ success: false, message: "Błąd serwera" });
   }
 };
@@ -2139,7 +2246,7 @@ exports.getAppointmentsList = async (req, res) => {
     // Execute the query with pagination and sorting
     const appointments = await Appointment
       .find(query)
-      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone phoneCode")
+      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone phoneCode address pinCode city govtId isInternationalPatient documentCountry documentType documentNumber internationalPatientDocumentKey")
       .populate("doctor", "name")
       .sort(sort)
       .skip(skipAmount)
@@ -2167,6 +2274,7 @@ exports.getAppointmentsList = async (req, res) => {
       }
 
       const fromReg = rd(appointment);
+      const meta = appointment.metadata || {};
       const name = appointment.patient
         ? `${appointment.patient.name?.first || ""} ${appointment.patient.name?.last || ""}`.trim()
         : (fromReg?.firstName || fromReg?.lastName
@@ -2180,15 +2288,29 @@ exports.getAppointmentsList = async (req, res) => {
           )
         : 0;
 
+      // Prefill: PESEL/govtId from linked patient, else registrationData.pendingPesel, else tempPesel
+      const pesel = appointment.patient?.govtId ?? fromReg?.pendingPesel ?? appointment.tempPesel ?? null;
+      // Document data: metadata (public book) > patient > registrationData
+      const documentCountry = meta.documentCountry ?? appointment.patient?.documentCountry ?? fromReg?.documentCountry ?? null;
+      const documentType = meta.documentType ?? appointment.patient?.documentType ?? fromReg?.documentType ?? null;
+      const documentNumber = meta.documentNumber ?? appointment.patient?.documentNumber ?? fromReg?.documentNumber ?? null;
+      const internationalPatientDocumentKey = meta.internationalPatientDocumentKey ?? appointment.patient?.internationalPatientDocumentKey ?? fromReg?.internationalPatientDocumentKey ?? null;
+      const isInternationalPatient = !!(meta.isInternationalPatient ?? meta.isInternational ?? appointment.patient?.isInternationalPatient ?? fromReg?.isInternationalPatient);
+
       return {
         id: appointment._id,
         name: name || "Unknown",
+        firstName: appointment.patient?.name?.first ?? fromReg?.firstName ?? null,
+        lastName: appointment.patient?.name?.last ?? fromReg?.lastName ?? null,
         username: appointment.patient?.username ? `@${appointment.patient.username}` : "",
         date: appointmentDate,
         email: appointment.patient?.email ?? fromReg?.email ?? "Nieokreślony",
         phone: appointment.patient?.phone ?? fromReg?.phone ?? "Nieokreślony",
         phoneCode: appointment.patient?.phoneCode ?? fromReg?.phoneCode ?? "+48",
         sex: appointment.patient?.sex ?? fromReg?.sex ?? "Nieokreślony",
+        street: appointment.patient?.address ?? fromReg?.street ?? fromReg?.address ?? null,
+        zipCode: appointment.patient?.pinCode ?? fromReg?.zipCode ?? fromReg?.pinCode ?? null,
+        city: appointment.patient?.city ?? fromReg?.city ?? null,
         isCheckedIn: appointment.checkedIn || false,
         dateOfBirth: appointment.patient?.dateOfBirth ?? fromReg?.dateOfBirth ?? "Nieokreślony",
         age,
@@ -2204,14 +2326,21 @@ exports.getAppointmentsList = async (req, res) => {
         startTime: appointment.startTime,
         endTime: appointment.endTime,
         tempPesel: appointment.tempPesel || null,
-        isInternational: !!(appointment.metadata?.isInternational || rd(appointment)?.isInternationalPatient),
+        pendingPesel: fromReg?.pendingPesel ?? null,
+        pesel,
+        govtId: pesel,
+        isInternational: isInternationalPatient,
+        isInternationalPatient,
+        documentCountry,
+        documentType,
+        documentNumber,
+        internationalPatientDocumentKey,
         role: appointment.createdByRole != null ? appointment.createdByRole : "online",
         visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
         visitReason: appointment.consultation?.visitReason ?? null,
         consultationType: appointment.consultation?.consultationType ?? null,
         visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         registrationData: fromReg || null,
-        pendingPesel: fromReg?.pendingPesel ?? null,
       };
     });
 
