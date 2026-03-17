@@ -403,40 +403,45 @@ exports.generateVisitCard = async (req, res) => {
                 font-size: 20px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin: 10px 0 6px 0;
-                padding: 4px 0;
+                margin: 6px 0 4px 0;
+                padding: 2px 0;
                 page-break-inside: avoid;
                 page-break-after: avoid;
             }
             
             .consultation-section {
-                margin-bottom: 6px;
+                margin-bottom: 3px;
                 page-break-inside: auto;
             }
             
             .consultation-item {
-                margin-bottom: 6px;
+                margin-bottom: 3px;
                 page-break-inside: avoid;
             }
             
             .consultation-label {
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 2px;
+                margin-bottom: 1px;
                 font-size: 14px;
                 page-break-after: avoid;
             }
             
             .consultation-content {
                 font-size: 14px;
-                line-height: 1.4;
+                line-height: 1.3;
                 word-wrap: break-word;
                 white-space: pre-wrap;
+                margin-top: 0;
             }
             
             .diagnosis-line {
+                margin-bottom: 1px;
+                line-height: 1.3;
+            }
+            
+            .consultation-content .info-row {
                 margin-bottom: 2px;
-                line-height: 1.35;
             }
             
             /* Content wrapper for proper spacing */
