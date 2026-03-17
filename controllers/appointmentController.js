@@ -1413,6 +1413,30 @@ exports.createAppointment = async (req, res) => {
       : (createdBy === "admin" ? "admin registration" : createdBy === "receptionist" ? "receptionist registration" : createdBy === "doctor" ? "offline registration" : "online registration");
     const resolvedVisitReason =
       (visitReason && visitReason.trim()) || req.body.metadata?.visitType?.trim() || null;
+    // International patient flags and document info (for online booking metadata/temp data)
+    const isInternationalPatientRaw = req.body.isInternationalPatient;
+    const isInternationalPatient =
+      isInternationalPatientRaw === true ||
+      (typeof isInternationalPatientRaw === "string" &&
+        isInternationalPatientRaw.toLowerCase() === "true");
+    const documentCountry =
+      req.body.documentCountry != null && req.body.documentCountry !== "undefined"
+        ? String(req.body.documentCountry).trim()
+        : "";
+    const documentType =
+      req.body.documentType != null && req.body.documentType !== "undefined"
+        ? String(req.body.documentType).trim()
+        : "";
+    const documentNumber =
+      req.body.documentNumber != null && req.body.documentNumber !== "undefined"
+        ? String(req.body.documentNumber).trim()
+        : "";
+    const internationalPatientDocumentKey =
+      req.body.internationalPatientDocumentKey != null &&
+      req.body.internationalPatientDocumentKey !== "undefined"
+        ? String(req.body.internationalPatientDocumentKey).trim()
+        : "";
+
     const appointment = new Appointment({
       doctor: doctorId,
       patient: patient._id,
@@ -1437,6 +1461,31 @@ exports.createAppointment = async (req, res) => {
         overrideConflicts: overrideConflicts,
         receptionistOverride: req.user && req.user.role === "receptionist",
         ...(resolvedVisitReason ? { visitType: resolvedVisitReason } : {}),
+        ...(isInternationalPatient
+          ? {
+              isInternationalPatient: true,
+            }
+          : {}),
+        ...(documentCountry
+          ? {
+              documentCountry,
+            }
+          : {}),
+        ...(documentType
+          ? {
+            documentType,
+          }
+          : {}),
+        ...(documentNumber
+          ? {
+              documentNumber,
+            }
+          : {}),
+        ...(internationalPatientDocumentKey
+          ? {
+              internationalPatientDocumentKey,
+            }
+          : {}),
       },
     });
 
@@ -2871,6 +2920,8 @@ exports.getAppointmentsDashboard = async (req, res) => {
             avatar,
           },
           patientName: patientName || null,
+          patientId: appt.patient?.patientId || null,
+          patientObjectId: appt.patient?._id || null,
           status: appt.status || "booked",
           mode: appt.mode || "offline",
           startTime: appt.startTime,
