@@ -600,17 +600,21 @@ exports.generateVisitCard = async (req, res) => {
             ${diagnoses.length > 0 ? `
             <div class="consultation-item">
               <div class="consultation-label">Rozpoznanie:</div>
-              <div class="consultation-content">
-                ${diagnoses.map((d) => d.isPrimary ? `<div class="diagnosis-line"><strong>${d.code} – ${d.name} (główne)</strong></div>` : `<div class="diagnosis-line">${d.code} – ${d.name}</div>`).join("")}
-              </div>
+              <div class="consultation-content">${diagnoses
+                .map((d) =>
+                  d.isPrimary
+                    ? `<div class="diagnosis-line"><strong>${d.code} – ${d.name} (główne)</strong></div>`
+                    : `<div class="diagnosis-line">${d.code} – ${d.name}</div>`
+                )
+                .join("")}</div>
             </div>
             ` : ""}
             ${procedures.length > 0 ? `
             <div class="consultation-item">
               <div class="consultation-label">Procedury:</div>
-              <div class="consultation-content">
-                ${procedures.map((p) => `<div class="info-row">${p.code} – ${p.name}</div>`).join("")}
-              </div>
+              <div class="consultation-content">${procedures
+                .map((p) => `<div class="info-row">${p.code} – ${p.name}</div>`)
+                .join("")}</div>
             </div>
             ` : ""}
             
