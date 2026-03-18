@@ -131,7 +131,9 @@ exports.getAllNonAdminUsers = async (req, res) => {
     const [users, total] = await Promise.all([
       user
         .find(query)
-        .select("name email phone role profilePicture signupMethod deleted")
+        .select(
+          "name email phone role profilePicture signupMethod deleted patientId d_id"
+        )
         .skip(skip)
         .limit(limit)
         .sort(sort),
@@ -141,8 +143,14 @@ exports.getAllNonAdminUsers = async (req, res) => {
 
     const totalPages = Math.ceil(total / limit);
 
+    const formattedUsers = users.map((u) => ({
+      ...u,
+      patientId: u.role === "patient" ? u.patientId || null : null,
+      doctorId: u.role === "doctor" ? u.d_id || null : null,
+    }));
+
     res.status(200).json({
-      users,
+      users: formattedUsers,
       pagination: {
         totalUsers: total,
         currentPage: page,
