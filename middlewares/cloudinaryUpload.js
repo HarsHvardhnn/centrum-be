@@ -11,6 +11,10 @@ const createStorage = (folderName, fileType) => {
         ? ["pdf", "doc", "docx", "txt"]
         : ["jpg", "jpeg", "png", "webp"],
     resource_type: fileType === "document" ? "raw" : "image",
+    // Prevent Cloudinary from embedding unicode filenames into public_id/URLs.
+    // We'll rely on Cloudinary's generated IDs (or our explicit public_id for `upload`).
+    use_filename: false,
+    unique_filename: true,
   };
 
   // No transformations applied to preserve original image quality
@@ -59,10 +63,10 @@ const upload = multer({
       // For documents, preserve the original filename and extension
       if (isDocument) {
         // Extract file extension
-        const fileExtension = file.originalname.split('.').pop().toLowerCase();
+        const parts = String(file.originalname || "").split(".");
+        const fileExtension =
+          parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "pdf";
         params.public_id = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
-        params.use_filename = true;
-        params.unique_filename = false;
       }
 
       // No transformations applied to preserve original image quality

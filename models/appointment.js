@@ -6,8 +6,9 @@ const mongoose = require("mongoose");
 const consultationSchema = new mongoose.Schema({
   consultationType: {
     type: String,
-    enum: ["Clinic Consulting", "Online Consultation", "Home Visit", "Konsultacja w przychodni",
-      "Konsultacja online", "Wizyta domowa"],
+    // Do not hard-restrict values: FE can send dynamic visit reason types.
+    // Visit reasons are validated/controlled via the visit-reasons dictionary flow.
+    // Any string is accepted here to avoid blocking updates like "Iniekcja".
   },
   /** Visit reason display name (Polish), e.g. "Konsultacja pierwszorazowa". Primary field for Rodzaj wizyty. */
   visitReason: { type: String, default: null },
