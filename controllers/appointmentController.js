@@ -1513,9 +1513,12 @@ exports.createAppointment = async (req, res) => {
           temporaryPassword: isNewUser ? temporaryPassword : null,
         };
 
-        // Send email
+        const emailRecipients = [patient.email];
+        if (doctorDetails.email && String(doctorDetails.email).trim()) {
+          emailRecipients.push(doctorDetails.email.trim());
+        }
         await sendEmail({
-          to: patient.email,
+          to: emailRecipients,
           subject: "Potwierdzenie Wizyty",
           html: createAppointmentEmailHtml(emailData),
           text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
@@ -1527,7 +1530,7 @@ exports.createAppointment = async (req, res) => {
           }`,
         });
 
-        console.log(`Appointment confirmation email sent to ${patient.email}`);
+        console.log(`Appointment confirmation email sent to ${emailRecipients.join(", ")}`);
         emailSent = true;
       } catch (emailError) {
         console.error("Failed to send appointment email:", emailError);
@@ -1774,8 +1777,12 @@ exports.createReceptionAppointment = async (req, res) => {
               isNewUser: false,
               temporaryPassword: null,
             };
+            const receptionEmailRecipients = [patient.email];
+            if (doctorDetails.email && String(doctorDetails.email).trim()) {
+              receptionEmailRecipients.push(doctorDetails.email.trim());
+            }
             await sendEmail({
-              to: patient.email,
+              to: receptionEmailRecipients,
               subject: "Potwierdzenie Wizyty",
               html: createAppointmentEmailHtml(emailData),
               text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została zaplanowana na ${formattedDate} o godz ${time}. Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji.`,
