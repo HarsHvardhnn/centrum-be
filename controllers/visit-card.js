@@ -410,38 +410,47 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .consultation-section {
-                margin-bottom: 3px;
+                margin-bottom: 0;
                 page-break-inside: auto;
             }
             
             .consultation-item {
-                margin-bottom: 3px;
+                margin-bottom: 2px;
                 page-break-inside: avoid;
             }
             
             .consultation-label {
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 1px;
+                margin-bottom: 0;
                 font-size: 14px;
                 page-break-after: avoid;
             }
             
             .consultation-content {
                 font-size: 14px;
-                line-height: 1.3;
+                line-height: 1.25;
                 word-wrap: break-word;
                 white-space: pre-wrap;
-                margin-top: 0;
+                margin: 0;
+                padding: 0;
             }
             
             .diagnosis-line {
                 margin-bottom: 1px;
-                line-height: 1.3;
+                line-height: 1.25;
+            }
+            
+            .diagnosis-line:last-child {
+                margin-bottom: 0;
             }
             
             .consultation-content .info-row {
                 margin-bottom: 2px;
+            }
+            
+            .consultation-content .info-row:last-child {
+                margin-bottom: 0;
             }
             
             /* Content wrapper for proper spacing */

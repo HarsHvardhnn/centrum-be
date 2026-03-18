@@ -2857,6 +2857,7 @@ exports.getAppointmentsDashboard = async (req, res) => {
     const filter = {
       status: "booked",
       date: { $gte: today },
+      patient: { $ne: null },
     };
 
     // Doctor token → only that doctor's appointments. Admin/receptionist → all.
