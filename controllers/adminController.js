@@ -136,7 +136,8 @@ exports.getAllNonAdminUsers = async (req, res) => {
         )
         .skip(skip)
         .limit(limit)
-        .sort(sort),
+        .sort(sort)
+        .lean(),
 
       user.countDocuments(query),
     ]);
@@ -144,9 +145,18 @@ exports.getAllNonAdminUsers = async (req, res) => {
     const totalPages = Math.ceil(total / limit);
 
     const formattedUsers = users.map((u) => ({
-      ...u,
+      // Ensure plain object output (no Mongoose internals)
       patientId: u.role === "patient" ? u.patientId || null : null,
       doctorId: u.role === "doctor" ? u.d_id || null : null,
+      // Keep the rest the FE expects
+      _id: u._id,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      role: u.role,
+      profilePicture: u.profilePicture,
+      signupMethod: u.signupMethod,
+      deleted: u.deleted,
     }));
 
     res.status(200).json({
