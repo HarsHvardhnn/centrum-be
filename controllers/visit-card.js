@@ -155,6 +155,17 @@ exports.generateVisitCard = async (req, res) => {
       });
     }
 
+    // Do not allow generating a new visit card unless the doctor/admin verified the visit reason.
+    const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
+    if (!visitReasonVerified) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Nie można wygenerować karty wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację.",
+        code: "VISIT_REASON_NOT_VERIFIED",
+      });
+    }
+
     // Get the patient from appointment
     const patient = appointment.patient;
     if (!patient) {

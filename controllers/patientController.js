@@ -183,7 +183,13 @@ exports.createPatient = async (req, res) => {
     // console.log("req.body is ",dateOfBirth)
     let validatedDocKey = null;
     let validatedDocNumber = null;
-    if (!!isInternationalPatient) {
+    // `req.body.isInternationalPatient` might come as string: "false" (truthy) from FE.
+    // Resolve it strictly to boolean.
+    const isInternationalPatientResolved =
+      isInternationalPatient === true ||
+      String(isInternationalPatient).toLowerCase() === "true";
+
+    if (isInternationalPatientResolved) {
       const docValidation = validateInternationalDocument({
         documentNumber: req.body.documentNumber,
         internationalPatientDocumentKey: internationalPatientDocumentKey,
@@ -357,9 +363,9 @@ exports.createPatient = async (req, res) => {
       consultingSpecialization: new mongoose.Types.ObjectId(consultingSpecialization),
       alternateContact,
       govtId: pesel,
-      ...(!!isInternationalPatient ? { npesei: patient.generateNpesei() } : {}),
-      isInternationalPatient: !!isInternationalPatient,
-      ...(!!isInternationalPatient && validatedDocKey && {
+      ...(isInternationalPatientResolved ? { npesei: patient.generateNpesei() } : {}),
+      isInternationalPatient: isInternationalPatientResolved,
+      ...(isInternationalPatientResolved && validatedDocKey && {
         internationalPatientDocumentKey: validatedDocKey,
         documentNumber: validatedDocNumber,
         ...(req.body.documentCountry != null && req.body.documentCountry !== "undefined" && { documentCountry: String(req.body.documentCountry).trim() }),

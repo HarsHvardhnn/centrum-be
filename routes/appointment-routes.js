@@ -114,6 +114,20 @@ router.patch(
   appointmentController.completeCheckIn
 );
 
+// Verify selected visit reason (doctor/admin only)
+router.patch(
+  "/visit-reason/verify/:id",
+  authorizeRoles(["doctor", "admin"]),
+  appointmentController.verifyVisitReason
+);
+
+// Get visit reason verification status (any authenticated role)
+router.get(
+  "/visit-reason/verify/:id/status",
+  authorizeRoles(["doctor", "receptionist", "admin", "patient"]),
+  appointmentController.getVisitReasonVerifiedStatus
+);
+
 // @route   POST /api/appointments/book
 // @desc    Book a new appointment with reCAPTCHA verification
 // @access  Public

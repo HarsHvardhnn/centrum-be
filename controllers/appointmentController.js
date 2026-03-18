@@ -1454,7 +1454,12 @@ exports.createAppointment = async (req, res) => {
       mode: visitMode,
       notes: message || "",
       consultation: resolvedVisitReason
-        ? { visitReason: resolvedVisitReason, visitTypeVerified: true }
+        ? {
+            visitReason: resolvedVisitReason,
+            // Default: doctor/admin must explicitly verify the visit reason
+            visitReasonVerified: false,
+            visitTypeVerified: true,
+          }
         : undefined,
       metadata: {
         ...(req.body.metadata || {}),
@@ -1745,7 +1750,11 @@ exports.createReceptionAppointment = async (req, res) => {
         mode: visitMode,
         notes: message || "",
         consultation: resolvedVisitReasonReception
-          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: true }
+          ? {
+              visitReason: resolvedVisitReasonReception,
+              visitReasonVerified: false,
+              visitTypeVerified: true,
+            }
           : undefined,
         metadata: {
           ...(req.body.metadata || {}),
@@ -1849,7 +1858,11 @@ exports.createReceptionAppointment = async (req, res) => {
         notes: message || "",
         registrationData,
         consultation: resolvedVisitReasonReception
-          ? { visitReason: resolvedVisitReasonReception, visitTypeVerified: true }
+        ? {
+            visitReason: resolvedVisitReasonReception,
+            visitReasonVerified: false,
+            visitTypeVerified: true,
+          }
           : undefined,
         metadata: {
           ...(req.body.metadata || {}),
@@ -2529,14 +2542,17 @@ exports.updateAppointmentStatus = async (req, res) => {
         appointment.consultation?.consultationType ||
         appointment.metadata?.visitType;
       const hasVisitReason = visitReasonResolved && String(visitReasonResolved).trim();
-      const verified = Boolean(appointment.consultation?.visitTypeVerified);
-      if (!hasVisitReason || !verified) {
+      const verifiedVisitType = Boolean(appointment.consultation?.visitTypeVerified);
+      const verifiedVisitReason = Boolean(appointment.consultation?.visitReasonVerified);
+      if (!hasVisitReason || !verifiedVisitType || !verifiedVisitReason) {
         return res.status(400).json({
           success: false,
-          message: "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić lub zmienić rodzaj wizyty przed zamknięciem.",
+          message:
+            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację rodzaju wizyty przed zamknięciem.",
           code: "VISIT_TYPE_NOT_VERIFIED",
           visitReasonSet: !!hasVisitReason,
-          visitTypeVerified: verified,
+          visitTypeVerified: verifiedVisitType,
+          visitReasonVerified: verifiedVisitReason,
         });
       }
     }
@@ -5053,6 +5069,103 @@ exports.getVisitReasons = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Nie udało się pobrać słownika rodzajów wizyt",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Verify (confirm) appointment's selected visit reason.
+ * Only doctor/admin are allowed.
+ *
+ * @route PATCH /api/appointments/visit-reason/verify/:id
+ */
+exports.verifyVisitReason = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    const existingReason =
+      appointment.consultation?.visitReason ?? appointment.consultation?.consultationType;
+    if (!existingReason || !String(existingReason).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Appointment has no visit reason to verify",
+        code: "VISIT_REASON_NOT_SET",
+      });
+    }
+
+    if (!appointment.consultation) appointment.consultation = {};
+    appointment.consultation.visitReasonVerified = true;
+    await appointment.save();
+
+    return res.status(200).json({
+      success: true,
+      appointmentId: appointment._id,
+      visitReasonVerified: true,
+    });
+  } catch (error) {
+    console.error("verifyVisitReason error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get visitReasonVerified status for a single appointment.
+ * Any authenticated role can call.
+ *
+ * @route GET /api/appointments/visit-reason/verify/:id/status
+ */
+exports.getVisitReasonVerifiedStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(id)
+      .select("consultation.visitReasonVerified")
+      .lean();
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      appointmentId: id,
+      visitReasonVerified: Boolean(appointment.consultation?.visitReasonVerified),
+    });
+  } catch (error) {
+    console.error("getVisitReasonVerifiedStatus error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
       error: error.message,
     });
   }

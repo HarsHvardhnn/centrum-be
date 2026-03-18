@@ -663,6 +663,19 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
+    // Do not allow generating an invoice unless the doctor/admin verified the visit reason.
+    // Existing invoiceUrl is handled above; this check only blocks generation.
+    const visitReasonVerified =
+      Boolean(bill.appointment?.consultation?.visitReasonVerified);
+    if (!visitReasonVerified) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Nie można wygenerować faktury bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację.",
+        code: "VISIT_REASON_NOT_VERIFIED",
+      });
+    }
+
     const nextId = bill?.invoiceId || await generateNextInvoiceId();
     const safeInvoiceId = nextId.replace(/\//g, '_');
     const filename = `faktura_${safeInvoiceId}.pdf`;
