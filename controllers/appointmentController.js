@@ -5111,6 +5111,8 @@ exports.verifyVisitReason = async (req, res) => {
 
     if (!appointment.consultation) appointment.consultation = {};
     appointment.consultation.visitReasonVerified = true;
+    // If doctor/admin verified the selected visit reason, treat visit type as verified too.
+    appointment.consultation.visitTypeVerified = true;
     await appointment.save();
 
     return res.status(200).json({
