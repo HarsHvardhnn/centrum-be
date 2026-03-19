@@ -137,6 +137,9 @@ const addDoctor = async (req, res) => {
       });
     }
 
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(String(doctorData.password || "").trim(), saltRounds);
+
     // Create the base user document
     const userData = {
       name: {
@@ -147,7 +150,7 @@ const addDoctor = async (req, res) => {
       phone: phoneNumber,
       shortDescription: doctorData.shortDescription || "",
       specializations: doctorData.specializations,
-      password: doctorData.password, // In production, this should be hashed
+      password: hashedPassword,
       role: "doctor", // This triggers the discriminator
       signupMethod: doctorData.signupMethod || "email",
       profilePicture: req.file?.path || "",

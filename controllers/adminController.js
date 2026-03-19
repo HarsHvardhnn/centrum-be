@@ -14,13 +14,14 @@ exports.addReceptionist = async (req, res) => {
     if (existingUser)
       return res.status(400).json({ message: "Email already in use" });
 
-
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(String(password || "").trim(), saltRounds);
 
     const newReceptionist = new user({
       name: { first: firstName, last: lastName },
       email,
       phone,
-      password,
+      password: hashedPassword,
       role: "receptionist",
       signupMethod,
     });
