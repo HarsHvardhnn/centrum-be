@@ -39,6 +39,23 @@ const getCurrentDatePoland = () => {
   return toZonedTime(now, POLAND_TIMEZONE);
 };
 
+// Convert "HH:mm" or "H:mm" to minutes since midnight (for slot availability checks)
+const timeStrToMinutes = (str) => {
+  if (!str || typeof str !== "string") return 0;
+  const parts = str.trim().split(":");
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h * 60 + m;
+};
+
+// Check if current time (Poland "HH:mm") falls within [startTime, endTime) (inclusive start, exclusive end)
+const isTimeInSlot = (currentTimeStr, startTime, endTime) => {
+  const now = timeStrToMinutes(currentTimeStr);
+  const start = timeStrToMinutes(startTime || "00:00");
+  const end = timeStrToMinutes(endTime || "24:00");
+  return now >= start && now < end;
+};
+
 // Helper function to generate default weekly schedule pattern
 const generateDefaultWeeklyPattern = () => {
   const defaultStartTime = "09:00";
@@ -405,13 +422,13 @@ const getAllDoctors = async (req, res) => {
         isActive: true,
         timeBlocks: { $elemMatch: { isActive: true } },
       })
-        .select("doctorId")
+        .select("doctorId timeBlocks")
         .lean();
       const availableIds = new Set();
       schedulesToday.forEach((s) => {
         const blocks = s.timeBlocks || [];
         const inSlot = blocks.some(
-          (b) => b.isActive !== false && currentTimeStr >= (b.startTime || "00:00") && currentTimeStr < (b.endTime || "24:00")
+          (b) => b.isActive !== false && isTimeInSlot(currentTimeStr, b.startTime, b.endTime)
         );
         if (inSlot && s.doctorId) availableIds.add(s.doctorId.toString());
       });
@@ -505,7 +522,7 @@ const getAllDoctors = async (req, res) => {
     schedulesToday.forEach((s) => {
       const blocks = s.timeBlocks || [];
       const inSlot = blocks.some(
-        (b) => b.isActive !== false && currentTimeStr >= (b.startTime || "00:00") && currentTimeStr < (b.endTime || "24:00")
+        (b) => b.isActive !== false && isTimeInSlot(currentTimeStr, b.startTime, b.endTime)
       );
       if (inSlot) isCurrentlyAvailableSet.add(s.doctorId.toString());
     });
