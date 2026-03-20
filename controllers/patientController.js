@@ -760,6 +760,10 @@ exports.getPatientsList = async (req, res) => {
       ...completedRegistrationFilter,
     };
 
+    // Global total for the system (patient role only), independent of search/filter params.
+    // Keep existing `total` as the total matching the current query (after filters).
+    const totalPatientsInSystem = await patient.countDocuments(query);
+
     if (doctor) {
       query.consultingDoctor = doctor;
     }
@@ -907,6 +911,7 @@ exports.getPatientsList = async (req, res) => {
       success: true,
       count: simplifiedPatients.length,
       total: totalCount,
+      totalPatients: totalPatientsInSystem,
       pages: Math.ceil(totalCount / parseInt(limit)),
       currentPage: parseInt(page),
       patients: simplifiedPatients
