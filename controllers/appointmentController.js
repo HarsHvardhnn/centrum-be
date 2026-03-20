@@ -2543,12 +2543,13 @@ exports.updateAppointmentStatus = async (req, res) => {
         appointment.metadata?.visitType;
       const hasVisitReason = visitReasonResolved && String(visitReasonResolved).trim();
       const verifiedVisitType = Boolean(appointment.consultation?.visitTypeVerified);
-      // Historically the FE/doctor flow may set only `visitTypeVerified`.
-      // If visit type is verified and a visit reason exists, allow closing even when
-      // `visitReasonVerified` is still false.
-      const verifiedVisitReason =
-        Boolean(appointment.consultation?.visitReasonVerified) || verifiedVisitType;
-      if (!hasVisitReason || !verifiedVisitType || !verifiedVisitReason) {
+      // Allow closing when:
+      // - a visit reason exists
+      // - the visit type is verified
+      //
+      // Some legacy flows may not reliably flip `visitReasonVerified` while still
+      // setting `visitTypeVerified`. The FE expects "verify" to unblock completion.
+      if (!hasVisitReason || !verifiedVisitType) {
         return res.status(400).json({
           success: false,
           message:
@@ -2556,7 +2557,7 @@ exports.updateAppointmentStatus = async (req, res) => {
           code: "VISIT_TYPE_NOT_VERIFIED",
           visitReasonSet: !!hasVisitReason,
           visitTypeVerified: verifiedVisitType,
-          visitReasonVerified: verifiedVisitReason,
+          visitReasonVerified: Boolean(appointment.consultation?.visitReasonVerified),
         });
       }
     }
