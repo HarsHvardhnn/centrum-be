@@ -5099,8 +5099,12 @@ exports.verifyVisitReason = async (req, res) => {
       });
     }
 
+    // Consider all places where FE/backend may store the selected visit type/reason.
+    // Close logic checks visitReason OR consultationType OR metadata.visitType, so verify must match it.
     const existingReason =
-      appointment.consultation?.visitReason ?? appointment.consultation?.consultationType;
+      appointment.consultation?.visitReason ??
+      appointment.consultation?.consultationType ??
+      appointment.metadata?.visitType;
     if (!existingReason || !String(existingReason).trim()) {
       return res.status(400).json({
         success: false,
