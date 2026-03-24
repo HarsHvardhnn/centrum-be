@@ -155,14 +155,18 @@ exports.generateVisitCard = async (req, res) => {
       });
     }
 
-    // Do not allow generating a new visit card unless the doctor/admin verified the visit reason.
+    // Allow visit-card generation when visit reason/type has been verified.
+    // Some flows set only visitTypeVerified, so accept either flag.
     const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
-    if (!visitReasonVerified) {
+    const visitTypeVerified = appointment.consultation?.visitTypeVerified === true;
+    if (!visitReasonVerified && !visitTypeVerified) {
       return res.status(400).json({
         success: false,
         message:
           "Nie można wygenerować karty wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację.",
         code: "VISIT_REASON_NOT_VERIFIED",
+        visitReasonVerified,
+        visitTypeVerified,
       });
     }
 
@@ -426,7 +430,7 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .consultation-item {
-                margin-bottom: 2px;
+                margin-bottom: 12px;
                 page-break-inside: avoid;
             }
             
@@ -654,10 +658,6 @@ exports.generateVisitCard = async (req, res) => {
                     <div class="consultation-content">${consultationData.recommendations}</div>
                 </div>
                 ` : ""}
-                <div class="consultation-item">
-                    <div class="consultation-label">Kontrola:</div>
-                    <div class="consultation-content">${consultationData.consultationNotes && String(consultationData.consultationNotes).trim() ? consultationData.consultationNotes : "brak"}</div>
-                </div>
                 ${consultationData.description ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Notatki:</div>
