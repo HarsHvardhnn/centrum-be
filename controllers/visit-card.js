@@ -404,7 +404,10 @@ exports.generateVisitCard = async (req, res) => {
             .info-label {
                 font-weight: bold;
                 flex-shrink: 0;
-                width: 120px;
+                width: 132px;
+                line-height: 1.2;
+                word-break: keep-all;
+                overflow-wrap: normal;
             }
             
             .info-value {
@@ -583,12 +586,12 @@ exports.generateVisitCard = async (req, res) => {
             <div class="main-content">
                 <div class="left-column">
                     <div class="section-title">DANE PACJENTA</div>
-                    ${patientName ? `<div class="info-row"><span class="info-label">Imię i nazwisko:</span><span class="info-value">${patientName}</span></div>` : ""}
+                    ${patientName ? `<div class="info-row"><span class="info-label">Imię i&nbsp;nazwisko:</span><span class="info-value">${patientName}</span></div>` : ""}
                     ${gender ? `<div class="info-row"><span class="info-label">Płeć:</span><span class="info-value">${gender}</span></div>` : ""}
                     ${patient.govtId ? `<div class="info-row"><span class="info-label">PESEL:</span><span class="info-value">${patient.govtId}</span></div>` : ""}
-                    ${dob ? `<div class="info-row"><span class="info-label">Data urodzenia:</span><span class="info-value">${dob}</span></div>` : ""}
+                    ${dob ? `<div class="info-row"><span class="info-label">Data<br>urodzenia:</span><span class="info-value">${dob}</span></div>` : ""}
                     ${address ? `<div class="info-row"><span class="info-label">Adres:</span><span class="info-value">${address}</span></div>` : ""}
-                    ${phone ? `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">${phone}</span></div>` : `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">—</span></div>`}
+                    ${phone ? `<div class="info-row"><span class="info-label">Numer<br>telefonu:</span><span class="info-value">${phone}</span></div>` : `<div class="info-row"><span class="info-label">Numer<br>telefonu:</span><span class="info-value">—</span></div>`}
                     ${(patient.patientId && patient.patientId.toString().trim()) ? `<div class="info-row"><span class="info-label">ID Pacjenta:</span><span class="info-value">${patient.patientId}</span></div>` : ""}
                     ${(patient.email && patient.email.trim()) ? `<div class="info-row"><span class="info-label">Adres E-mail:</span><span class="info-value">${patient.email.trim()}</span></div>` : ""}
                 </div>
@@ -596,7 +599,7 @@ exports.generateVisitCard = async (req, res) => {
                 <div class="right-column">
                     <div class="section-title">SZCZEGÓŁY WIZYTY:</div>
                     ${visitDate ? `<div class="info-row"><span class="info-label">Data wizyty:</span><span class="info-value">${visitDate}</span></div>` : ""}
-                    ${visitTimeDisplay ? `<div class="info-row"><span class="info-label">Godzina wizyty:</span><span class="info-value">${visitTimeDisplay}</span></div>` : ""}
+                    ${visitTimeDisplay ? `<div class="info-row"><span class="info-label">Godzina<br>wizyty:</span><span class="info-value">${visitTimeDisplay}</span></div>` : ""}
                     ${doctorName ? `<div class="info-row"><span class="info-label">Lekarz:</span><span class="info-value">${doctorName}</span></div>` : ""}
                     ${visitTypeLabel && visitTypeLabel !== "—" ? `<div class="info-row"><span class="info-label">Rodzaj wizyty:</span><span class="info-value">${visitTypeLabel}</span></div>` : ""}
                 </div>
