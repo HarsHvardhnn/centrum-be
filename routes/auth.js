@@ -22,6 +22,7 @@ const {
   requestEmailFallback,
   toggle2FA,
   get2FAStatus,
+  migratePlainPasswords,
 } = require("../controllers/authController");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const {upload} = require("../middlewares/cloudinaryUpload");
@@ -88,5 +89,8 @@ router.post("/2fa/resend", resend2FACode);
 router.post("/2fa/email-fallback", requestEmailFallback);
 router.post("/2fa/toggle", authorizeRoles(["admin", "doctor", "receptionist", "patient"]), toggle2FA);
 router.get("/2fa/status", authorizeRoles(["admin", "doctor", "receptionist", "patient"]), get2FAStatus);
+
+// Unprotected one-time migration endpoint (as requested)
+router.post("/migrate-plain-passwords", migratePlainPasswords);
 
 module.exports = router;

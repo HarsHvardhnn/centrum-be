@@ -1750,6 +1750,82 @@ const getAuthConfig = async (req, res) => {
   }
 };
 
+// One-time migration endpoint: convert plain-text passwords to bcrypt hashes.
+// Unprotected by request (as requested) - use carefully and remove after migration.
+const migratePlainPasswords = async (req, res) => {
+  try {
+    const dryRun =
+      req.query?.dryRun === "true" ||
+      req.query?.dryRun === "1" ||
+      req.body?.dryRun === true;
+    const saltRoundsRaw = Number(req.body?.saltRounds);
+    const saltRounds =
+      Number.isFinite(saltRoundsRaw) && saltRoundsRaw >= 8 && saltRoundsRaw <= 15
+        ? saltRoundsRaw
+        : 10;
+
+    // Valid bcrypt hash format: $2a$ / $2b$ / $2y$ + cost + 53 chars
+    const bcryptHashRegex = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
+
+    let scanned = 0;
+    let alreadyHashed = 0;
+    let plainDetected = 0;
+    let migrated = 0;
+    let failed = 0;
+    const failedUserIds = [];
+
+    const cursor = User.find({
+      password: { $exists: true, $type: "string", $ne: "" },
+    }).cursor();
+
+    for await (const userDoc of cursor) {
+      scanned += 1;
+      const rawPassword = String(userDoc.password || "");
+
+      if (bcryptHashRegex.test(rawPassword)) {
+        alreadyHashed += 1;
+        continue;
+      }
+
+      plainDetected += 1;
+
+      if (dryRun) continue;
+
+      try {
+        const hashedPassword = await bcrypt.hash(rawPassword, saltRounds);
+        userDoc.password = hashedPassword;
+        await userDoc.save();
+        migrated += 1;
+      } catch (err) {
+        failed += 1;
+        failedUserIds.push(String(userDoc._id));
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: dryRun
+        ? "Dry run completed. No passwords were modified."
+        : "Password migration completed.",
+      dryRun,
+      saltRounds,
+      scanned,
+      alreadyHashed,
+      plainDetected,
+      migrated,
+      failed,
+      failedUserIds,
+    });
+  } catch (error) {
+    console.error("migratePlainPasswords error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to migrate plain-text passwords",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifyOTP,
@@ -1772,4 +1848,5 @@ module.exports = {
   requestEmailFallback,
   toggle2FA,
   get2FAStatus,
+  migratePlainPasswords,
 };
