@@ -33,19 +33,19 @@ transporter.verify(function(error, success) {
 
 const sendEmail = async ({ to, subject, html, text }) => {
   try {
-    // Email validation regex
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    const toList = Array.isArray(to) ? to : (to ? [to] : []);
+    const validTo = toList.filter((addr) => addr && typeof addr === "string" && emailRegex.test(addr.trim()));
 
-    // Check if email is valid
-    if (!to || !emailRegex.test(to)) {
-      console.log("Invalid email address, skipping email send:", to);
+    if (validTo.length === 0) {
+      console.log("No valid email address(es), skipping email send:", to);
       return null;
     }
 
     const mailOptions = {
       from: `"Centrum Medyczne 7" <${process.env.ZOHO_USER}>`,
       replyTo: "noreply@centrummedyczne7.pl",
-      to,
+      to: validTo.map((e) => e.trim()),
       subject,
       text,
       html,

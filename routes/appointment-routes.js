@@ -4,6 +4,8 @@ const express = require("express");
 const router = express.Router();
 const { check } = require("express-validator");
 const appointmentController = require("../controllers/appointmentController");
+const visitDiagnosisController = require("../controllers/visitDiagnosisController");
+const visitProcedureController = require("../controllers/visitProcedureController");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const { bookAppointment } = require("../controllers/gmeetController");
 const { upload } = require("../middlewares/cloudinaryUpload");
@@ -30,18 +32,27 @@ router.post(
 // @route   POST /api/appointments/reception
 // @desc    Create a new appointment with reception override
 // @access  Private (receptionist, admin)
+// patientId optional: when provided = follow-up (existing patient); when omitted = first visit (visit only, complete registration later)
 router.post(
   "/reception",
   authorizeRoles(["receptionist", "admin","doctor"]),
   [
     [
       check("doctorId", "Doctor ID is required").notEmpty(),
-      check("patientId", "Patient ID is required").notEmpty(),
       check("date", "Valid date is required").isDate(),
       check("startTime", "Start time is required").notEmpty(),
     ],
   ],
   appointmentController.createReceptionAppointment
+);
+
+// @route   GET /api/appointments/visit-reasons
+// @desc    Get visit reason dictionary (categories + types, Polish) for registration and doctor verification
+// @access  Private (doctor, receptionist, admin)
+router.get(
+  "/visit-reasons",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getVisitReasons
 );
 
 // @route   GET /api/appointments/doctor/:doctorId
@@ -78,6 +89,14 @@ router.patch(
   appointmentController.rescheduleAppointment
 );
 
+// Complete registration: assign visit to patient (PESEL or international). Supports file uploads (documents) like create patient.
+router.post(
+  "/:visitId/complete-registration",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  upload.array("files", 10),
+  appointmentController.completeRegistration
+);
+
 router.get(
   "/dashboard/",
   authorizeRoles(["doctor", "receptionist", "admin"]),
@@ -95,6 +114,20 @@ router.patch(
   appointmentController.completeCheckIn
 );
 
+// Verify selected visit reason (doctor/admin only)
+router.patch(
+  "/visit-reason/verify/:id",
+  authorizeRoles(["doctor", "admin"]),
+  appointmentController.verifyVisitReason
+);
+
+// Get visit reason verification status (any authenticated role)
+router.get(
+  "/visit-reason/verify/:id/status",
+  authorizeRoles(["doctor", "receptionist", "admin", "patient"]),
+  appointmentController.getVisitReasonVerifiedStatus
+);
+
 // @route   POST /api/appointments/book
 // @desc    Book a new appointment with reCAPTCHA verification
 // @access  Public
@@ -108,6 +141,13 @@ router.put(
   "/:id/details",
   authorizeRoles(["doctor", "receptionist", "admin"]),
   appointmentController.updateAppointmentDetails
+);
+
+// Get consents for a visit (by appointment/visit ID)
+router.get(
+  "/:visitId/consents",
+  authorizeRoles(["doctor", "receptionist", "admin"]),
+  appointmentController.getVisitConsents
 );
 
 // Get appointment details
@@ -130,6 +170,8 @@ router.get(
   authorizeRoles(["doctor", "receptionist", "admin"]),
   appointmentController.getAppointments
 );
+
+// (Duplicate route removed – see above /:visitId/complete-registration with upload)
 
 // Upload a single report file to an appointment
 router.post(
@@ -177,5 +219,14 @@ router.get(
   authorizeRoles(["doctor", "receptionist", "admin"]),
   appointmentController.getDoctorAppointmentsByDate
 );
+
+// Visit (appointment) ICD-10 diagnoses and ICD-9 procedures; visitId = appointment _id
+router.get("/:visitId/medical-codes", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.getMedicalCodes);
+router.post("/:visitId/diagnoses", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.addDiagnosis);
+router.get("/:visitId/diagnoses", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.getDiagnoses);
+router.delete("/:visitId/diagnoses/:diagnosisId", authorizeRoles(["doctor", "receptionist", "admin"]), visitDiagnosisController.deleteDiagnosis);
+router.post("/:visitId/procedures", authorizeRoles(["doctor", "receptionist", "admin"]), visitProcedureController.addProcedure);
+router.get("/:visitId/procedures", authorizeRoles(["doctor", "receptionist", "admin"]), visitProcedureController.getProcedures);
+router.delete("/:visitId/procedures/:procedureId", authorizeRoles(["doctor", "receptionist", "admin"]), visitProcedureController.deleteProcedure);
 
 module.exports = router;

@@ -1,0 +1,143 @@
+{
+  "info": {
+    "name": "ICD-10 / ICD-9 Visit Codes",
+    "description": "ICD diagnoses and procedures for visits (appointments). Base URL: {{baseUrl}} (e.g. https://centrum-be.onrender.com)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" },
+    { "key": "visitId", "value": "" },
+    { "key": "diagnosisId", "value": "" },
+    { "key": "procedureId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "ICD10 Search",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/icd10/search?q=E11",
+        "description": "Autocomplete ICD-10. Max 10 results. Search by code or name (case insensitive)."
+      }
+    },
+    {
+      "name": "ICD9 Search",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/icd9/search?q=45",
+        "description": "Autocomplete ICD-9 procedures. Max 10 results."
+      }
+    },
+    {
+      "name": "Import ICD10",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"items\": [\n    { \"code\": \"E11\", \"full_name\": \"Type 2 diabetes mellitus\" },\n    { \"code\": \"I10\", \"full_name\": \"Essential hypertension\" }\n  ]\n}"
+        },
+        "url": "{{baseUrl}}/admin/icd10/import",
+        "description": "Admin only. JSON body with items array. Duplicates by code are skipped."
+      }
+    },
+    {
+      "name": "Import ICD9",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"items\": [\n    { \"code\": \"45.13\", \"full_name\": \"Colonoscopy\" }\n  ]\n}"
+        },
+        "url": "{{baseUrl}}/admin/icd9/import",
+        "description": "Admin only. JSON body with items array."
+      }
+    },
+    {
+      "name": "Add Diagnosis",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"code\": \"E11\",\n  \"name\": \"Type 2 diabetes mellitus\",\n  \"isPrimary\": true\n}"
+        },
+        "url": "{{baseUrl}}/appointments/{{visitId}}/diagnoses",
+        "description": "Add ICD-10 diagnosis to visit. If isPrimary true, previous primary is unset."
+      }
+    },
+    {
+      "name": "List Diagnoses",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/appointments/{{visitId}}/diagnoses",
+        "description": "Get all diagnoses for a visit."
+      }
+    },
+    {
+      "name": "Delete Diagnosis",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/appointments/{{visitId}}/diagnoses/{{diagnosisId}}",
+        "description": "Remove one diagnosis from visit."
+      }
+    },
+    {
+      "name": "Add Procedure",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"code\": \"45.13\",\n  \"name\": \"Colonoscopy\"\n}"
+        },
+        "url": "{{baseUrl}}/appointments/{{visitId}}/procedures",
+        "description": "Add ICD-9 procedure to visit."
+      }
+    },
+    {
+      "name": "List Procedures",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/appointments/{{visitId}}/procedures",
+        "description": "Get all procedures for a visit."
+      }
+    },
+    {
+      "name": "Delete Procedure",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/appointments/{{visitId}}/procedures/{{procedureId}}",
+        "description": "Remove one procedure from visit."
+      }
+    },
+    {
+      "name": "Get Visit Medical Codes (PDF)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/appointments/{{visitId}}/medical-codes",
+        "description": "Returns { diagnoses: [...], procedures: [...] } for PDF export."
+      }
+    }
+  ]
+}

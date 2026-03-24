@@ -27,4 +27,12 @@ router.post(
   emailPreviewController.sendAppointmentEmailsToFixedAddress
 );
 
+// @route   POST /api/email-preview/send-confirmation
+// @desc    Send only "Potwierdzenie wizyty" email with hardcoded test data to given email (for template testing)
+// @access  Public (for testing)
+router.post(
+  "/send-confirmation",
+  emailPreviewController.sendConfirmationEmailTest
+);
+
 module.exports = router;

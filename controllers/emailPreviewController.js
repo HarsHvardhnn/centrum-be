@@ -1,5 +1,6 @@
 const sendEmail = require("../utils/mailer");
 const { formatDateForSMS, formatTimeForSMS } = require("../utils/dateUtils");
+const { getIconImg } = require("../utils/emailIcons");
 const path = require("path");
 const fs = require("fs");
 
@@ -129,6 +130,24 @@ const emailCSS = `
         .max-w-md { max-width: 28rem; }
       }
       
+      /* Mobile Responsive Styles */
+      @media (max-width: 600px) {
+        .px-8 { padding-left: 1rem; padding-right: 1rem; }
+        .px-6 { padding-left: 1rem; padding-right: 1rem; }
+        .py-12 { padding-top: 2rem; padding-bottom: 2rem; }
+        .py-8 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+        .py-6 { padding-top: 1rem; padding-bottom: 1rem; }
+        .mx-8 { margin-left: 1rem; margin-right: 1rem; }
+        .text-3xl { font-size: 1.5rem; line-height: 2rem; }
+        .text-xl { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-lg { font-size: 1rem; line-height: 1.5rem; }
+        .w-32 { width: 6rem; min-width: 6rem; }
+        .gap-4 { gap: 0.75rem; }
+        .flex { flex-wrap: wrap; }
+        #email-container { max-width: 100% !important; }
+        .space-y-5 > * + * { margin-top: 0.75rem; }
+      }
+      
       a {
         color: inherit;
         text-decoration: underline;
@@ -159,15 +178,16 @@ const createCancellationEmailDirect = (data) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
   const { patientName, doctorName, date, time, mode } = data;
   const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  const teal = '#008C8C';
+  const red = '#dc2626';
+  const orange = '#ea580c';
   
-  // Full cancellation template - same as in appointmentController
+  // Full cancellation template - Font Awesome 6 icons as inline SVG (visible in all email clients)
   return `<html>
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Odwołanie wizyty</title>
-    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>${emailCSS}</style>
   </head>
@@ -182,14 +202,14 @@ const createCancellationEmailDirect = (data) => {
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
-        <div class="flex justify-center mb-6"><i class="fa-solid fa-calendar-xmark text-4xl text-warning-red"></i></div>
+        <div class="flex justify-center mb-6">${getIconImg('calendar-xmark', red, 40)}</div>
         <h1 class="text-3xl font-bold text-navy mb-4">Odwołanie wizyty</h1>
         <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
           Informujemy, że Twoja wizyta została odwołana. Poniżej znajdziesz szczegóły dotyczące anulowanej konsultacji oraz dalsze instrukcje.
         </p>
       </section>
       <section id="cancellation-notice" class="mx-8 mb-8 px-6 py-5 bg-red-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-circle-exclamation text-lg text-warning-red mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('circle-exclamation', red, 22)}
           <div>
             <p class="text-deep-navy font-medium mb-2">Wizyta została odwołana</p>
             <p class="text-deep-navy leading-relaxed">
@@ -199,20 +219,20 @@ const createCancellationEmailDirect = (data) => {
         </div>
       </section>
       <section id="appointment-details" class="px-8 py-8">
-        <div class="flex items-center gap-3 mb-8"><i class="fa-solid fa-clipboard-list text-xl text-teal-custom"></i>
+        <div class="flex items-center gap-3 mb-8">${getIconImg('clipboard-list', teal, 22)}
           <h2 class="text-xl font-bold text-navy">Szczegóły odwołanej wizyty</h2>
         </div>
         <div class="space-y-5">
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-user text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-calendar text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-deep-navy font-medium line-through text-gray-500">${date}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-clock text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-deep-navy font-medium line-through text-gray-500">${time}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
-          <div class="flex items-start gap-4 py-4"><i class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user-doctor', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('calendar', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-deep-navy font-medium line-through text-gray-500">${date}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('clock', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-deep-navy font-medium line-through text-gray-500">${time}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('stethoscope', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
+          <div class="flex items-start gap-4 py-4">${getIconImg('location-dot', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
         </div>
       </section>
       <section id="next-steps-section" class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-calendar-plus text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('calendar-plus', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Umówienie nowego terminu</p>
             <p class="text-deep-navy leading-relaxed">
@@ -223,7 +243,7 @@ const createCancellationEmailDirect = (data) => {
         </div>
       </section>
       <section id="important-notice" class="mx-8 my-8 px-6 py-6 bg-yellow-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-triangle-exclamation text-lg text-warning-orange mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('triangle-exclamation', orange, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Ważne informacje</p>
             <p class="text-deep-navy leading-relaxed">
@@ -234,13 +254,13 @@ const createCancellationEmailDirect = (data) => {
       </section>
       <section id="contact-section" class="px-8 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="flex items-center gap-3"><i class="fa-solid fa-phone text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('phone', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon</div>
               <div class="font-medium text-deep-navy">+48 797 127 487</div>
             </div>
           </div>
-          <div class="flex items-center gap-3"><i class="fa-solid fa-envelope text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('envelope', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Email</div>
               <div class="font-medium text-deep-navy">kontakt@centrummedyczne7.pl</div>
@@ -268,15 +288,16 @@ const processRescheduleEmail = (data) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
   const { patientName, doctorName, oldDate, oldTime, newDate, newTime, mode } = data;
   const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  const teal = '#008C8C';
+  const orange = '#f97316';
+  const gray = '#9ca3af';
   
-  // Full reschedule template
+  // Full reschedule template - Font Awesome 6 icons as inline SVG (visible in all email clients)
   return `<html>
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Przełożenie wizyty</title>
-    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>${emailCSS}</style>
   </head>
@@ -291,47 +312,44 @@ const processRescheduleEmail = (data) => {
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
-        <div class="flex justify-center mb-6"><i class="fa-solid fa-calendar-xmark text-4xl text-warning-orange"></i></div>
+        <div class="flex justify-center mb-6">${getIconImg('calendar-xmark', orange, 40)}</div>
         <h1 class="text-3xl font-bold text-navy mb-4">Przełożenie wizyty</h1>
         <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
           Informujemy, że Twoja wizyta została przełożona na inny termin. Poniżej znajdziesz szczegóły.&nbsp;</p>
       </section>
       <section id="postponement-notice" class="mx-8 mb-8 px-6 py-5 bg-orange-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-triangle-exclamation text-lg text-warning-orange mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('triangle-exclamation', orange, 22)}
           <div>
-            <p class="text-deep-navy font-medium mb-2">Zmiana terminu wizyty</p>
-            <p class="text-deep-navy leading-relaxed"></p>
-            <p>W przypadku gdy wizyta nie została przełożona z Państwa inicjatywy ani nie przekazano wcześniej takiej informacji telefonicznie, prosimy <br>o niezwłoczny kontakt z rejestracją w celu potwierdzenia statusu wizyty. Informacja o przełożeniu wizyty mogła zostać wygenerowana automatycznie w wyniku błędu systemowego lub nieprawidłowej synchronizacji danych.</p>
-            <p></p>
+            <p class="text-deep-navy leading-relaxed">W przypadku gdy wizyta nie została przełożona z Państwa inicjatywy ani nie przekazano wcześniej takiej informacji telefonicznie, prosimy o niezwłoczny kontakt z rejestracją w celu potwierdzenia statusu wizyty. Informacja o przełożeniu wizyty mogła zostać wygenerowana automatycznie w wyniku błędu systemowego lub nieprawidłowej synchronizacji danych.</p>
           </div>
         </div>
       </section>
       <section id="original-appointment" class="px-8 py-6">
-        <div class="flex items-center gap-3 mb-6"><i class="fa-solid fa-calendar-minus text-xl text-gray-400"></i>
+        <div class="flex items-center gap-3 mb-6">${getIconImg('calendar-minus', gray, 22)}
           <h2 class="text-xl font-bold text-navy">Pierwotny termin wizyty</h2>
         </div>
         <div class="bg-gray-50 rounded-lg p-6 space-y-4">
-          <div class="flex items-center gap-4 py-3"><i class="fa-solid fa-user text-gray-400 w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-gray-700 font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-3"><i class="fa-solid fa-user-doctor text-gray-400 w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-gray-700 font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-3"><i class="fa-solid fa-calendar text-gray-400 w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-gray-700 font-medium line-through">${oldDate}</span></div>
-          <div class="flex items-center gap-4 py-3"><i class="fa-solid fa-clock text-gray-400 w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-gray-700 font-medium line-through">${oldTime}</span></div>
+          <div class="flex items-center gap-4 py-3">${getIconImg('user', gray, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-gray-700 font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-3">${getIconImg('user-doctor', gray, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-gray-700 font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-3">${getIconImg('calendar', gray, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-gray-700 font-medium line-through">${oldDate}</span></div>
+          <div class="flex items-center gap-4 py-3">${getIconImg('clock', gray, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-gray-700 font-medium line-through">${oldTime}</span></div>
         </div>
       </section>
       <section id="new-appointment-details" class="px-8 py-8">
-        <div class="flex items-center gap-3 mb-8"><i class="fa-solid fa-calendar-plus text-xl text-teal-custom"></i>
+        <div class="flex items-center gap-3 mb-8">${getIconImg('calendar-plus', teal, 22)}
           <h2 class="text-xl font-bold text-navy">Nowy termin wizyty</h2>
         </div>
         <div class="bg-teal-50 rounded-lg p-6 space-y-5">
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i class="fa-solid fa-user text-teal-custom w-5"></i><span class="text-sm text-gray-600 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span class="text-sm text-gray-600 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i class="fa-solid fa-calendar text-teal-custom w-5"></i><span class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa data</span><span class="text-deep-navy font-bold">${newDate}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i class="fa-solid fa-clock text-teal-custom w-5"></i><span class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa godzina</span><span class="text-deep-navy font-bold">${newTime}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-teal-100"><i class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span class="text-sm text-gray-600 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
-          <div class="flex items-start gap-4 py-4"><i class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span class="text-sm text-gray-600 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('user', teal, 20)}<span class="text-sm text-gray-600 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('user-doctor', teal, 20)}<span class="text-sm text-gray-600 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('calendar', teal, 20)}<span class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa data</span><span class="text-deep-navy font-bold">${newDate}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('clock', teal, 20)}<span class="text-sm text-gray-600 uppercase tracking-wide w-32">Nowa godzina</span><span class="text-deep-navy font-bold">${newTime}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-teal-100">${getIconImg('stethoscope', teal, 20)}<span class="text-sm text-gray-600 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
+          <div class="flex items-start gap-4 py-4">${getIconImg('location-dot', teal, 20)}<span class="text-sm text-gray-600 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
         </div>
       </section>
       <section id="confirmation-required" class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-circle-check text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('circle-check', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Potwierdzenie nowego terminu</p>
             <p class="text-deep-navy leading-relaxed mb-4">Nowy termin został automatycznie zarezerwowany. Jeśli nie jest on odpowiedni, prosimy o kontakt z rejestracją w celu ustalenia innego, dogodnego terminu wizyty.<br></p>
@@ -339,7 +357,7 @@ const processRescheduleEmail = (data) => {
         </div>
       </section>
       <section id="preparation-section" class="mx-8 my-8 px-6 py-6 bg-green-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-list-check text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('list-check', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Przygotowanie do wizyty</p>
             <p class="text-deep-navy leading-relaxed">Prosimy o zabranie ze sobą dokumentu tożsamości, w celu rejestracji. Dodatkową dokumentację medyczną można zabrać według uznania, jeśli pacjent chce przekazać ją lekarzowi.</p>
@@ -348,13 +366,13 @@ const processRescheduleEmail = (data) => {
       </section>
       <section id="contact-section" class="px-8 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="flex items-center gap-3"><i class="fa-solid fa-phone text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('phone', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon</div>
               <div class="font-medium text-deep-navy">+48 797 127 487</div>
             </div>
           </div>
-          <div class="flex items-center gap-3"><i class="fa-solid fa-envelope text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('envelope', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Email</div>
               <div class="font-medium text-deep-navy">kontakt@centrummedyczne7.pl</div>
@@ -382,33 +400,17 @@ const processConfirmationEmail = (data) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
   const { patientName, doctorName, date, time, mode } = data;
   const consultationType = mode === 'online' ? 'Online' : 'Stacjonarna';
+  const teal = '#008C8C';
+  const green = '#16a34a';
   
-  // Full confirmation template
+  // Full confirmation template - Font Awesome 6 icons as inline SVG (visible in all email clients)
   return `<html>
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Potwierdzenie wizyty</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>window.FontAwesomeConfig = { autoReplaceSvg: 'nest' };</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <style>::-webkit-scrollbar { display: none; }</style>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: { 'inter': ['Inter', 'sans-serif'] },
-            colors: {
-              'teal-custom': '#008C8C',
-              'navy': '#1e3a8a',
-              'deep-navy': '#0f1419',
-              'success-green': '#16a34a'
-            }
-          }
-        }
-      }
-    </script>
+    <style>${emailCSS}</style>
   </head>
   <body class="bg-white font-inter">
     <div id="email-container" class="max-w-680 mx-auto bg-white" style="max-width: 680px;">
@@ -421,14 +423,14 @@ const processConfirmationEmail = (data) => {
         </div>
       </header>
       <section id="title-section" class="px-8 py-12 text-center">
-        <div class="flex justify-center mb-6"><i class="fa-solid fa-calendar-check text-4xl text-teal-custom"></i></div>
+        <div class="flex justify-center mb-6">${getIconImg('calendar-check', teal, 40)}</div>
         <h1 class="text-3xl font-bold text-navy mb-4">Potwierdzenie wizyty</h1>
         <p class="text-lg text-gray-600 leading-relaxed max-w-md mx-auto">
           Twoja wizyta została pomyślnie zarezerwowana. Poniżej znajdziesz wszystkie szczegóły dotyczące nadchodzącej konsultacji medycznej.
         </p>
       </section>
       <section id="confirmation-notice" class="mx-8 mb-8 px-6 py-5 bg-emerald-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-circle-check text-lg text-success-green mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('circle-check', green, 22)}
           <div>
             <p class="text-deep-navy font-medium mb-2">Wizyta potwierdzona</p>
             <p class="text-deep-navy leading-relaxed">Twoja wizyta została zarejestrowana w naszym systemie. <br>Prosimy o przybycie 10 minut przed wyznaczoną godziną w celu wypełnienia niezbędnych formalności.</p>
@@ -436,20 +438,20 @@ const processConfirmationEmail = (data) => {
         </div>
       </section>
       <section id="appointment-details" class="px-8 py-8">
-        <div class="flex items-center gap-3 mb-8"><i class="fa-solid fa-clipboard-list text-xl text-teal-custom"></i>
+        <div class="flex items-center gap-3 mb-8">${getIconImg('clipboard-list', teal, 22)}
           <h2 class="text-xl font-bold text-navy">Szczegóły wizyty</h2>
         </div>
         <div class="space-y-5">
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-user text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-user-doctor text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-calendar text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-deep-navy font-medium">${date}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-clock text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-deep-navy font-medium">${time}</span></div>
-          <div class="flex items-center gap-4 py-4 border-b border-gray-100"><i class="fa-solid fa-stethoscope text-teal-custom w-5"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
-          <div class="flex items-start gap-4 py-4"><i class="fa-solid fa-location-dot text-teal-custom w-5 mt-1"></i><span class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Pacjent</span><span class="text-deep-navy font-medium">${patientName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('user-doctor', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Lekarz prowadzący</span><span class="text-deep-navy font-medium">${doctorName}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('calendar', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Data</span><span class="text-deep-navy font-medium">${date}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('clock', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Godzina</span><span class="text-deep-navy font-medium">${time}</span></div>
+          <div class="flex items-center gap-4 py-4 border-b border-gray-100">${getIconImg('stethoscope', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Forma konsultacji</span><span class="text-deep-navy font-medium">${consultationType}</span></div>
+          <div class="flex items-start gap-4 py-4">${getIconImg('location-dot', teal, 20)}<span class="text-sm text-gray-500 uppercase tracking-wide w-32">Adres</span><span class="text-deep-navy font-medium">Centrum Medyczne 7<br>ul. Powstańców Warszawy 7/1.5<br>26-110 Skarżysko-Kamienna</span></div>
         </div>
       </section>
       <section id="preparation-section" class="mx-8 my-8 px-6 py-6 bg-blue-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-list-check text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('list-check', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Przygotowanie do wizyty</p>
             <p class="text-deep-navy leading-relaxed">Prosimy o zabranie ze sobą dokumentu tożsamości w celu rejestracji. Dodatkową dokumentację medyczną można zabrać według uznania, jeśli pacjent chce przekazać ją lekarzowi.</p>
@@ -457,7 +459,7 @@ const processConfirmationEmail = (data) => {
         </div>
       </section>
       <section id="cancellation-policy" class="mx-8 my-8 px-6 py-6 bg-yellow-50 rounded-lg">
-        <div class="flex items-start gap-4"><i class="fa-solid fa-info-circle text-lg text-teal-custom mt-1"></i>
+        <div class="flex items-start gap-4">${getIconImg('info-circle', teal, 22)}
           <div>
             <p class="text-navy font-medium mb-2">Polityka odwoływania wizyt</p>
             <p class="text-deep-navy leading-relaxed">W przypadku konieczności odwołania wizyty prosimy o kontakt <br>z recepcją najpóźniej 24 godziny przed wyznaczonym terminem.&nbsp;<br>Odwołania dokonane w krótszym czasie nie będą rozpatrywane, zgodnie z regulaminem placówki.</p>
@@ -466,13 +468,13 @@ const processConfirmationEmail = (data) => {
       </section>
       <section id="contact-section" class="px-8 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="flex items-center gap-3"><i class="fa-solid fa-phone text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('phone', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Telefon</div>
               <div class="font-medium text-deep-navy">+48 797 127 487</div>
             </div>
           </div>
-          <div class="flex items-center gap-3"><i class="fa-solid fa-envelope text-teal-custom"></i>
+          <div class="flex items-center gap-3">${getIconImg('envelope', teal, 20)}
             <div>
               <div class="text-xs text-gray-500 uppercase tracking-wide">Email</div>
               <div class="font-medium text-deep-navy">kontakt@centrummedyczne7.pl</div>
@@ -1124,6 +1126,69 @@ exports.sendAppointmentEmailsToFixedAddress = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to send appointment email previews",
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Send only the "Potwierdzenie wizyty" (Visit confirmation) email with hardcoded test data to a given email.
+ * Use this to test the confirmation template.
+ * @route POST /api/email-preview/send-confirmation
+ * @access Public (for testing)
+ */
+exports.sendConfirmationEmailTest = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address is required. Provide it in the request body: { \"email\": \"your@email.com\" }"
+      });
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format"
+      });
+    }
+
+    // Hardcoded test data for the confirmation template
+    const testData = {
+      patientName: "Anna Kowalska",
+      doctorName: "lek. Marek Nowak",
+      date: "15.02.2025",
+      time: "10:30 - 11:00",
+      mode: "stacjonarna"
+    };
+
+    const html = createAppointmentEmailHtml(testData);
+    const subject = "[TEST] Potwierdzenie wizyty – Centrum Medyczne 7";
+
+    await sendEmail({
+      to: email,
+      subject,
+      html,
+      text: `Potwierdzenie Wizyty (test)\n\nPacjent: ${testData.patientName}\nLekarz: ${testData.doctorName}\nData: ${testData.date}\nGodzina: ${testData.time}\nForma: ${testData.mode === "online" ? "Online" : "Stacjonarna"}`
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Confirmation email sent successfully",
+      data: {
+        to: email,
+        subject,
+        testData
+      }
+    });
+  } catch (error) {
+    console.error("Error sending confirmation email test:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send confirmation email",
       error: error.message
     });
   }

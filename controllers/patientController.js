@@ -1,8 +1,11 @@
 const bcrypt = require("bcrypt");
 const patient = require("../models/user-entity/patient");
 const { default: mongoose } = require("mongoose");
+const { validatePesel } = require("../utils/peselValidation");
+const { validateInternationalDocument, validateDocumentKey, validateDocumentNumber, normalizeDocumentKey, normalizeDocumentNumber } = require("../utils/internationalDocumentValidation");
 const doctor = require("../models/user-entity/doctor");
 const Appointment = require("../models/appointment");
+const VisitDiagnosis = require("../models/visitDiagnosis");
 const user = require("../models/user-entity/user");
 const Specialization = require("../models/specialization");
 const sendWelcomeEmail = require("../utils/welcomeEmail");
@@ -135,6 +138,7 @@ exports.createPatient = async (req, res) => {
       alternateContact,
       govtId,
       isInternationalPatient,
+      internationalPatientDocumentKey,
       ivrLanguage,
       mainComplaint,
       reviewNotes,
@@ -177,6 +181,38 @@ exports.createPatient = async (req, res) => {
     } = req.body;
 
     // console.log("req.body is ",dateOfBirth)
+    let validatedDocKey = null;
+    let validatedDocNumber = null;
+    // `req.body.isInternationalPatient` might come as string: "false" (truthy) from FE.
+    // Resolve it strictly to boolean.
+    const isInternationalPatientResolved =
+      isInternationalPatient === true ||
+      String(isInternationalPatient).toLowerCase() === "true";
+
+    if (isInternationalPatientResolved) {
+      const docValidation = validateInternationalDocument({
+        documentNumber: req.body.documentNumber,
+        internationalPatientDocumentKey: internationalPatientDocumentKey,
+      });
+      if (!docValidation.valid) {
+        return res.status(400).json({
+          message: docValidation.warning || "Nieprawidłowe dane dokumentu dla pacjenta międzynarodowego.",
+        });
+      }
+      validatedDocKey = docValidation.internationalPatientDocumentKey;
+      validatedDocNumber = docValidation.documentNumber;
+      const existingByDocKey = await patient.findOne({
+        internationalPatientDocumentKey: validatedDocKey,
+        deleted: { $ne: true },
+      });
+      if (existingByDocKey) {
+        return res.status(409).json({
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+          patient: existingByDocKey,
+        });
+      }
+    }
+
     // Handle phone number - use phone field if provided, otherwise fallback to mobileNumber
     let phoneNumber = phone || req.body.mobileNumber || '';
     
@@ -189,27 +225,22 @@ exports.createPatient = async (req, res) => {
       });
     }
 
-    // Check for existing patient with same phone number (exact match)
-    const existingPatientByPhone = await patient.findOne({ phone: phoneNumber });
-    if (existingPatientByPhone) {
+    // Per spec: PESEL is the unique identifier; patient creation requires PESEL
+    const pesel = govtId && String(govtId).replace(/\D/g, "");
+    if (!pesel || pesel.length !== 11) {
+      return res.status(400).json({
+        message: "PESEL (11 cyfr) jest wymagany do utworzenia pacjenta.",
+      });
+    }
+    const existingPatientByPesel = await patient.findOne({ govtId: pesel });
+    if (existingPatientByPesel) {
       return res.status(409).json({
-        message: "Pacjent z tym numerem telefonu już istnieje",
-        patient: existingPatientByPhone,
+        message: "Pacjent z tym numerem PESEL już istnieje w systemie.",
+        patient: existingPatientByPesel,
       });
     }
 
-    // Check for existing patient with same phone + phoneCode combination
-    const phoneCodeToCheck = phoneCode || "+48";
-    const existingPatientByPhoneAndCode = await patient.findOne({ 
-      phone: phoneNumber, 
-      phoneCode: phoneCodeToCheck 
-    });
-    if (existingPatientByPhoneAndCode) {
-      return res.status(409).json({
-        message: "Pacjent z tym numerem telefonu i kodem kraju już istnieje",
-        patient: existingPatientByPhoneAndCode,
-      });
-    }
+    // Per spec: phone is NOT unique – same number may be used by multiple persons (e.g. parent registering children). No uniqueness check.
     // Email validation regex
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -293,6 +324,9 @@ exports.createPatient = async (req, res) => {
     const calculatedAge = calculateAge(dateOfBirth);
     // console.log("Calculated age:", calculatedAge);
 
+    const defaultPassword = "defaultPassword123";
+    const hashedDefaultPassword = await bcrypt.hash(defaultPassword, 10);
+
     const newPatient = new patient({
       name: {
         first: fullName.split(" ")[0],
@@ -302,7 +336,7 @@ exports.createPatient = async (req, res) => {
       patientId: `P-${new Date().getTime()}`,
       phone: phoneNumber, // Store phone number without leading zeros
       phoneCode: phoneCode || "+48", // Store phone code, default to +48
-      password: "defaultPassword123",
+      password: hashedDefaultPassword,
       role: "patient",
       signupMethod: "email",
       profilePicture: null,
@@ -328,8 +362,15 @@ exports.createPatient = async (req, res) => {
       pinCode,
       consultingSpecialization: new mongoose.Types.ObjectId(consultingSpecialization),
       alternateContact,
-      govtId,
-      isInternationalPatient:!!isInternationalPatient,
+      govtId: pesel,
+      ...(isInternationalPatientResolved ? { npesei: patient.generateNpesei() } : {}),
+      isInternationalPatient: isInternationalPatientResolved,
+      ...(isInternationalPatientResolved && validatedDocKey && {
+        internationalPatientDocumentKey: validatedDocKey,
+        documentNumber: validatedDocNumber,
+        ...(req.body.documentCountry != null && req.body.documentCountry !== "undefined" && { documentCountry: String(req.body.documentCountry).trim() }),
+        ...(req.body.documentType != null && req.body.documentType !== "undefined" && { documentType: String(req.body.documentType).trim() }),
+      }),
       ivrLanguage,
       mainComplaint,
       reviewNotes,
@@ -370,26 +411,195 @@ exports.createPatient = async (req, res) => {
 
     console.log("Before saving - consents:", newPatient.consents);
     await newPatient.save();
-    
-    // Fetch the saved patient to verify the consents
-    const savedPatient = await patient.findById(newPatient._id);
-    console.log("After saving - consents:", savedPatient.consents);
 
-    await sendWelcomeEmail(newPatient,'polish');
-
+    // Send response immediately so client does not wait on email (which can timeout)
     res
       .status(201)
       .json({ message: "Pacjent został pomyślnie utworzony", patient: newPatient });
+
+    // Send welcome email in background; do not block the response
+    sendWelcomeEmail(newPatient, "polish").catch((err) =>
+      console.error("Welcome email failed (patient already created):", err)
+    );
   } catch (error) {
     console.error("Create patient error:", error);
     res.status(500).json({ error: "Błąd wewnętrzny serwera" });
   }
 };
-// Get all patients
+
+/**
+ * Check if a patient exists by PESEL (for duplicate handling / "Załaduj dane istniejącego pacjenta").
+ * GET /api/patients/by-pesel?pesel=...
+ */
+exports.checkPeselExists = async (req, res) => {
+  try {
+    const rawPesel = req.query.pesel;
+    const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
+    if (!pesel || pesel.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj prawidłowy numer PESEL (11 cyfr).",
+      });
+    }
+    const validation = validatePesel(pesel);
+    const peselWarning = validation.valid ? (validation.warning || null) : null;
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
+      });
+    }
+    const existing = await patient.findOne({ govtId: pesel, deleted: { $ne: true } }).lean();
+    if (!existing) {
+      return res.status(200).json({
+        success: true,
+        exists: false,
+        message: "Pacjent o podanym numerze PESEL nie istnieje w systemie.",
+        ...(peselWarning && { peselWarning }),
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      exists: true,
+      message: "Pacjent o podanym numerze PESEL już istnieje w systemie.",
+      patientId: existing.patientId || existing._id.toString(),
+      patient: {
+        _id: existing._id,
+        patientId: existing.patientId,
+        name: existing.name,
+        govtId: existing.govtId,
+        dateOfBirth: existing.dateOfBirth,
+        phone: existing.phone,
+        email: existing.email,
+        sex: existing.sex,
+      },
+      ...(peselWarning && { peselWarning }),
+    });
+  } catch (error) {
+    console.error("Check PESEL error:", error);
+    res.status(500).json({ success: false, message: "Błąd serwera" });
+  }
+};
+
+/**
+ * Check if an international patient document exists (by document key or document number).
+ * Searches both Patient collection and Appointment metadata (visit-only / temp data).
+ * GET /api/patients/by-document?internationalPatientDocumentKey=... 
+ *  OR GET /api/patients/by-document?documentNumber=...
+ */
+exports.checkDocumentExists = async (req, res) => {
+  try {
+    const keyRaw = req.query.internationalPatientDocumentKey ?? req.query.documentKey;
+    const documentNumberRaw = req.query.documentNumber;
+
+    const keyTrimmed = keyRaw != null && keyRaw !== "" ? normalizeDocumentKey(keyRaw) : "";
+    const documentNumberTrimmed = documentNumberRaw != null && documentNumberRaw !== "" ? normalizeDocumentNumber(documentNumberRaw) : "";
+
+    if (!keyTrimmed && !documentNumberTrimmed) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj internationalPatientDocumentKey lub documentNumber.",
+      });
+    }
+
+    let existsInPatient = false;
+    let existsInAppointment = false;
+    let patientRecord = null;
+    let appointmentCount = 0;
+
+    if (keyTrimmed) {
+      const keyValidation = validateDocumentKey(keyTrimmed);
+      if (!keyValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: keyValidation.warning || "Nieprawidłowy klucz dokumentu.",
+        });
+      }
+      patientRecord = await patient.findOne({
+        internationalPatientDocumentKey: keyTrimmed,
+        deleted: { $ne: true },
+      }).lean();
+      existsInPatient = !!patientRecord;
+      appointmentCount = await Appointment.countDocuments({
+        "metadata.internationalPatientDocumentKey": keyTrimmed,
+      });
+      existsInAppointment = appointmentCount > 0;
+    }
+
+    if (documentNumberTrimmed && !existsInPatient && !existsInAppointment) {
+      const numValidation = validateDocumentNumber(documentNumberTrimmed);
+      if (!numValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: numValidation.warning || "Nieprawidłowy numer dokumentu.",
+        });
+      }
+      patientRecord = await patient.findOne({
+        documentNumber: documentNumberTrimmed,
+        deleted: { $ne: true },
+      }).lean();
+      existsInPatient = !!patientRecord;
+      appointmentCount = await Appointment.countDocuments({
+        "metadata.documentNumber": documentNumberTrimmed,
+      });
+      existsInAppointment = appointmentCount > 0;
+    }
+
+    const exists = existsInPatient || existsInAppointment;
+
+    if (!exists) {
+      return res.status(200).json({
+        success: true,
+        exists: false,
+        message: "Dokument o podanych danych nie występuje w systemie.",
+        foundIn: { patient: false, appointmentMetadata: false },
+      });
+    }
+
+    const response = {
+      success: true,
+      exists: true,
+      message: "Dokument o podanych danych występuje w systemie.",
+      foundIn: { patient: existsInPatient, appointmentMetadata: existsInAppointment },
+    };
+
+    if (patientRecord) {
+      response.patientId = patientRecord.patientId || patientRecord._id?.toString();
+      response.patient = {
+        _id: patientRecord._id,
+        patientId: patientRecord.patientId,
+        name: patientRecord.name,
+        documentNumber: patientRecord.documentNumber ?? null,
+        internationalPatientDocumentKey: patientRecord.internationalPatientDocumentKey ?? null,
+        documentCountry: patientRecord.documentCountry ?? null,
+        documentType: patientRecord.documentType ?? null,
+      };
+    }
+    if (existsInAppointment && keyTrimmed) {
+      response.appointmentMetadataMatches = appointmentCount;
+    } else if (existsInAppointment && documentNumberTrimmed) {
+      response.appointmentMetadataMatches = appointmentCount;
+    }
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error("Check document exists error:", error);
+    res.status(500).json({ success: false, message: "Błąd serwera" });
+  }
+};
+
+// Get all patients (only those with completed registration: have patientId or govtId per spec)
 exports.getAllPatients = async (req, res) => {
   try {
-const patients = await patient
-  .find({deleted: false})
+    const query = {
+      deleted: false,
+      $or: [
+        { patientId: { $exists: true, $ne: null, $ne: "" } },
+        { govtId: { $exists: true, $ne: null, $ne: "" } },
+      ],
+    };
+    const patients = await patient
+  .find(query)
   .populate({
     path: "doctor",
     select: "name _id",
@@ -414,57 +624,107 @@ function deepParse(value) {
   return result;
 }
 
+function transformPatientDetails(info) {
+  if (!info) return null;
+  const parsedConsents =
+    info.consents?.length > 0 && typeof info.consents[0] === "string"
+      ? (() => {
+          try {
+            return JSON.parse(info.consents);
+          } catch (e) {
+            return info.consents || [];
+          }
+        })()
+      : info.consents || [];
+  return {
+    ...info,
+    consents: parsedConsents,
+    // Patient-level details (from complete-registration) for patient modal
+    documentCountry: info?.documentCountry ?? null,
+    documentType: info?.documentType ?? null,
+    documentNumber: info?.documentNumber ?? null,
+    documentDateOfBirth: info?.documentDateOfBirth ?? null,
+    documentExpiryDate: info?.documentExpiryDate ?? null,
+    citizenship: info?.citizenship ?? null,
+    internationalPatientDocumentKey: info?.internationalPatientDocumentKey ?? null,
+    address: info?.address ?? "",
+    pinCode: info?.pinCode ?? "",
+    city: info?.city ?? "",
+    npesei: info?.npesei ?? null,
+    isInternationalPatient: info?.isInternationalPatient ?? false,
+    isInternational: info?.isInternationalPatient ?? false,
+    smsConsentAgreed: info?.smsConsentAgreed ?? false,
+    documents: info?.documents ?? [],
+    // FE form aliases (same shape as complete-registration patient payload)
+    street: info?.address ?? "",
+    zipCode: info?.pinCode ?? "",
+    contactPerson1PhoneCode: info?.contactPerson1PhoneCode || "",
+    contactPerson1Phone: info?.contactPerson1Phone || "",
+    contactPerson1PhoneFull: info?.contactPerson1PhoneFull || "",
+    contactPerson1Relationship: info?.contactPerson1Relationship || "",
+    contactPerson2PhoneCode: info?.contactPerson2PhoneCode || "",
+    contactPerson2Phone: info?.contactPerson2Phone || "",
+    contactPerson2PhoneFull: info?.contactPerson2PhoneFull || "",
+    contactPerson2Relationship: info?.contactPerson2Relationship || "",
+    isWalkin: info?.isWalkin || false,
+    needsAttention: info?.needsAttention || false,
+    isBackdated: info?.isBackdated || false,
+    overrideConflicts: info?.overrideConflicts || false,
+    isEmergency: info?.isEmergency || false,
+  };
+}
+
 exports.getPatientById = async (req, res) => {
   try {
-    let info =null;
-    if(req.params.id.includes("P-")){
+    let info = null;
+    if (req.params.id.includes("P-")) {
       info = await patient.findOne({ patientId: req.params.id }).lean();
-    }else{
+    } else {
       info = await patient.findById(req.params.id).lean();
     }
 
-    
     if (!info) {
       return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
     delete info.password;
-
-    let parsedConsents = [];
-    console.log(info.consents);
-    // Parse deeply stringified consent data
-    if (info.consents.length >0 && info.consents && typeof info.consents[0]==='string') {
-   parsedConsents= JSON.parse(info?.consents);
-    }
-    else{
-      parsedConsents=info.consents;
-    }
-    // Transform documents
-
-
-    const transformedInfo = {
-      ...info,
-      consents: parsedConsents,
-      // Ensure new contact person fields are properly formatted
-      contactPerson1PhoneCode: info?.contactPerson1PhoneCode || "",
-      contactPerson1Phone: info?.contactPerson1Phone || "",
-      contactPerson1PhoneFull: info?.contactPerson1PhoneFull || "",
-      contactPerson1Relationship: info?.contactPerson1Relationship || "",
-      contactPerson2PhoneCode: info?.contactPerson2PhoneCode || "",
-      contactPerson2Phone: info?.contactPerson2Phone || "",
-      contactPerson2PhoneFull: info?.contactPerson2PhoneFull || "",
-      contactPerson2Relationship: info?.contactPerson2Relationship || "",
-      // New appointment-related fields with null checks
-      isWalkin: info?.isWalkin || false,
-      needsAttention: info?.needsAttention || false,
-      isBackdated: info?.isBackdated || false,
-      overrideConflicts: info?.overrideConflicts || false,
-      isEmergency: info?.isEmergency || false,
-    };
-
-    res.status(200).json(transformedInfo);
+    res.status(200).json(transformPatientDetails(info));
   } catch (error) {
     console.error("Error fetching patient:", error);
     res.status(500).json({ message: "Server error while fetching patient" });
+  }
+};
+
+/**
+ * Get full patient details by PESEL (11-digit Polish national ID).
+ * GET /patients/by-pesel/details?pesel=99010101234
+ */
+exports.getPatientDetailsByPesel = async (req, res) => {
+  try {
+    const rawPesel = req.query.pesel;
+    const pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
+    if (!pesel || pesel.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj prawidłowy numer PESEL (11 cyfr).",
+      });
+    }
+    const info = await patient
+      .findOne({ govtId: pesel, deleted: { $ne: true } })
+      .lean();
+    if (!info) {
+      return res.status(404).json({
+        success: false,
+        message: "Pacjent o podanym numerze PESEL nie istnieje w systemie.",
+      });
+    }
+    delete info.password;
+    res.status(200).json(transformPatientDetails(info));
+  } catch (error) {
+    console.error("Error fetching patient by PESEL:", error);
+    res.status(500).json({
+      success: false,
+      message: "Błąd serwera podczas pobierania danych pacjenta.",
+    });
   }
 };
 
@@ -488,29 +748,51 @@ exports.getPatientsList = async (req, res) => {
     } = req.query;
 
   
-    const query = {deleted:false};
-    
+    const completedRegistrationFilter = {
+      $or: [
+        { patientId: { $exists: true, $ne: null, $ne: "" } },
+        { govtId: { $exists: true, $ne: null, $ne: "" } },
+      ],
+    };
+
+    const query = {
+      deleted: false,
+      ...completedRegistrationFilter,
+    };
+
+    // Global total for the system (patient role only), independent of search/filter params.
+    // Keep existing `total` as the total matching the current query (after filters).
+    const totalPatientsInSystem = await patient.countDocuments(query);
+
     if (doctor) {
       query.consultingDoctor = doctor;
     }
 
-   
     if (search) {
-      const searchLower = search.toLowerCase().trim();
-      query.$or = [
-        { 
+      const searchTrimmed = search.trim();
+      const searchLower = searchTrimmed.toLowerCase();
+      const searchRegex = { $regex: searchTrimmed, $options: "i" };
+      const searchDigitsOnly = searchTrimmed.replace(/\D/g, "");
+      const searchConditions = [
+        { "name.first": searchRegex },
+        { "name.last": searchRegex },
+        {
           $expr: {
             $regexMatch: {
-              input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
+              input: { $toLower: { $concat: [{ $ifNull: ["$name.first", ""] }, " ", { $ifNull: ["$name.last", ""] }] } },
               regex: searchLower,
-              options: "i"
-            }
-          }
+              options: "i",
+            },
+          },
         },
-        { username: { $regex: searchLower, $options: "i" } },
-        { patientId: { $regex: searchLower, $options: "i" } },
-        { mainComplaint: { $regex: searchLower, $options: "i" } }
+        { phone: searchRegex },
+        { govtId: searchDigitsOnly ? { $regex: searchDigitsOnly } : searchRegex },
+        { username: searchRegex },
+        { patientId: searchRegex },
+        { mainComplaint: searchRegex },
       ];
+      query.$and = [completedRegistrationFilter, { $or: searchConditions }];
+      delete query.$or;
     }
     
    
@@ -592,6 +874,13 @@ exports.getPatientsList = async (req, res) => {
           )
         : patient.age || 0;
 
+      // Identification: PESEL for local patients, document ID for international
+      const pesel = patient.govtId || "";
+      const isInternational = !!patient.isInternationalPatient;
+      const documentId = isInternational
+        ? patient.internationalPatientDocumentKey || patient.npesei || null
+        : null;
+
       return {
         id: patient.patientId || `#${Math.floor(Math.random() * 10000000)}`,
         name:
@@ -610,7 +899,10 @@ exports.getPatientsList = async (req, res) => {
         disease: patient.mainComplaint || "Nieokreślony",
         status: patient.status || "w trakcie leczenia",
         doctor: doctorName,
-        _id: patient._id 
+        _id: patient._id,
+        isInternational,
+        pesel,
+        documentId,
       };
     });
 
@@ -619,6 +911,7 @@ exports.getPatientsList = async (req, res) => {
       success: true,
       count: simplifiedPatients.length,
       total: totalCount,
+      totalPatients: totalPatientsInSystem,
       pages: Math.ceil(totalCount / parseInt(limit)),
       currentPage: parseInt(page),
       patients: simplifiedPatients
@@ -906,6 +1199,10 @@ exports.getPatientDetails = async (req, res) => {
       temperature: patient?.temperature || "",
       weight: patient?.weight || "",
       height: patient?.height || "",
+      bloodPressureSystolic: patient?.bloodPressureSystolic ?? null,
+      bloodPressureDiastolic: patient?.bloodPressureDiastolic ?? null,
+      pulse: patient?.pulse ?? null,
+      oxygenSaturation: patient?.oxygenSaturation ?? null,
       // New fields
       isAdult: patient.isAdult,
       contactPerson: patient.contactPerson || null,
@@ -916,6 +1213,7 @@ exports.getPatientDetails = async (req, res) => {
       nationality: patient.nationality || "",
       preferredLanguage: patient.preferredLanguage || "",
       govtId: patient?.govtId || "",
+      npesei: patient?.npesei || null,
       // Additional contact person fields
       contactPerson1Name: patient?.contactPerson1Name || "",
       contactPerson1PhonePrefix: patient?.contactPerson1PhonePrefix || "",
@@ -1029,33 +1327,83 @@ function calculateAge(birthDate) {
 exports.getPatientDetailsAndReports = async (req, res) => {
   try {
     const { patientId } = req.params;
-    const { appointmentId } = req.query; // Get appointmentId from query params
-    console.log("Received patientId:", patientId, "appointmentId:", appointmentId);
+    const { appointmentId } = req.query;
 
-    // Find patient by ID
     const patient = await user
       .findById(patientId)
       .populate("consultingDoctor", "name.first name.last")
       .lean();
-    
+
     if (!patient) {
       return res.status(404).json({ message: "Nie znaleziono pacjenta" });
     }
 
-    // Find appointment by ID if provided
     let appointment = null;
     if (appointmentId) {
-     
       appointment = await Appointment.findById(appointmentId)
         .populate("doctor", "name.first name.last")
         .lean();
-      
       if (!appointment) {
         return res.status(404).json({ message: "Nie znaleziono wizyty" });
       }
     }
 
-    // Format last checked date - use appointment date if available
+    // Full name (string) for "Szczegóły pacjenta" panel
+    const nameStr = patient.name
+      ? `${patient.name.first || ""} ${patient.name.last || ""}`.trim() || "Nie nagrane"
+      : "Nie nagrane";
+
+    // PESEL (govtId) – required for panel; UI shows "Brak PESEL – niezweryfikowany" if missing
+    const pesel = patient.govtId || "";
+
+    // Last visit date: last appointment (booked/checkedIn/completed) for this patient, excluding current
+    let lastVisit = null;
+    const lastApptQuery = {
+      patient: patientId,
+      status: { $in: ["booked", "checkedIn", "completed"] },
+    };
+    if (appointmentId) lastApptQuery._id = { $ne: appointmentId };
+    const lastAppt = await Appointment.findOne(lastApptQuery)
+      .sort({ date: -1, startTime: -1 })
+      .select("date startTime endTime")
+      .lean();
+    if (lastAppt && lastAppt.date) {
+      const d = new Date(lastAppt.date);
+      const dateStr = d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+      if (lastAppt.startTime && lastAppt.endTime) {
+        lastVisit = `${dateStr}, ${lastAppt.startTime}-${lastAppt.endTime}`;
+      } else {
+        lastVisit = dateStr;
+      }
+    }
+
+    // Last diagnosis (ICD-10) from last visit
+    let lastDiagnosis = null;
+    if (lastAppt && lastAppt._id) {
+      const diag = await VisitDiagnosis.findOne({ visit_id: lastAppt._id })
+        .sort({ is_primary: -1, createdAt: 1 })
+        .lean();
+      if (diag) {
+        lastDiagnosis = `${diag.icd10_code} – ${diag.icd10_name}`;
+      }
+    }
+
+    // Medications: include name, dosage, frequency, status; only "Aktywny" / "active" shown in UI
+    const rawMeds = appointment?.medications || patient.medications || [];
+    const activeStatuses = ["Aktywny", "active", "Active"];
+    const medications = rawMeds
+      .filter((med) => {
+        const s = (med.status || "").trim();
+        return activeStatuses.some((a) => a.toLowerCase() === s.toLowerCase());
+      })
+      .map((med) => ({
+        name: med.name,
+        dosage: med.dosage,
+        frequency: med.frequency,
+        status: med.status || "Aktywny",
+      }));
+
+    // Legacy / other screens: lastChecked, health, reports, etc.
     let lastChecked = "Nie nagrane";
     if (appointment && appointment.date) {
       const doctor = appointment.doctor
@@ -1081,74 +1429,43 @@ exports.getPatientDetailsAndReports = async (req, res) => {
       lastChecked = `${doctor} on ${date}`;
     }
 
-    // Get health data - prefer from appointment if available
     const healthData = appointment?.healthData || patient.healthData || {};
-    
-    // Format blood pressure
     const bp = healthData.bloodPressure?.value || "Nie nagrane";
-
-    // Get weight
-    const weight = healthData.bodyWeight?.value 
-      ? `${healthData.bodyWeight.value} kg` 
+    const weight = healthData.bodyWeight?.value
+      ? `${healthData.bodyWeight.value} kg`
       : "Nie nagrane";
 
-    // Format medications - use appointment data if available
-    const medications = appointment?.medications 
-      ? appointment.medications.map((med) => ({
-          name: med.name,
-          dosage: med.dosage,
-          frequency: med.frequency,
-          duration: med.endDate
-            ? `X ${Math.ceil(
-                (new Date(med.endDate) - new Date(med.startDate)) /
-                  (1000 * 60 * 60 * 24)
-              )} Dni`
-            : "Jak przepisano",
-        }))
-      : patient.medications
-        ? patient.medications.map((med) => ({
-            name: med.name,
-            dosage: med.dosage,
-            frequency: med.frequency,
-            duration: med.endDate
-              ? `X ${Math.ceil(
-                  (new Date(med.endDate) - new Date(med.startDate)) /
-                    (1000 * 60 * 60 * 24)
-                )} Dni`
-              : "Jak przepisano",
-          }))
-        : [];
-
-    console.log("Appointment reports:", medications);
-
-    // Format reports - use appointment reports if available
-    const reports = appointment?.reports || 
-      (patient.documents || []).filter(doc => doc.document_type === "report");
-
-    // Get consultation data from appointment if available
+    const reports = appointment?.reports ||
+      (patient.documents || []).filter((doc) => doc.document_type === "report");
     const consultation = appointment?.consultation || patient.consultations || {};
 
-    // Format final response
+    const isInternational = !!(patient.isInternationalPatient ?? appointment?.registrationData?.isInternationalPatient ?? appointment?.metadata?.isInternational);
+    const documentId = (patient.internationalPatientDocumentKey ?? appointment?.registrationData?.internationalPatientDocumentKey) || null;
+
     const formattedPatient = {
-      name: patient.name || "Nie nagrane",
-      patientId:
-        patient.patientId ||
-        patient.hospId ||
-        `#${patient._id.toString().slice(-8)}`,
+      name: nameStr,
+      pesel,
+      phone: patient.phone || patient.phoneFormatted || "",
+      patientId: patient.patientId || patient._id?.toString() || "",
+      id: patient._id?.toString(),
+      allergies: patient.allergies || "",
+      lastVisit,
+      lastDiagnosis,
+      medications,
       avatar: patient.profilePicture || null,
       email: patient.email,
-      phone: patient.phone || patient.phoneFormatted || "Niedostępny",
       lastChecked,
       prescription: appointment?.consultation || consultation
         ? `#${Date.now().toString().slice(-8)}`
         : "Niedostępny",
       weight,
       bp,
-      pulseRate: "Normalny", // This doesn't seem to be in your model, so using a default
+      pulseRate: "Normalny",
       observation: appointment?.consultation?.consultationNotes || consultation.consultationNotes || "Brak obserwacji",
-      medications,
       reports,
-      appointmentId: appointment?._id || null
+      appointmentId: appointment?._id || null,
+      isInternational,
+      documentId: isInternational ? documentId : null,
     };
 
     return res.status(200).json(formattedPatient);
@@ -1263,6 +1580,14 @@ exports.updatePatient = async (req, res) => {
       // Phone fields
       phoneCode,
       phone,
+      // Document fields (edit modal – international patient)
+      documentCountry,
+      documentType,
+      documentNumber,
+      documentDateOfBirth,
+      documentExpiryDate,
+      citizenship,
+      internationalPatientDocumentKey,
     } = req.body;
 
     // Handle phone number - use phone field if provided, otherwise fallback to mobileNumber
@@ -1277,18 +1602,14 @@ exports.updatePatient = async (req, res) => {
       return res.status(404).json({ error: "Nie znaleziono pacjenta" });
     }
 
-    // Check for phone number uniqueness if being updated
-    if (phoneNumber && phoneNumber !== existingPatient.phone) {
-      const existingPatientByPhone = await patient.findOne({
-        phone: phoneNumber,
-        _id: { $ne: patientId }
+    // Patient ID is immutable (set only by Complete registration per spec)
+    if (req.body.patientId !== undefined && String(req.body.patientId) !== String(existingPatient.patientId || '')) {
+      return res.status(400).json({
+        message: "Identyfikator pacjenta nie może być zmieniony",
       });
-      if (existingPatientByPhone) {
-        return res.status(409).json({
-          message: "Inny pacjent z tym numerem telefonu już istnieje",
-        });
-      }
     }
+
+    // Per spec: phone is NOT unique – allow same phone for multiple patients. No uniqueness check on update.
 
     // Email validation regex
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -1312,6 +1633,68 @@ exports.updatePatient = async (req, res) => {
       if (existingPatientByEmail) {
         return res.status(409).json({
           message: "Inny pacjent z tym adresem email już istnieje",
+        });
+      }
+    }
+
+    // PESEL (govtId) uniqueness: if user is updating govtId, it must not belong to another patient
+    let govtIdToSave = undefined; // leave unchanged unless govtId is being updated
+    if (govtId !== undefined && govtId !== "undefined") {
+      const peselNormalized = String(govtId).replace(/\D/g, "").trim();
+      const currentGovtId = existingPatient.govtId ? String(existingPatient.govtId).replace(/\D/g, "") : "";
+      if (peselNormalized.length > 0) {
+        if (peselNormalized !== currentGovtId) {
+          const otherWithSamePesel = await patient.findOne({
+            govtId: peselNormalized,
+            _id: { $ne: patientId },
+            deleted: { $ne: true },
+          }).lean();
+          if (otherWithSamePesel) {
+            return res.status(409).json({
+              message: "Inny pacjent z tym numerem PESEL już istnieje w systemie.",
+              existingPatientId: otherWithSamePesel._id?.toString?.(),
+            });
+          }
+        }
+        govtIdToSave = peselNormalized;
+      } else {
+        govtIdToSave = null;
+      }
+    }
+
+    // internationalPatientDocumentKey / documentNumber: validate like PESEL when provided; key must be unique (no other patient)
+    const docKeyTrimmed =
+      internationalPatientDocumentKey != null && internationalPatientDocumentKey !== "undefined"
+        ? String(internationalPatientDocumentKey).trim()
+        : null;
+    const documentNumberRaw = documentNumber !== undefined && documentNumber !== "undefined" ? documentNumber : null;
+    const isUpdatingDocument = docKeyTrimmed !== null || documentNumberRaw !== null;
+    const isInternational = req.body.isInternationalPatient === true || existingPatient.isInternationalPatient === true;
+    let validatedDocKeyForUpdate = docKeyTrimmed;
+    let validatedDocNumberForUpdate = documentNumberRaw != null ? String(documentNumberRaw).trim() : null;
+    if (isUpdatingDocument && isInternational) {
+      const docValidation = validateInternationalDocument({
+        documentNumber: documentNumberRaw != null ? documentNumberRaw : (existingPatient.documentNumber || ""),
+        internationalPatientDocumentKey: docKeyTrimmed != null ? docKeyTrimmed : (existingPatient.internationalPatientDocumentKey || ""),
+      });
+      if (!docValidation.valid) {
+        return res.status(400).json({
+          message: docValidation.warning || "Nieprawidłowe dane dokumentu dla pacjenta międzynarodowego.",
+        });
+      }
+      validatedDocKeyForUpdate = docValidation.internationalPatientDocumentKey;
+      validatedDocNumberForUpdate = docValidation.documentNumber;
+    }
+    if (validatedDocKeyForUpdate) {
+      const otherWithSameKey = await patient.findOne({
+        internationalPatientDocumentKey: validatedDocKeyForUpdate,
+        _id: { $ne: patientId },
+        deleted: { $ne: true },
+      }).lean();
+      if (otherWithSameKey) {
+        return res.status(409).json({
+          message: "Inny pacjent z tym samym dokumentem tożsamości już istnieje",
+          existingPatientId: otherWithSameKey._id?.toString?.(),
         });
       }
     }
@@ -1405,8 +1788,17 @@ exports.updatePatient = async (req, res) => {
       ...(country !== undefined && country !== "undefined" && { country }),
       ...(pinCode !== undefined && pinCode !== "undefined" && { pinCode }),
       ...(alternateContact !== undefined && alternateContact !== "undefined" && { alternateContact }),
-      ...(govtId !== undefined && govtId !== "undefined" && { govtId }),
+      ...(govtIdToSave !== undefined && { govtId: govtIdToSave }),
       ...(isInternationalPatient !== undefined && isInternationalPatient !== "undefined" && { isInternationalPatient }),
+      ...(isInternationalPatient === true && !existingPatient.npesei ? { npesei: patient.generateNpesei() } : {}),
+      // Document fields (edit modal)
+      ...(documentCountry !== undefined && documentCountry !== "undefined" && { documentCountry: String(documentCountry).trim() }),
+      ...(documentType !== undefined && documentType !== "undefined" && { documentType: String(documentType).trim() }),
+      ...(documentNumber !== undefined && documentNumber !== "undefined" && { documentNumber: (validatedDocNumberForUpdate != null ? validatedDocNumberForUpdate : String(documentNumber).trim()) }),
+      ...(documentDateOfBirth !== undefined && documentDateOfBirth !== "undefined" && { documentDateOfBirth: documentDateOfBirth === "" ? null : new Date(documentDateOfBirth) }),
+      ...(documentExpiryDate !== undefined && documentExpiryDate !== "undefined" && { documentExpiryDate: documentExpiryDate === "" ? null : new Date(documentExpiryDate) }),
+      ...(citizenship !== undefined && citizenship !== "undefined" && { citizenship: String(citizenship).trim() }),
+      ...(internationalPatientDocumentKey !== undefined && { internationalPatientDocumentKey: (validatedDocKeyForUpdate != null ? validatedDocKeyForUpdate : docKeyTrimmed) || null }),
       ...(ivrLanguage !== undefined && ivrLanguage !== "undefined" && { ivrLanguage }),
       ...(mainComplaint !== undefined && mainComplaint !== "undefined" && { mainComplaint }),
       ...(reviewNotes !== undefined && reviewNotes !== "undefined" && { reviewNotes }),
@@ -1713,6 +2105,62 @@ exports.removePatientEmail = async (req, res) => {
   }
 };
 
+/**
+ * GET /patients/:patientId/visits
+ * Returns all visits (appointments) for a patient in a simple shape for modals: date, time, doctor, visit type.
+ * Auth: doctor, receptionist, admin, or patient (only their own).
+ */
+exports.getPatientVisits = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({ success: false, message: "Nieprawidłowy format ID pacjenta" });
+    }
+    if (req.user?.role === "patient" && req.user.id !== patientId) {
+      return res.status(403).json({ success: false, message: "Brak dostępu do wizyt innego pacjenta" });
+    }
+
+    const appointments = await Appointment.find({ patient: patientId })
+      .populate("doctor", "name")
+      .sort({ date: -1, startTime: 1 })
+      .lean();
+
+    const visits = appointments.map((a) => {
+      const doctorName = a.doctor?.name
+        ? `${a.doctor.name.first || ""} ${a.doctor.name.last || ""}`.trim()
+        : null;
+      const visitType = a.consultation?.visitReason || a.consultation?.consultationType || a.metadata?.visitType || (a.mode === "online" ? "Konsultacja online" : a.mode === "offline" ? "Konsultacja w przychodni" : null) || a.mode || "—";
+      return {
+        visitId: a._id,
+        date: a.date ? new Date(a.date).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" }) : null,
+        time: a.startTime && a.endTime ? `${a.startTime} – ${a.endTime}` : a.startTime || null,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        doctor: {
+          id: a.doctor?._id,
+          name: doctorName,
+        },
+        visitType,
+        mode: a.mode || null,
+        status: a.status || null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: visits.length,
+      data: visits,
+    });
+  } catch (err) {
+    console.error("Error fetching patient visits:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Nie udało się pobrać wizyt",
+      error: err.message,
+    });
+  }
+};
+
 exports.getAppointmentsList = async (req, res) => {
   try {
     // Extract query parameters
@@ -1725,27 +2173,73 @@ exports.getAppointmentsList = async (req, res) => {
       status,
       doctor,
       mode,
+      startDate,
+      endDate,
+      date, // absolute: single day (overrides range when set)
+      patientLessOnly, // when true: only visit-only (no patient) appointments
     } = req.query;
 
     const query = {};
-    
+
     if (doctor) {
       query.doctor = doctor;
     }
 
+    // Patient-less (visit-only) filter: only appointments without a linked patient
+    if (patientLessOnly === "true" || patientLessOnly === "1" || patientLessOnly === true) {
+      query.patient = null;
+    }
+
+    // Date filter: absolute (single day) or range
+    if (date) {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) {
+        const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setHours(23, 59, 59, 999);
+        query.date = { $gte: dayStart, $lte: dayEnd };
+      }
+    } else if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        if (!isNaN(start.getTime())) {
+          start.setHours(0, 0, 0, 0);
+          query.date.$gte = start;
+        }
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        if (!isNaN(end.getTime())) {
+          end.setHours(23, 59, 59, 999);
+          query.date.$lte = end;
+        }
+      }
+      if (query.date && Object.keys(query.date).length === 0) delete query.date;
+    }
+
     if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
       query.$or = [
-        { "patient.name.first": { $regex: search, $options: "i" } },
-        { "patient.name.last": { $regex: search, $options: "i" } },
-        { "patient.patientId": { $regex: search, $options: "i" } },
-        { "consultation.description": { $regex: search, $options: "i" } }
+        { "patient.name.first": searchRegex },
+        { "patient.name.last": searchRegex },
+        { "patient.patientId": searchRegex },
+        { "consultation.description": searchRegex },
+        { "registrationData.pendingPesel": searchRegex },
+        { "registrationData.firstName": searchRegex },
+        { "registrationData.lastName": searchRegex },
+        { "registrationData.name": searchRegex },
+        { "registrationData.phone": searchRegex },
+        { "registrationData.email": searchRegex },
       ];
     }
-    
-    if (status) {
-      query.status = status;
+
+    // Appointment status filter (booked, completed, cancelled, checkedIn, no-show)
+    if (status && status !== "all") {
+      query.status = status === "checkedIn" ? status : status.toLowerCase();
     }
-    
+
     if (mode) {
       query.mode = mode;
     }
@@ -1763,14 +2257,15 @@ exports.getAppointmentsList = async (req, res) => {
     // Execute the query with pagination and sorting
     const appointments = await Appointment
       .find(query)
-      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone phoneCode")
+      .populate("patient", "name patientId dateOfBirth sex profilePicture username email phone phoneCode address pinCode city govtId isInternationalPatient documentCountry documentType documentNumber internationalPatientDocumentKey")
       .populate("doctor", "name")
       .sort(sort)
       .skip(skipAmount)
       .limit(parseInt(limit))
       .lean();
 
-    // Transform the data
+    // Transform the data (use registrationData for visit-only when patient is null)
+    const rd = (a) => a?.registrationData;
     const simplifiedAppointments = appointments.map((appointment) => {
       const appointmentDate = appointment.date
         ? new Date(appointment.date).toLocaleDateString("en-US", {
@@ -1788,8 +2283,15 @@ exports.getAppointmentsList = async (req, res) => {
       if (appointment.doctor?.name) {
         doctorName = `Dr. ${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
       }
-      
-      const dob = appointment.patient?.dateOfBirth;
+
+      const fromReg = rd(appointment);
+      const meta = appointment.metadata || {};
+      const name = appointment.patient
+        ? `${appointment.patient.name?.first || ""} ${appointment.patient.name?.last || ""}`.trim()
+        : (fromReg?.firstName || fromReg?.lastName
+            ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
+            : fromReg?.name || "Unknown");
+      const dob = appointment.patient?.dateOfBirth ?? fromReg?.dateOfBirth;
       const age = dob
         ? Math.floor(
             (Date.now() - new Date(dob).getTime()) /
@@ -1797,19 +2299,31 @@ exports.getAppointmentsList = async (req, res) => {
           )
         : 0;
 
+      // Prefill: PESEL/govtId from linked patient, else registrationData.pendingPesel, else tempPesel
+      const pesel = appointment.patient?.govtId ?? fromReg?.pendingPesel ?? appointment.tempPesel ?? null;
+      // Document data: metadata (public book) > patient > registrationData
+      const documentCountry = meta.documentCountry ?? appointment.patient?.documentCountry ?? fromReg?.documentCountry ?? null;
+      const documentType = meta.documentType ?? appointment.patient?.documentType ?? fromReg?.documentType ?? null;
+      const documentNumber = meta.documentNumber ?? appointment.patient?.documentNumber ?? fromReg?.documentNumber ?? null;
+      const internationalPatientDocumentKey = meta.internationalPatientDocumentKey ?? appointment.patient?.internationalPatientDocumentKey ?? fromReg?.internationalPatientDocumentKey ?? null;
+      const isInternationalPatient = !!(meta.isInternationalPatient ?? meta.isInternational ?? appointment.patient?.isInternationalPatient ?? fromReg?.isInternationalPatient);
+
       return {
         id: appointment._id,
-        name: appointment.patient 
-          ? `${appointment.patient.name?.first || ""} ${appointment.patient.name?.last || ""}`.trim()
-          : "Unknown",
+        name: name || "Unknown",
+        firstName: appointment.patient?.name?.first ?? fromReg?.firstName ?? null,
+        lastName: appointment.patient?.name?.last ?? fromReg?.lastName ?? null,
         username: appointment.patient?.username ? `@${appointment.patient.username}` : "",
         date: appointmentDate,
-        email: appointment.patient?.email || "Nieokreślony",
-        phone: appointment.patient?.phone || "Nieokreślony",
-        phoneCode: appointment.patient?.phoneCode || "+48",
-        sex: appointment.patient?.sex || "Nieokreślony",
+        email: appointment.patient?.email ?? fromReg?.email ?? "Nieokreślony",
+        phone: appointment.patient?.phone ?? fromReg?.phone ?? "Nieokreślony",
+        phoneCode: appointment.patient?.phoneCode ?? fromReg?.phoneCode ?? "+48",
+        sex: appointment.patient?.sex ?? fromReg?.sex ?? "Nieokreślony",
+        street: appointment.patient?.address ?? fromReg?.street ?? fromReg?.address ?? null,
+        zipCode: appointment.patient?.pinCode ?? fromReg?.zipCode ?? fromReg?.pinCode ?? null,
+        city: appointment.patient?.city ?? fromReg?.city ?? null,
         isCheckedIn: appointment.checkedIn || false,
-        dateOfBirth: appointment.patient?.dateOfBirth || "Nieokreślony",
+        dateOfBirth: appointment.patient?.dateOfBirth ?? fromReg?.dateOfBirth ?? "Nieokreślony",
         age,
         avatar: appointment.patient?.profilePicture || "",
         disease: appointment.consultation?.description || "Nieokreślony",
@@ -1817,10 +2331,27 @@ exports.getAppointmentsList = async (req, res) => {
         doctor: doctorName,
         _id: appointment._id,
         doctor_id: appointment?.doctor?._id,
-        patient_id: appointment.patient?._id,
+        patient_id: appointment.patient?._id ?? null,
+        patientId: appointment.patient?.patientId ?? null,
         mode: appointment.mode || "offline",
         startTime: appointment.startTime,
-        endTime: appointment.endTime
+        endTime: appointment.endTime,
+        tempPesel: appointment.tempPesel || null,
+        pendingPesel: fromReg?.pendingPesel ?? null,
+        pesel,
+        govtId: pesel,
+        isInternational: isInternationalPatient,
+        isInternationalPatient,
+        documentCountry,
+        documentType,
+        documentNumber,
+        internationalPatientDocumentKey,
+        role: appointment.createdByRole != null ? appointment.createdByRole : "online",
+        visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
+        visitReason: appointment.consultation?.visitReason ?? null,
+        consultationType: appointment.consultation?.consultationType ?? null,
+        visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
+        registrationData: fromReg || null,
       };
     });
 

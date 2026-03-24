@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const DoctorSchedule = require("../models/doctorSchedule");
 const ScheduleException = require("../models/scheduleException");
 const User = require("../models/user-entity/user");
@@ -159,7 +160,7 @@ const getSchedule = async (req, res) => {
   }
 };
 
-// Delete doctor schedule for a specific date
+// Delete doctor schedule for a specific date (permanent delete from DB)
 const deleteSchedule = async (req, res) => {
   try {
     const { doctorId, date } = req.params;
@@ -193,11 +194,138 @@ const deleteSchedule = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Schedule deleted successfully"
+      message: "Schedule deleted permanently",
+      data: { deletedId: schedule._id }
     });
 
   } catch (error) {
     console.error("Error deleting schedule:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
+// Remove a single time block from a schedule (by schedule ID and block index). If no blocks remain, the schedule document is deleted.
+const deleteScheduleTimeBlock = async (req, res) => {
+  try {
+    const { scheduleId, blockIndex } = req.params;
+
+    if (!scheduleId || !mongoose.Types.ObjectId.isValid(scheduleId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid scheduleId is required"
+      });
+    }
+
+    const index = parseInt(blockIndex, 10);
+    if (isNaN(index) || index < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid blockIndex (non-negative integer) is required"
+      });
+    }
+
+    const schedule = await DoctorSchedule.findById(scheduleId);
+    if (!schedule) {
+      return res.status(404).json({
+        success: false,
+        message: "Schedule not found"
+      });
+    }
+
+    if (req.user.role === "doctor" && req.user.id !== schedule.doctorId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only modify your own schedule"
+      });
+    }
+
+    const blocks = schedule.timeBlocks || [];
+    if (index >= blocks.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Time block not found at that index"
+      });
+    }
+
+    const removed = blocks[index];
+    const newBlocks = blocks.filter((_, i) => i !== index);
+
+    if (newBlocks.length === 0) {
+      await DoctorSchedule.findByIdAndDelete(scheduleId);
+      return res.status(200).json({
+        success: true,
+        message: "Time block deleted; schedule had no remaining blocks and was removed",
+        data: {
+          deletedBlock: { startTime: removed.startTime, endTime: removed.endTime },
+          scheduleDeleted: true
+        }
+      });
+    }
+
+    schedule.timeBlocks = newBlocks;
+    await schedule.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Time block deleted",
+      data: {
+        deletedBlock: { startTime: removed.startTime, endTime: removed.endTime },
+        scheduleId: schedule._id,
+        remainingBlocks: schedule.timeBlocks
+      }
+    });
+  } catch (error) {
+    console.error("Error deleting schedule time block:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
+// Permanently delete a doctor schedule by its document ID (for use from Edit Schedule modal when you have the schedule _id)
+const deleteScheduleById = async (req, res) => {
+  try {
+    const { scheduleId } = req.params;
+
+    if (!scheduleId || !mongoose.Types.ObjectId.isValid(scheduleId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid scheduleId is required"
+      });
+    }
+
+    const schedule = await DoctorSchedule.findById(scheduleId);
+    if (!schedule) {
+      return res.status(404).json({
+        success: false,
+        message: "Schedule not found"
+      });
+    }
+
+    // Check if user has permission to delete this doctor's schedule
+    if (req.user.role === "doctor" && req.user.id !== schedule.doctorId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only delete your own schedule"
+      });
+    }
+
+    await DoctorSchedule.findByIdAndDelete(scheduleId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Schedule deleted permanently",
+      data: { deletedId: schedule._id }
+    });
+
+  } catch (error) {
+    console.error("Error deleting schedule by id:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -681,6 +809,8 @@ module.exports = {
   createOrUpdateSchedule,
   getSchedule,
   deleteSchedule,
+  deleteScheduleById,
+  deleteScheduleTimeBlock,
   createException,
   getExceptions,
   deleteException,

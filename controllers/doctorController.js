@@ -1,8 +1,9 @@
 // controllers/doctorController.js
+const bcrypt = require("bcrypt");
 const User = require("../models/user-entity/user");
 const Doctor = require("../models/user-entity/doctor"); // This is the discriminator model
 const { format, startOfDay, endOfDay, addDays, startOfWeek, endOfWeek } = require("date-fns");
-const { zonedTimeToUtc, toZonedTime } = require("date-fns-tz");
+const { fromZonedTime, toZonedTime } = require("date-fns-tz");
 const appointment = require("../models/appointment");
 const user = require("../models/user-entity/user");
 const mongoose = require("mongoose");
@@ -10,12 +11,50 @@ const { generateUniqueSlug } = require("../utils/slugUtils");
 const UserService = require("../models/userServices");
 const DoctorSchedule = require("../models/doctorSchedule");
 const ScheduleException = require("../models/scheduleException");
+const Specialization = require("../models/specialization");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 
 // Poland timezone
 const POLAND_TIMEZONE = "Europe/Warsaw";
+
+// Helper function to get start of day in Poland timezone
+const getStartOfDayPoland = (date) => {
+  const dateInPoland = toZonedTime(date, POLAND_TIMEZONE);
+  const startOfDayPoland = startOfDay(dateInPoland);
+  return fromZonedTime(startOfDayPoland, POLAND_TIMEZONE);
+};
+
+// Helper function to get end of day in Poland timezone
+const getEndOfDayPoland = (date) => {
+  const dateInPoland = toZonedTime(date, POLAND_TIMEZONE);
+  const endOfDayPoland = endOfDay(dateInPoland);
+  return fromZonedTime(endOfDayPoland, POLAND_TIMEZONE);
+};
+
+// Helper function to get current date in Poland timezone
+const getCurrentDatePoland = () => {
+  const now = new Date();
+  return toZonedTime(now, POLAND_TIMEZONE);
+};
+
+// Convert "HH:mm" or "H:mm" to minutes since midnight (for slot availability checks)
+const timeStrToMinutes = (str) => {
+  if (!str || typeof str !== "string") return 0;
+  const parts = str.trim().split(":");
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h * 60 + m;
+};
+
+// Check if current time (Poland "HH:mm") falls within [startTime, endTime) (inclusive start, exclusive end)
+const isTimeInSlot = (currentTimeStr, startTime, endTime) => {
+  const now = timeStrToMinutes(currentTimeStr);
+  const start = timeStrToMinutes(startTime || "00:00");
+  const end = timeStrToMinutes(endTime || "24:00");
+  return now >= start && now < end;
+};
 
 // Helper function to generate default weekly schedule pattern
 const generateDefaultWeeklyPattern = () => {
@@ -115,6 +154,9 @@ const addDoctor = async (req, res) => {
       });
     }
 
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(String(doctorData.password || "").trim(), saltRounds);
+
     // Create the base user document
     const userData = {
       name: {
@@ -125,7 +167,7 @@ const addDoctor = async (req, res) => {
       phone: phoneNumber,
       shortDescription: doctorData.shortDescription || "",
       specializations: doctorData.specializations,
-      password: doctorData.password, // In production, this should be hashed
+      password: hashedPassword,
       role: "doctor", // This triggers the discriminator
       signupMethod: doctorData.signupMethod || "email",
       profilePicture: req.file?.path || "",
@@ -140,6 +182,7 @@ const addDoctor = async (req, res) => {
     const doctorFields = {
       d_id: `dr-${Date.now()}`, // Generate unique ID
       slug: slug, // Add generated slug
+      order: doctorData.order != null ? Number(doctorData.order) : null,
       specialization: doctorData.specialization || [],
       qualifications: doctorData.qualifications || [],
       experience: doctorData.experience || 0,
@@ -204,8 +247,8 @@ const addDoctor = async (req, res) => {
       specializations: newDoctor.specialization,
       bio: newDoctor.bio,
       consultationFee: newDoctor.consultationFee,
-      offlineConsultationFee: newDoctor.offlineConsultationFee
-      // Removed weeklyShifts as it's no longer part of the doctor model
+      offlineConsultationFee: newDoctor.offlineConsultationFee,
+      order: newDoctor.order != null ? newDoctor.order : null,
     };
 
     res.status(201).json({
@@ -224,89 +267,302 @@ const addDoctor = async (req, res) => {
 };
 
 /**
- * Get all doctors
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get all doctors with optional filters (search, specialization, department, date, status, visitType, availability, experience).
+ * See docs/BACKEND_DOCTORS_LIST_FILTERS.md.
  */
 const getAllDoctors = async (req, res) => {
   try {
-    // Extract query parameters
     const {
+      search,
       specialization,
+      department,
+      date: dateParam,
+      status: statusParam,
+      visitType: visitTypeParam,
+      availability: availabilityParam,
+      experience: experienceParam,
       page = 1,
       limit = 10,
       sortBy = "name.first",
       sortOrder = "asc",
     } = req.query;
 
-    // Convert page and limit to integers
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
-
-    // Calculate skip value for pagination
     const skip = (pageNum - 1) * limitNum;
 
-    // Create base query for doctors
-    let query = { role: "doctor" };
+    let query = { role: "doctor", deleted: false };
 
-    // Add department filter if provided
-    if (specialization) {
-    
-        query = {
-          role: "doctor",
-          specialization: { $in: [specialization] },
-        };}
+    // Search: name (first/last) or email, case-insensitive
+    if (search && String(search).trim()) {
+      const term = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(term, "i");
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { "name.first": re },
+          { "name.last": re },
+          { email: re },
+        ],
+      });
+    }
 
-    // Create sort configuration
+    // Specialization: by ID (ObjectId) or by name (e.g. Kardiolog, Dermatolog)
+    if (specialization && String(specialization).trim()) {
+      const specVal = String(specialization).trim();
+      if (mongoose.Types.ObjectId.isValid(specVal) && String(new mongoose.Types.ObjectId(specVal)) === specVal) {
+        query.specialization = { $in: [new mongoose.Types.ObjectId(specVal)] };
+      } else {
+        const specDocs = await Specialization.find({ name: new RegExp(`^${specVal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).select("_id").lean();
+        const specIds = (specDocs || []).map((s) => s._id);
+        if (specIds.length === 0) {
+          return res.status(200).json({
+            success: true,
+            count: 0,
+            doctors: [],
+            pagination: {
+              total: 0,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPrevPage: false,
+              nextPage: null,
+              prevPage: null,
+            },
+          });
+        }
+        query.specialization = { $in: specIds };
+      }
+    }
+
+    // Department: exact match
+    if (department && String(department).trim()) {
+      query.department = String(department).trim();
+    }
+
+    // Experience: minimum years
+    if (experienceParam !== undefined && experienceParam !== "" && !isNaN(Number(experienceParam))) {
+      query.experience = { $gte: Number(experienceParam) };
+    }
+
+    // Date / status / visitType: restrict to doctors who have matching appointment(s)
+    let doctorIdsFromAppointments = null;
+    if (dateParam || statusParam || visitTypeParam) {
+      const apptQuery = {};
+      if (dateParam) {
+        const d = new Date(dateParam);
+        if (!isNaN(d.getTime())) {
+          const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setHours(23, 59, 59, 999);
+          apptQuery.date = { $gte: dayStart, $lte: dayEnd };
+        }
+      }
+      if (statusParam && String(statusParam).trim()) {
+        const raw = String(statusParam).trim();
+        const statusMap = {
+          zaplanowane: "booked",
+          zarezerwowana: "booked",
+          anulowane: "cancelled",
+          zakończone: "completed",
+          booked: "booked",
+          cancelled: "cancelled",
+          completed: "completed",
+          checkedin: "checkedIn",
+          "no-show": "no-show",
+        };
+        apptQuery.status = statusMap[raw.toLowerCase()] || raw.toLowerCase();
+      }
+      if (visitTypeParam && String(visitTypeParam).trim()) {
+        const vt = String(visitTypeParam).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const vtRe = new RegExp(vt, "i");
+        apptQuery.$or = [
+          { "consultation.visitReason": vtRe },
+          { "consultation.consultationType": vtRe },
+          { "metadata.visitType": vtRe },
+        ];
+      }
+      const apptDocs = await appointment.find(apptQuery).select("doctor").lean();
+      const ids = [...new Set(apptDocs.map((a) => a.doctor && a.doctor.toString()).filter(Boolean))];
+      if (ids.length === 0) {
+        return res.status(200).json({
+          success: true,
+          count: 0,
+          doctors: [],
+          pagination: {
+            total: 0,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false,
+            nextPage: null,
+            prevPage: null,
+          },
+        });
+      }
+      doctorIdsFromAppointments = ids.map((id) => new mongoose.Types.ObjectId(id));
+      query._id = { $in: doctorIdsFromAppointments };
+    }
+
+    // Availability: currently available (in active slot now) or unavailable
+    if (availabilityParam === "true" || availabilityParam === "false") {
+      const todayPoland = getCurrentDatePoland();
+      const startToday = getStartOfDayPoland(todayPoland);
+      const endToday = getEndOfDayPoland(todayPoland);
+      const todayStr = format(todayPoland, "yyyy-MM-dd");
+      const currentTimeStr = format(todayPoland, "HH:mm");
+      const schedulesToday = await DoctorSchedule.find({
+        $or: [
+          { date: { $gte: startToday, $lte: endToday } },
+          { date: todayStr },
+        ],
+        isActive: true,
+        timeBlocks: { $elemMatch: { isActive: true } },
+      })
+        .select("doctorId timeBlocks")
+        .lean();
+      const availableIds = new Set();
+      schedulesToday.forEach((s) => {
+        const blocks = s.timeBlocks || [];
+        const inSlot = blocks.some(
+          (b) => b.isActive !== false && isTimeInSlot(currentTimeStr, b.startTime, b.endTime)
+        );
+        if (inSlot && s.doctorId) availableIds.add(s.doctorId.toString());
+      });
+      const availableObjectIds = [...availableIds].map((id) => new mongoose.Types.ObjectId(id));
+      if (availabilityParam === "true") {
+        if (availableObjectIds.length === 0) {
+          return res.status(200).json({
+            success: true,
+            count: 0,
+            doctors: [],
+            pagination: {
+              total: 0,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPrevPage: false,
+              nextPage: null,
+              prevPage: null,
+            },
+          });
+        }
+        if (doctorIdsFromAppointments) {
+          const intersection = doctorIdsFromAppointments.filter((id) => availableIds.has(id.toString()));
+          if (intersection.length === 0) {
+            return res.status(200).json({
+              success: true,
+              count: 0,
+              doctors: [],
+              pagination: {
+                total: 0,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: 0,
+                hasNextPage: false,
+                hasPrevPage: false,
+                nextPage: null,
+                prevPage: null,
+              },
+            });
+          }
+          query._id = { $in: intersection };
+        } else {
+          query._id = { $in: availableObjectIds };
+        }
+      } else {
+        if (doctorIdsFromAppointments) {
+          const notAvailable = doctorIdsFromAppointments.filter((id) => !availableIds.has(id.toString()));
+          query._id = { $in: notAvailable };
+        } else {
+          query._id = { $nin: availableObjectIds };
+        }
+      }
+    }
+
     const sortConfig = {};
     sortConfig[sortBy] = sortOrder === "desc" ? -1 : 1;
 
-    // Count total documents for pagination metadata
     const totalDocs = await User.countDocuments(query);
 
-    // Find doctors based on query with pagination and sorting
-    const doctors = await User.find({ ...query, deleted: false })
+    const doctors = await User.find(query)
       .populate("specialization")
-      .select('name specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating')
+      .select("name email specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating department")
       .sort(sortConfig)
       .skip(skip)
       .limit(limitNum)
       .lean();
 
+    // Who has an active schedule today (Poland) AND current time is within one of today's slots?
+    const doctorIds = doctors.map((d) => d._id);
+    const todayPoland = getCurrentDatePoland();
+    const startToday = getStartOfDayPoland(todayPoland);
+    const endToday = getEndOfDayPoland(todayPoland);
+    const todayStr = format(todayPoland, "yyyy-MM-dd");
+    const currentTimeStr = format(todayPoland, "HH:mm"); // e.g. "21:00" for 9pm Poland
 
-    const formattedDoctors = doctors.map((doc) => ({
-      _id: doc._id,
-      id: doc.d_id,
-      slug: doc.slug, // Add slug for SEO URLs
-      name: `${doc.name.first} ${doc.name.last}`,
-      nameObj: {
-        first: doc.name.first,
-        last: doc.name.last
-      },
-      specialty:
-        doc.specialization && doc.specialization[0]
-          ? doc.specialization[0]
-          : "General",
-      department: doc.department || "", // Include the department in the response
-      available: doc.isAvailable,
-      status: doc.isAvailable ? "Available" : "Unavailable",
-      experience: doc.experience || 0,
-      experienceText: doc.experience ? `${doc.experience} years` : "0 years",
-      image: doc.profilePicture,
-      visitType: "Consultation",
-      date: new Date().toISOString().split("T")[0],
-      qualifications: doc.qualifications || [],
-      specializations: doc.specialization || [],
-      bio: doc?.bio || "",
-      shortDescription: doc?.shortDescription || "",
-      consultationFee: doc.consultationFee || 0,
-      offlineConsultationFee: doc.offlineConsultationFee || 0,
-      onlineConsultationFee: doc.onlineConsultationFee || 0,
-      ratings: {
-        average: doc.averageRating || 0,
-        total: doc.ratings || 0
-      }
-    }));
+    const schedulesToday = await DoctorSchedule.find({
+      doctorId: { $in: doctorIds },
+      $or: [
+        { date: { $gte: startToday, $lte: endToday } },
+        { date: todayStr },
+      ],
+      isActive: true,
+      timeBlocks: { $elemMatch: { isActive: true } },
+    })
+      .select("doctorId timeBlocks")
+      .lean();
+
+    // Available only if current time (Poland) falls within at least one active time block (startTime <= now < endTime)
+    const isCurrentlyAvailableSet = new Set();
+    schedulesToday.forEach((s) => {
+      const blocks = s.timeBlocks || [];
+      const inSlot = blocks.some(
+        (b) => b.isActive !== false && isTimeInSlot(currentTimeStr, b.startTime, b.endTime)
+      );
+      if (inSlot) isCurrentlyAvailableSet.add(s.doctorId.toString());
+    });
+
+    const formattedDoctors = doctors.map((doc) => {
+      const available = isCurrentlyAvailableSet.has(doc._id.toString());
+      return {
+        _id: doc._id,
+        id: doc.d_id,
+        slug: doc.slug, // Add slug for SEO URLs
+        name: `${doc.name.first} ${doc.name.last}`,
+        nameObj: {
+          first: doc.name.first,
+          last: doc.name.last
+        },
+        specialty:
+          doc.specialization && doc.specialization[0]
+            ? doc.specialization[0]
+            : "General",
+        department: doc.department || "", // Include the department in the response
+        available,
+        status: available ? "Available" : "Unavailable",
+        experience: doc.experience || 0,
+        experienceText: doc.experience ? `${doc.experience} years` : "0 years",
+        image: doc.profilePicture,
+        visitType: "Consultation",
+        date: new Date().toISOString().split("T")[0],
+        qualifications: doc.qualifications || [],
+        specializations: doc.specialization || [],
+        bio: doc?.bio || "",
+        shortDescription: doc?.shortDescription || "",
+        consultationFee: doc.consultationFee || 0,
+        offlineConsultationFee: doc.offlineConsultationFee || 0,
+        onlineConsultationFee: doc.onlineConsultationFee || 0,
+        ratings: {
+          average: doc.averageRating || 0,
+          total: doc.ratings || 0
+        }
+      };
+    });
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(totalDocs / limitNum);
@@ -346,6 +602,8 @@ const getAllDoctors = async (req, res) => {
 const getDoctorById = async (req, res) => {
   try {
     const { id } = req.params;
+    // Always use today's date (Poland) for "that day's" shift timing; FE does not send date.
+    const requestedDate = getCurrentDatePoland();
 
     let query = {};
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -364,9 +622,27 @@ const getDoctorById = async (req, res) => {
       });
     }
 
+    // That day's shift timing from DoctorSchedule (date-based), not hardcoded weekly pattern
+    const schedule = await DoctorSchedule.findOne({
+      doctorId: doctor._id,
+      date: {
+        $gte: getStartOfDayPoland(requestedDate),
+        $lte: getEndOfDayPoland(requestedDate),
+      },
+      isActive: true,
+    }).lean();
+
+    const shiftsForDate = schedule?.timeBlocks?.length
+      ? {
+          date: format(requestedDate, "yyyy-MM-dd"),
+          timeBlocks: schedule.timeBlocks.filter((b) => b.isActive !== false).map((b) => ({ startTime: b.startTime, endTime: b.endTime })),
+        }
+      : null;
+
     res.status(200).json({
       success: true,
       doctor,
+      shiftsForDate,
     });
   } catch (error) {
     console.error("Error fetching doctor:", error);
@@ -389,10 +665,10 @@ const getWeeklyShifts = async (req, res) => {
         .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
-    // Get current week's schedule from new system
-    const currentDate = new Date();
-    const startDate = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday start
-    const endDate = endOfWeek(currentDate, { weekStartsOn: 1 }); // Sunday end
+    // Get current week's schedule from new system (using Poland timezone)
+    const currentDatePoland = getCurrentDatePoland();
+    const startDate = startOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Monday start
+    const endDate = endOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Sunday end
 
     const schedules = await DoctorSchedule.find({
       doctorId: doctor._id,
@@ -473,10 +749,10 @@ const updateWeeklyShifts = async (req, res) => {
       });
     });
 
-    // Get current week dates
-    const currentDate = new Date();
-    const startDate = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday start
-    const endDate = endOfWeek(currentDate, { weekStartsOn: 1 }); // Sunday end
+    // Get current week dates (using Poland timezone)
+    const currentDatePoland = getCurrentDatePoland();
+    const startDate = startOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Monday start
+    const endDate = endOfWeek(currentDatePoland, { weekStartsOn: 1 }); // Sunday end
 
     // Update or create schedules for each day
     for (let date = new Date(startDate); date <= endDate; date = addDays(date, 1)) {
@@ -718,12 +994,12 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
   const DoctorSchedule = require("../models/doctorSchedule");
   const ScheduleException = require("../models/scheduleException");
   
-  // Check for schedule exception first
+  // Check for schedule exception first (using Poland timezone)
   const exception = await ScheduleException.findOne({
     doctorId,
     date: {
-      $gte: startOfDay(requestedDate),
-      $lte: endOfDay(requestedDate)
+      $gte: getStartOfDayPoland(requestedDate),
+      $lte: getEndOfDayPoland(requestedDate)
     },
     isActive: true
   });
@@ -736,12 +1012,12 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
     };
   }
 
-  // Get doctor's schedule for the requested date
+  // Get doctor's schedule for the requested date (using Poland timezone)
   const schedule = await DoctorSchedule.findOne({
     doctorId,
     date: {
-      $gte: startOfDay(requestedDate),
-      $lte: endOfDay(requestedDate)
+      $gte: getStartOfDayPoland(requestedDate),
+      $lte: getEndOfDayPoland(requestedDate)
     },
     isActive: true
   });
@@ -753,13 +1029,13 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
     };
   }
 
-  // Get booked appointments for the requested date
+  // Get booked appointments for the requested date (using Poland timezone)
   const appointments = await appointment
     .find({
       doctor: doctorId,
       date: {
-        $gte: startOfDay(requestedDate),
-        $lte: endOfDay(requestedDate),
+        $gte: getStartOfDayPoland(requestedDate),
+        $lte: getEndOfDayPoland(requestedDate),
       },
       status: "booked",
     })
@@ -889,10 +1165,10 @@ const generateSlotsForDate = async (doctorId, requestedDate) => {
   // Filter out past slots based on current time in Poland timezone
   const currentTimeUTC = new Date();
   const currentTimeInPoland = toZonedTime(currentTimeUTC, POLAND_TIMEZONE);
-  const requestedDateOnly = new Date(requestedDate);
+  const requestedDateInPoland = toZonedTime(requestedDate, POLAND_TIMEZONE);
   
   // Check if the requested date is today (in Poland timezone)
-  const isToday = currentTimeInPoland.toDateString() === requestedDateOnly.toDateString();
+  const isToday = currentTimeInPoland.toDateString() === requestedDateInPoland.toDateString();
   
   if (isToday) {
     // Get current time in minutes since midnight (Poland timezone)
@@ -929,7 +1205,7 @@ const getAvailableSlots = async (req, res) => {
   try {
     const doctorId = req.params.id;
     console.log("doctor", doctorId);
-    const date = req.query.date || new Date();
+    const date = req.query.date;
 
     if (!date) {
       return res.status(400).json({
@@ -945,7 +1221,18 @@ const getAvailableSlots = async (req, res) => {
         .json({ success: false, message: "Lekarz nie znaleziony" });
     }
 
-    const requestedDate = new Date(date);
+    // Parse date and convert to Poland timezone context
+    // If date is in YYYY-MM-DD format, create date at midnight in Poland timezone
+    let requestedDate;
+    if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      // Date string in YYYY-MM-DD format - create at midnight Poland time
+      const [year, month, day] = date.split('-').map(Number);
+      const dateInPoland = new Date(year, month - 1, day);
+      requestedDate = fromZonedTime(dateInPoland, POLAND_TIMEZONE);
+    } else {
+      // Parse as date and convert to Poland timezone context
+      requestedDate = toZonedTime(new Date(date), POLAND_TIMEZONE);
+    }
     
     const result = await generateSlotsForDate(doctorId, requestedDate);
     
@@ -1004,8 +1291,17 @@ const getWeekAvailability = async (req, res) => {
       });
     }
 
-    // Parse and validate dates
-    const start = new Date(startDate);
+    // Parse and validate dates (using Poland timezone)
+    let start;
+    if (startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      // Date string in YYYY-MM-DD format - create at midnight Poland time
+      const [year, month, day] = startDate.split('-').map(Number);
+      const dateInPoland = new Date(year, month - 1, day);
+      start = fromZonedTime(dateInPoland, POLAND_TIMEZONE);
+    } else {
+      start = toZonedTime(new Date(startDate), POLAND_TIMEZONE);
+    }
+    
     if (isNaN(start.getTime())) {
       return res.status(400).json({
         success: false,
@@ -1016,7 +1312,15 @@ const getWeekAvailability = async (req, res) => {
 
     let end;
     if (endDate) {
-      end = new Date(endDate);
+      if (endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // Date string in YYYY-MM-DD format - create at midnight Poland time
+        const [year, month, day] = endDate.split('-').map(Number);
+        const dateInPoland = new Date(year, month - 1, day);
+        end = fromZonedTime(dateInPoland, POLAND_TIMEZONE);
+      } else {
+        end = toZonedTime(new Date(endDate), POLAND_TIMEZONE);
+      }
+      
       if (isNaN(end.getTime())) {
         return res.status(400).json({
           success: false,
@@ -1192,8 +1496,9 @@ const getNextAvailableDate = async (req, res) => {
     const DoctorSchedule = require("../models/doctorSchedule");
     const ScheduleException = require("../models/scheduleException");
 
-    // Start checking from today
-    let currentDate = new Date();
+    // Start checking from today (in Poland timezone)
+    const currentDatePoland = getCurrentDatePoland();
+    let currentDate = new Date(currentDatePoland.getFullYear(), currentDatePoland.getMonth(), currentDatePoland.getDate());
     
     // Maximum number of days to check
     const maxDaysToCheck = 30;
@@ -1206,12 +1511,12 @@ const getNextAvailableDate = async (req, res) => {
       console.log(`\n[DEBUG] === Day ${daysChecked + 1} ===`);
       console.log(`[DEBUG] Checking date: ${currentDate.toISOString().split('T')[0]}`);
       
-      // Check for schedule exception first
+      // Check for schedule exception first (using Poland timezone)
       const exception = await ScheduleException.findOne({
         doctorId,
         date: {
-          $gte: startOfDay(currentDate),
-          $lte: endOfDay(currentDate)
+          $gte: getStartOfDayPoland(currentDate),
+          $lte: getEndOfDayPoland(currentDate)
         },
         isActive: true
       });
@@ -1225,12 +1530,12 @@ const getNextAvailableDate = async (req, res) => {
         }
       }
 
-      // Get doctor's schedule for the current date
+      // Get doctor's schedule for the current date (using Poland timezone)
       const schedule = await DoctorSchedule.findOne({
         doctorId,
         date: {
-          $gte: startOfDay(currentDate),
-          $lte: endOfDay(currentDate)
+          $gte: getStartOfDayPoland(currentDate),
+          $lte: getEndOfDayPoland(currentDate)
         },
         isActive: true
       });
@@ -1244,12 +1549,12 @@ const getNextAvailableDate = async (req, res) => {
 
       console.log(`[DEBUG] Found schedule with ${schedule.timeBlocks.length} time blocks`);
 
-      // Get booked appointments for this date
+      // Get booked appointments for this date (using Poland timezone)
       const appointments = await appointment.find({
         doctor: doctorId,
         date: {
-          $gte: startOfDay(currentDate),
-          $lte: endOfDay(currentDate),
+          $gte: getStartOfDayPoland(currentDate),
+          $lte: getEndOfDayPoland(currentDate),
         },
         status: "booked",
       }).sort({ startTime: 1 });
@@ -1545,8 +1850,8 @@ const updateDoctor = async (req, res) => {
       'onlineConsultationFee',
       'offlineConsultationFee',
       'singleSessionMode',
-      'shortDescription'
-      // Removed weeklyShifts and offSchedule - now handled by separate schedule models
+      'shortDescription',
+      'order',
     ];
 
     // Filter out fields that are not allowed to be updated
@@ -1557,9 +1862,21 @@ const updateDoctor = async (req, res) => {
         return obj;
       }, {});
 
+    // Coerce order to number or null when updating
+    if (updateData.order !== undefined) {
+      filteredUpdates.order = updateData.order === null || updateData.order === "" ? null : Number(updateData.order);
+    }
+
     // Only add profilePicture to updates if a new file was uploaded
     if (req.file?.path) {
       filteredUpdates.profilePicture = req.file.path;
+    }
+
+    // Only update password if a new non-empty password is received (skip if empty, null, or undefined)
+    const newPassword = updateData.password;
+    if (newPassword != null && newPassword !== "") {
+      const saltRounds = 10;
+      filteredUpdates.password = await bcrypt.hash(String(newPassword).trim(), saltRounds);
     }
 
     // Update the doctor
@@ -1588,8 +1905,8 @@ const updateDoctor = async (req, res) => {
       shortDescription: updatedDoctor.shortDescription,
       singleSessionMode: updatedDoctor.singleSessionMode,
       signupMethod: updatedDoctor.signupMethod,
-      isAvailable: updatedDoctor.isAvailable
-      // Removed weeklyShifts and offSchedule - now handled by separate schedule models
+      isAvailable: updatedDoctor.isAvailable,
+      order: updatedDoctor.order != null ? updatedDoctor.order : null,
     };
 
     res.status(200).json({

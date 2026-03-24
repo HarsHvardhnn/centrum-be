@@ -9,7 +9,7 @@ const {
 const authorizeRoles = require('../middlewares/authenticateRole');
 
 // Generate report from existing appointment and billing data
-// Query params: startDate, endDate, doctorId?, patientId?, status?, serviceType?
+// Query params: startDate, endDate, doctorId?, patientId?, status?, serviceType?, patientLessVisitsOnly?
 router.get('/generate', 
   authorizeRoles(['admin', 'receptionist', 'doctor']), 
   generateReport

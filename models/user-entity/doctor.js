@@ -69,6 +69,8 @@ const offScheduleSchema = new mongoose.Schema(
 
 const doctorSchema = new mongoose.Schema({
   d_id: String,
+  /** Display order/sequence (e.g. for listing doctors). Lower number = earlier in list. */
+  order: { type: Number, default: null },
   specialization: [
     {
       type: mongoose.Schema.Types.ObjectId,

@@ -40,6 +40,10 @@ const forgotPasswordRoutes = require("./routes/forgot-password-routes");
 const logoRoutes = require("./routes/logo-routes");
 const emailPreviewRoutes = require("./routes/email-preview-routes");
 const permanentDeleteRoutes = require("./routes/permanent-delete-routes");
+const patientPortalRoutes = require("./routes/patient-portal-routes");
+const icdRoutes = require("./routes/icd-routes");
+const adminIcdRoutes = require("./routes/admin-icd-routes");
+const visitTemplatesRoutes = require("./routes/visit-templates-routes");
 
 // Import SEO middleware
 const { seoMiddleware } = require("./backend-seo-implementation");
@@ -87,7 +91,7 @@ const normalizeOrigin = (url) => {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 
-// Get production URLs
+// Get production URLs (temporarily including localhost:5173 for local dev against prod backend)
 const frontendOrigins = process.env.NODE_ENV === 'production'
   ? [
       normalizeOrigin(process.env.FRONTEND_URL),
@@ -95,6 +99,8 @@ const frontendOrigins = process.env.NODE_ENV === 'production'
       normalizeOrigin(process.env.FROTEND_ADMIN_1),
       normalizeOrigin(process.env.FRONTEND_URL_WWW),
       normalizeOrigin(process.env.FRONTEND_ADMIN_2),
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
     ].filter(Boolean) // Remove any undefined/null values
   : ["http://localhost:5173"];
 
@@ -130,7 +136,7 @@ app.use(cors({
       }
     }
     
-    // In production, check against both frontend URLs
+    // In production, check against both frontend URLs (includes localhost:5173 temporarily)
     if (frontendOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
@@ -218,6 +224,10 @@ app.use("/api/auth", forgotPasswordRoutes);
 app.use("/api/logo", logoRoutes);
 app.use("/api/email-preview", emailPreviewRoutes);
 app.use("/api/permanent-delete", permanentDeleteRoutes);
+app.use("/api/patient-portal", patientPortalRoutes);
+app.use("/api", icdRoutes);
+app.use("/api/visit-templates", visitTemplatesRoutes);
+app.use("/admin", adminIcdRoutes);
 
 // Test route for SEO (can be removed later)
 app.get("/seo-test", (req, res) => {

@@ -212,6 +212,43 @@ exports.updateSmsTemplate = async (req, res) => {
   }
 };
 
+// Permanently delete multiple SMS templates (bulk). Body: { ids: string[] }
+exports.bulkPermanentDeleteSmsTemplates = async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj tablicę identyfikatorów (ids) do usunięcia",
+      });
+    }
+
+    const validIds = ids.filter((id) => id && typeof id === "string").map((id) => id.trim()).filter(Boolean);
+    if (validIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Brak prawidłowych identyfikatorów",
+      });
+    }
+
+    const result = await SmsTemplate.deleteMany({ _id: { $in: validIds } });
+
+    res.status(200).json({
+      success: true,
+      message: `Trwale usunięto ${result.deletedCount} szablonów SMS`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("Error bulk deleting SMS templates:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się trwale usunąć szablonów SMS",
+      error: error.message,
+    });
+  }
+};
+
 // Delete SMS Template (Soft Delete)
 exports.deleteSmsTemplate = async (req, res) => {
   try {
