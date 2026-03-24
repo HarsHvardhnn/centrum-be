@@ -91,18 +91,28 @@ const normalizeOrigin = (url) => {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
 
-// Get production URLs (temporarily including localhost:5173 for local dev against prod backend)
-const frontendOrigins = process.env.NODE_ENV === 'production'
-  ? [
+// All allowed browser origins (from env + localhost). Used in every NODE_ENV.
+// Important: if NODE_ENV is not "production" but the server is public, we still
+// must list real site URLs here — otherwise only localhost was allowed and
+// https://your-domain.pl gets "No Access-Control-Allow-Origin" on preflight.
+const frontendOrigins = [
+  ...new Set(
+    [
       normalizeOrigin(process.env.FRONTEND_URL),
       normalizeOrigin(process.env.FRONTEND_URL_ADMIN),
       normalizeOrigin(process.env.FROTEND_ADMIN_1),
       normalizeOrigin(process.env.FRONTEND_URL_WWW),
-      normalizeOrigin(process.env.FRONTEND_ADMIN_2),
+      // Typo in some .env files: FROTEND vs FRONTEND
+      normalizeOrigin(process.env.FRONTEND_ADMIN_2 || process.env.FROTEND_ADMIN_2),
       "http://localhost:5173",
       "http://127.0.0.1:5173",
-    ].filter(Boolean) // Remove any undefined/null values
-  : ["http://localhost:5173"];
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://centrum-pl.netlify.app",
+      "https://centrum-admin.netlify.app",
+    ].filter(Boolean)
+  ),
+];
 
 console.log("frontendOrigins", frontendOrigins);
 
@@ -121,28 +131,15 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     const normalizedOrigin = normalizeOrigin(origin);
     console.log("normalizedOrigin", normalizedOrigin);
-    
-    // In development, allow both localhost origins
-    if (process.env.NODE_ENV !== 'production') {
-      if (normalizedOrigin === 'http://localhost:3000' || 
-          normalizedOrigin === 'https://centrum-pl.netlify.app' || 
-          normalizedOrigin === 'http://localhost:5173' || 
-          normalizedOrigin === 'http://127.0.0.1:3000' || 
-          normalizedOrigin === 'http://127.0.0.1:5173') {
-        return callback(null, true);
-      }
-    }
-    
-    // In production, check against both frontend URLs (includes localhost:5173 temporarily)
+
     if (frontendOrigins.includes(normalizedOrigin)) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked:', normalizedOrigin, 'expected one of:', frontendOrigins);
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    console.log("CORS blocked:", normalizedOrigin, "expected one of:", frontendOrigins);
+    callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
