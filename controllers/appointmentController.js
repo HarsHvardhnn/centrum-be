@@ -2567,8 +2567,9 @@ exports.updateAppointmentStatus = async (req, res) => {
     await appointment.save();
 
     // Send SMS notification only when patient exists (visit-only appointments have no patient)
+    // and skip SMS for completed status.
     let smsResult = null;
-    if (patientDetails) {
+    if (patientDetails && status !== "completed") {
       try {
         smsResult = await sendAppointmentStatusSMS(
           appointment,
