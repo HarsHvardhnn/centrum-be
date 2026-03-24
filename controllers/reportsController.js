@@ -21,8 +21,14 @@ const generateReport = async (req, res) => {
       doctorId,
       patientId,
       status = 'all',
-      serviceType = 'all'
+      serviceType = 'all',
+      patientLessVisitsOnly
     } = req.query;
+
+    const patientLessOnlyFilter =
+      patientLessVisitsOnly === 'true' ||
+      patientLessVisitsOnly === true ||
+      patientLessVisitsOnly === '1';
 
     // Validate required fields
     if (!startDate || !endDate) {
@@ -62,7 +68,9 @@ const generateReport = async (req, res) => {
       appointmentQuery.doctor = finalDoctorId;
     }
 
-    if (patientId) {
+    if (patientLessOnlyFilter) {
+      appointmentQuery.patient = null;
+    } else if (patientId) {
       appointmentQuery.patient = patientId;
     }
 
@@ -562,10 +570,16 @@ const generateReportData = async (queryParams, userId, userRole) => {
       doctorId,
       patientId,
       status = 'all',
-      serviceType = 'all'
+      serviceType = 'all',
+      patientLessVisitsOnly
     } = queryParams;
 
-    console.log('Generating report with params:', { startDate, endDate, doctorId, patientId, status, serviceType });
+    const patientLessOnlyFilter =
+      patientLessVisitsOnly === 'true' ||
+      patientLessVisitsOnly === true ||
+      patientLessVisitsOnly === '1';
+
+    console.log('Generating report with params:', { startDate, endDate, doctorId, patientId, status, serviceType, patientLessVisitsOnly });
 
     if (!startDate || !endDate) {
       throw new Error('Data początkowa i końcowa są wymagane');
@@ -589,7 +603,8 @@ const generateReportData = async (queryParams, userId, userRole) => {
     };
 
     if (finalDoctorId) appointmentQuery.doctor = finalDoctorId;
-    if (patientId) appointmentQuery.patient = patientId;
+    if (patientLessOnlyFilter) appointmentQuery.patient = null;
+    else if (patientId) appointmentQuery.patient = patientId;
     if (status !== 'all') appointmentQuery.status = status;
     if (serviceType !== 'all') appointmentQuery.mode = serviceType;
 

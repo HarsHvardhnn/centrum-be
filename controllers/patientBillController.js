@@ -663,6 +663,19 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
+    // Do not allow generating an invoice unless the doctor/admin verified the visit reason.
+    // Existing invoiceUrl is handled above; this check only blocks generation.
+    const visitReasonVerified =
+      Boolean(bill.appointment?.consultation?.visitReasonVerified);
+    if (!visitReasonVerified) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Nie można wygenerować faktury bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację.",
+        code: "VISIT_REASON_NOT_VERIFIED",
+      });
+    }
+
     const nextId = bill?.invoiceId || await generateNextInvoiceId();
     const safeInvoiceId = nextId.replace(/\//g, '_');
     const filename = `faktura_${safeInvoiceId}.pdf`;
@@ -943,11 +956,11 @@ exports.generateInvoice = async (req, res) => {
              <div class="info-row">
   <span class="info-label">Płeć:</span>
   <span>
-    ${bill.patient?.sex === "Male" 
-      ? "Mężczyzna" 
-      : bill.patient?.sex === "Female" 
-        ? "Kobieta" 
-        : "Inna"}
+    ${/^male$/i.test(bill.patient?.sex || "")
+      ? "Mężczyzna"
+      : /^female$/i.test(bill.patient?.sex || "")
+        ? "Kobieta"
+        : "—"}
   </span>
 </div>
 
@@ -960,7 +973,7 @@ exports.generateInvoice = async (req, res) => {
                     <span>${bill.patient?.dateOfBirth ? new Date(bill.patient.dateOfBirth).toLocaleDateString('pl-PL') : ""}</span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Adres zamieszkania:</span>
+                    <span class="info-label">Adres:</span>
                     <span>${patientAddress}</span>
                 </div>
                 <div class="info-row">

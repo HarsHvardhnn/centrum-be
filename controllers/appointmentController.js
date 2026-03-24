@@ -25,6 +25,12 @@ const { createStandardizedDocument } = require("./patientController");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
+const {
+  getVisitReasons: getVisitReasonsConfig,
+  getOnlineRegistrationVisitReason,
+} = require("../config/visitReasons");
+const { validatePesel } = require("../utils/peselValidation");
+const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 
 // Email icons as inline SVG (Font Awesome 6 style) for visibility in all email clients
 const { getIconImg } = require("../utils/emailIcons");
@@ -1024,7 +1030,7 @@ const sendAppointmentStatusSMS = async (
   status
 ) => {
   try {
-    if (!hasPatientConsentedToSMS(patientDetails)) {
+    if (!patientDetails || !hasPatientConsentedToSMS(patientDetails)) {
       console.log("Patient has not consented to SMS notifications");
       return {
         success: false,
@@ -1088,6 +1094,9 @@ const sendAppointmentConfirmationSMS = async (
   doctorDetails
 ) => {
   try {
+    if (!patientDetails) {
+      return { success: false, error: "No patient details" };
+    }
     // Get patient's phone number
     const phoneNumber = patientDetails.phone;
 
@@ -1186,6 +1195,8 @@ exports.createAppointment = async (req, res) => {
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
+      registrationType: registrationTypeBody, // Optional: "online registration" | "receptionist registration" | "admin registration" | "offline registration"
+      visitReason, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
     } = req.body;
 
     let name = `${firstName} ${lastName}`;
@@ -1323,8 +1334,9 @@ exports.createAppointment = async (req, res) => {
         });
       }
 
-      // If patient not found, create new patient
+      // If patient not found, create new patient (password stored hashed only)
       if (!patient) {
+        const hashedTemporaryPassword = await bcrypt.hash(temporaryPassword, 10);
         const newPatient = new user({
           name: {
             first: firstName,
@@ -1332,7 +1344,7 @@ exports.createAppointment = async (req, res) => {
           },
           email: emailToSave,
           phone: phoneNumber,
-          password: temporaryPassword,
+          password: hashedTemporaryPassword,
           role: "patient",
           signupMethod: "email",
           dateOfBirth: dob,
@@ -1385,39 +1397,106 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-    // Determine who created the appointment
+    // createdByRole: patient when no token or token role is patient; otherwise admin / receptionist / doctor from token
+    const rawRole = req.user && req.user.role ? req.user.role : null;
+    const createdByRole = (rawRole === "admin" || rawRole === "receptionist" || rawRole === "doctor") ? rawRole : "patient";
     let createdBy = "online";
-    if (req.user && req.user.role === "receptionist") {
-      createdBy = "receptionist";
-    } else if (req.user && req.user.role === "doctor") {
-      createdBy = "doctor";
-    }
+    if (createdByRole === "receptionist") createdBy = "receptionist";
+    else if (createdByRole === "doctor") createdBy = "doctor";
+    else if (createdByRole === "admin") createdBy = "admin";
+    // Visit mode: offline when created by admin/receptionist/doctor
+    const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "offline").toLowerCase();
 
-    // Create appointment with new fields
+    const validRegistrationTypes = ["online registration", "receptionist registration", "admin registration", "offline registration"];
+    const registrationTypeResolved = registrationTypeBody && validRegistrationTypes.includes(registrationTypeBody)
+      ? registrationTypeBody
+      : (createdBy === "admin" ? "admin registration" : createdBy === "receptionist" ? "receptionist registration" : createdBy === "doctor" ? "offline registration" : "online registration");
+    const resolvedVisitReason =
+      (visitReason && visitReason.trim()) || req.body.metadata?.visitType?.trim() || null;
+    // International patient flags and document info (for online booking metadata/temp data)
+    const isInternationalPatientRaw = req.body.isInternationalPatient;
+    const isInternationalPatient =
+      isInternationalPatientRaw === true ||
+      (typeof isInternationalPatientRaw === "string" &&
+        isInternationalPatientRaw.toLowerCase() === "true");
+    const documentCountry =
+      req.body.documentCountry != null && req.body.documentCountry !== "undefined"
+        ? String(req.body.documentCountry).trim()
+        : "";
+    const documentType =
+      req.body.documentType != null && req.body.documentType !== "undefined"
+        ? String(req.body.documentType).trim()
+        : "";
+    const documentNumber =
+      req.body.documentNumber != null && req.body.documentNumber !== "undefined"
+        ? String(req.body.documentNumber).trim()
+        : "";
+    const internationalPatientDocumentKey =
+      req.body.internationalPatientDocumentKey != null &&
+      req.body.internationalPatientDocumentKey !== "undefined"
+        ? String(req.body.internationalPatientDocumentKey).trim()
+        : "";
+
     const appointment = new Appointment({
       doctor: doctorId,
       patient: patient._id,
       bookedBy: patient._id,
+      booking_source: "RECEPTION",
+      registrationType: registrationTypeResolved,
       date: appointmentDate,
       startTime: time,
       endTime: endTime,
       duration: duration,
-      customDuration: customDuration || null, // Set custom duration if provided
-      isBackdated: isBackdated, // Set backdated flag
-      createdBy: createdBy, // Set who created the appointment
-      mode: consultationType.toLowerCase(),
+      customDuration: customDuration || null,
+      isBackdated: isBackdated,
+      createdBy: createdBy,
+      createdByRole: createdByRole,
+      mode: visitMode,
       notes: message || "",
+      consultation: resolvedVisitReason
+        ? {
+            visitReason: resolvedVisitReason,
+            // Default: doctor/admin must explicitly verify the visit reason
+            visitReasonVerified: false,
+            visitTypeVerified: true,
+          }
+        : undefined,
       metadata: {
         ...(req.body.metadata || {}),
         overrideConflicts: overrideConflicts,
         receptionistOverride: req.user && req.user.role === "receptionist",
-      }
+        ...(resolvedVisitReason ? { visitType: resolvedVisitReason } : {}),
+        ...(isInternationalPatient
+          ? {
+              isInternationalPatient: true,
+            }
+          : {}),
+        ...(documentCountry
+          ? {
+              documentCountry,
+            }
+          : {}),
+        ...(documentType
+          ? {
+            documentType,
+          }
+          : {}),
+        ...(documentNumber
+          ? {
+              documentNumber,
+            }
+          : {}),
+        ...(internationalPatientDocumentKey
+          ? {
+              internationalPatientDocumentKey,
+            }
+          : {}),
+      },
     });
 
     await appointment.save();
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    // Send email only if valid email is provided
     let emailSent = false;
     if (emailRegex.test(patient.email) && patient.email) {
       try {
@@ -1439,9 +1518,12 @@ exports.createAppointment = async (req, res) => {
           temporaryPassword: isNewUser ? temporaryPassword : null,
         };
 
-        // Send email
+        const emailRecipients = [patient.email];
+        if (doctorDetails.email && String(doctorDetails.email).trim()) {
+          emailRecipients.push(doctorDetails.email.trim());
+        }
         await sendEmail({
-          to: patient.email,
+          to: emailRecipients,
           subject: "Potwierdzenie Wizyty",
           html: createAppointmentEmailHtml(emailData),
           text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
@@ -1453,7 +1535,7 @@ exports.createAppointment = async (req, res) => {
           }`,
         });
 
-        console.log(`Appointment confirmation email sent to ${patient.email}`);
+        console.log(`Appointment confirmation email sent to ${emailRecipients.join(", ")}`);
         emailSent = true;
       } catch (emailError) {
         console.error("Failed to send appointment email:", emailError);
@@ -1538,7 +1620,11 @@ exports.createReceptionAppointment = async (req, res) => {
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
+      visitReason, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
     } = req.body;
+
+    const resolvedVisitReasonReception =
+      (visitReason && visitReason.trim()) || req.body.metadata?.visitType?.trim() || null;
 
     let name = `${firstName} ${lastName}`;
     let time = startTime;
@@ -1617,12 +1703,16 @@ exports.createReceptionAppointment = async (req, res) => {
       }
     }
 
-    let patient;
+    let patient = null;
     let isNewUser = false;
+    let emailSent = false;
     const temporaryPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
+    const rawRole = req.user && req.user.role ? req.user.role : null;
+    const createdByRole = (rawRole === "admin" || rawRole === "receptionist" || rawRole === "doctor") ? rawRole : "receptionist";
+    // Visit mode: offline when created by admin/receptionist/doctor (this route is staff-only)
+    const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "offline").toLowerCase();
 
-    console.log("patientId", patientId);
-    // If patient ID is provided, use that
+    // Follow-up: patientId provided → use existing patient. First visit: no patientId → visit only (complete registration later)
     if (patientId) {
       patient = await user.findById(patientId);
       if (!patient || patient.role !== "patient") {
@@ -1631,194 +1721,162 @@ exports.createReceptionAppointment = async (req, res) => {
           message: "Pacjent nie znaleziony",
         });
       }
-      
-        // Note: persistSmsConsent field is now used to skip sending notifications
-      // If persistSmsConsent is true, no notifications will be sent (handled later in the code)
-      
     } else {
-      // Handle new patient creation
-      if (!name || !phone) {
-
-        console.log("whats missing", name, phone);
+      // Reception first visit: require only name; phone optional per spec
+      if (!name || !name.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Wystąpił błąd",
+          message: "Imię i nazwisko są wymagane",
         });
       }
-
-      // Remove leading zeros from phone number
-      const phoneNumber = phone.replace(/^0+/, "");
-
-      // Email validation regex
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-      // Handle email - check if it's actually provided and not "undefined"
-      const emailToSave = email && email !== "undefined" ? email.trim() : "";
-
-      // Validate email format if provided
-      if (emailToSave && !emailRegex.test(emailToSave)) {
-        return res.status(400).json({
-          success: false,
-          message: "Nieprawidłowy format adresu e-mail",
-        });
-      }
-
-      // Parse name into first and last
-      const nameParts = name.trim().split(" ");
-      const firstName = nameParts[0];
-      const lastName = nameParts.slice(1).join(" ");
-
-      // Look for existing patient by phone first
-      patient = await user.findOne({
-        phone: phoneNumber,
-        role: "patient",
-      });
-
-      // If not found by phone and email is provided, look by email
-      if (!patient && emailToSave) {
-        patient = await user.findOne({
-          email: emailToSave.toLowerCase(),
-          role: "patient",
-        });
-      }
-
-      // If patient not found, create new patient
-      if (!patient) {
-        const newPatient = new user({
-          name: {
-            first: firstName,
-            last: lastName,
-          },
-          email: emailToSave,
-          phone: phoneNumber,
-          password: temporaryPassword,
-          role: "patient",
-          signupMethod: "email",
-          patientId:`P-${new Date().getTime()}`,
-          dateOfBirth: dob,
-          smsConsentAgreed: smsConsentAgreed || false,
-          consents: [],
-        });
-
-        patient = await newPatient.save();
-        isNewUser = true;
-      }
-
-      console.log("is new user",isNewUser);
-      // Note: persistSmsConsent field is now used to skip sending notifications
-      // If persistSmsConsent is true, no notifications will be sent (handled later in the code)
     }
 
-    // Determine who created the appointment
+    let appointment;
+    if (patient) {
+      appointment = new Appointment({
+        doctor: doctorId,
+        patient: patient._id,
+        bookedBy: patient._id,
+        booking_source: "RECEPTION",
+        registrationType: "receptionist registration",
+        date: appointmentDate,
+        startTime: time,
+        endTime: endTime,
+        duration: duration,
+        customDuration: customDuration || null,
+        isBackdated: isBackdated,
+        createdBy: createdByRole || "receptionist",
+        createdByRole: createdByRole,
+        mode: visitMode,
+        notes: message || "",
+        consultation: resolvedVisitReasonReception
+          ? {
+              visitReason: resolvedVisitReasonReception,
+              visitReasonVerified: false,
+              visitTypeVerified: true,
+            }
+          : undefined,
+        metadata: {
+          ...(req.body.metadata || {}),
+          overrideConflicts: overrideConflicts,
+          receptionistOverride: req.user && req.user.role === "receptionist",
+          ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+        },
+      });
+      await appointment.save();
 
-    // Create appointment with new fields
-    const appointment = new Appointment({
-      doctor: doctorId,
-      patient: patient._id,
-      bookedBy: patient._id,
-      date: appointmentDate,
-      startTime: time,
-      endTime: endTime,
-      duration: duration,
-      customDuration: customDuration || null, // Set custom duration if provided
-      isBackdated: isBackdated, // Set backdated flag
-      createdBy: req.user._id, // Set who created the appointment
-      mode: consultationType.toLowerCase(),
-      notes: message || "",
-      metadata: {
-        ...(req.body.metadata || {}),
-        overrideConflicts: overrideConflicts,
-        receptionistOverride: req.user && req.user.role === "receptionist",
-      }
-    });
-
-    await appointment.save();
-
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    // If persistSmsConsent is true, do NOT send any notifications (email or SMS)
-    let emailSent = false;
-    
-    // Skip all notifications if persistSmsConsent is true
-    if (persistSmsConsent) {
-      console.log("Skipping all notifications: persistSmsConsent is true");
-    } else {
-      // Send email and SMS together only if SMS consent is given (from smsConsentAgreed parameter) AND both channels are available
-      // Use smsConsentAgreed from request (not from database) for this appointment's notifications
-      const hasSmsConsent = Boolean(smsConsentAgreed); // Use the parameter value, not database value
-      const hasPhone = Boolean(patient.phone);
-      const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
-      const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
- 
-      if (shouldSendBoth) {
-      try {
-        const formattedDate = formatDateForSMS(appointmentDate);
-        const formattedTime = formatTimeForSMS(time);
- 
-        // Email data
-        const emailData = {
-          patientName: `${patient.name.first} ${patient.name.last}`,
-          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-          date: formattedDate,
-          time: time,
-          department: doctorDetails.specialization || "General",
-          meetingLink:
-            consultationType.toLowerCase() === "online" ? false : null,
-          notes: message || "",
-          mode: consultationType.toLowerCase(),
-          isNewUser,
-          temporaryPassword: isNewUser ? temporaryPassword : null,
-        };
- 
-        // Send email
-        await sendEmail({
-          to: patient.email,
-          subject: "Potwierdzenie Wizyty",
-          html: createAppointmentEmailHtml(emailData),
-          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${
-            doctorDetails.name.last
-          } została zaplanowana na ${formattedDate} o godz ${time}. ${
-            false
-              ? `Dołącz do spotkania pod adresem: ${false}`
-              : "Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji."
-          }`,
-        });
-        emailSent = true;
- 
-        // Prepare and send SMS
-        const messageText =
-          appointment.mode === "online"
-            ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
-            : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
- 
-        const batchId = uuidv4();
-        await MessageReceipt.create({
-          content: messageText,
-          batchId,
-          recipient: {
-            userId: patient._id.toString(),
-            phone: patient.phone,
-          },
-          status: "PENDING",
-        });
- 
-        await sendSMS(patient.phone, messageText);
-        console.log("Reception appointment SMS sent to", patient.phone);
-      } catch (notifyError) {
-        console.error("Failed to send reception notifications (email/SMS):", notifyError);
-      }
-      } else {
-        // Do not send either if consent not given or a channel is unavailable
-        if (!hasSmsConsent) {
-          console.log(`Skipping notifications: SMS consent not given for this appointment (smsConsentAgreed: ${smsConsentAgreed}).`);
-        } else if (!hasPhone) {
-          console.log("Skipping notifications: phone number missing, enforcing both-or-neither policy.");
-        } else if (!hasValidEmail) {
-          console.log("Skipping notifications: email invalid/missing, enforcing both-or-neither policy.");
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!persistSmsConsent && patient) {
+        const hasSmsConsent = Boolean(smsConsentAgreed);
+        const hasPhone = Boolean(patient.phone);
+        const hasValidEmail = Boolean(patient.email) && emailRegex.test(patient.email);
+        const shouldSendBoth = hasSmsConsent && hasPhone && hasValidEmail;
+        if (shouldSendBoth) {
+          try {
+            const formattedDate = formatDateForSMS(appointmentDate);
+            const emailData = {
+              patientName: `${patient.name.first} ${patient.name.last}`,
+              doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+              date: formattedDate,
+              time: time,
+              department: doctorDetails.specialization || "General",
+              meetingLink: consultationType.toLowerCase() === "online" ? false : null,
+              notes: message || "",
+              mode: consultationType.toLowerCase(),
+              isNewUser: false,
+              temporaryPassword: null,
+            };
+            const receptionEmailRecipients = [patient.email];
+            if (doctorDetails.email && String(doctorDetails.email).trim()) {
+              receptionEmailRecipients.push(doctorDetails.email.trim());
+            }
+            await sendEmail({
+              to: receptionEmailRecipients,
+              subject: "Potwierdzenie Wizyty",
+              html: createAppointmentEmailHtml(emailData),
+              text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została zaplanowana na ${formattedDate} o godz ${time}. Rejestracja skontaktuje się z Panem/Panią w celu przekazania dalszych instrukcji.`,
+            });
+            emailSent = true;
+            const messageText = appointment.mode === "online"
+              ? `Twoja wizyta online u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime}. Link do wizyty otrzymaja Panstwo na adres e-mail.`
+              : `Twoja wizyta u dr ${doctorDetails.name.last} zostala zaplanowana na ${formattedDate} o godz. ${formattedTime} w naszej placowce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+            const batchId = uuidv4();
+            await MessageReceipt.create({
+              content: messageText,
+              batchId,
+              recipient: { userId: patient._id.toString(), phone: patient.phone },
+              status: "PENDING",
+            });
+            await sendSMS(patient.phone, messageText);
+          } catch (notifyError) {
+            console.error("Failed to send reception notifications (email/SMS):", notifyError);
+          }
         }
       }
+    } else {
+      // First visit: create visit only (no patient); store basic data in registrationData
+      const phoneNumber = phone && String(phone).replace(/^0+/, "").trim() || null;
+      const emailToSave = email && email !== "undefined" ? email.trim() : null;
+      if (emailToSave) {
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRegex.test(emailToSave)) {
+          return res.status(400).json({ success: false, message: "Nieprawidłowy format adresu e-mail" });
+        }
+      }
+      const isInternational = req.body.isInternational === true || String(req.body.isInternational || "").toLowerCase() === "true";
+      const isWalkin = !!(req.body.isWalkin === true || String(req.body.isWalkin || "").toLowerCase() === "true" || req.body.metadata?.isWalkin === true || req.body.metadata?.isWalkin === "true");
+      const needsAttention = !!(req.body.needsAttention === true || String(req.body.needsAttention || "").toLowerCase() === "true" || req.body.metadata?.needsAttention === true || req.body.metadata?.needsAttention === "true");
+      const nameParts = name.trim().split(" ");
+      const registrationData = {
+        name: name.trim(),
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(" ") || "",
+        phone: phoneNumber,
+        email: emailToSave,
+        dateOfBirth: dob || null,
+        smsConsentAgreed: !!smsConsentAgreed,
+        consents: [],
+        isInternationalPatient: isInternational,
+        isWalkin,
+        needsAttention,
+      };
+      appointment = new Appointment({
+        doctor: doctorId,
+        patient: null,
+        bookedBy: null,
+        booking_source: "RECEPTION",
+        registrationType: "receptionist registration",
+        date: appointmentDate,
+        startTime: time,
+        endTime: endTime,
+        duration: duration,
+        customDuration: customDuration || null,
+        isBackdated: isBackdated,
+        createdBy: createdByRole || "receptionist",
+        createdByRole: createdByRole,
+        mode: visitMode,
+        notes: message || "",
+        registrationData,
+        consultation: resolvedVisitReasonReception
+        ? {
+            visitReason: resolvedVisitReasonReception,
+            visitReasonVerified: false,
+            visitTypeVerified: true,
+          }
+          : undefined,
+        metadata: {
+          ...(req.body.metadata || {}),
+          overrideConflicts: overrideConflicts,
+          receptionistOverride: req.user && req.user.role === "receptionist",
+          ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+          isInternational: isInternational,
+          isWalkin,
+          needsAttention,
+        },
+      });
+      await appointment.save();
     }
 
-    // Prepare response data
     const responseData = {
       appointment,
       isNewUser,
@@ -1828,13 +1886,13 @@ exports.createReceptionAppointment = async (req, res) => {
         customDuration: customDuration ? `${customDuration} minutes` : null,
         isBackdated: isBackdated,
         overrideConflicts: overrideConflicts,
-        createdBy: req.user.role,
+        createdBy: createdByRole,
       }
     };
 
     res.status(201).json({
       success: true,
-      message: "Wizyta została umówiona pomyślnie przez recepcję",
+      message: patient ? "Wizyta została umówiona pomyślnie przez recepcję" : "Wizyta (pierwsza wizyta) została utworzona. Dokończ rejestrację pacjenta po podaniu PESEL.",
       data: responseData,
     });
   } catch (error) {
@@ -1965,6 +2023,314 @@ const formatDateToYYYYMMDD = (date) => {
   return `${d.getFullYear()}-${month}-${day}`;
 };
 
+/**
+ * Complete registration: assign visit to patient by PESEL (create patient if new, link if existing).
+ * POST /appointments/:visitId/complete-registration
+ * Body: either (pesel + optional patient data) or (isExisting: true + patientId) to link existing patient without PESEL.
+ */
+exports.completeRegistration = async (req, res) => {
+  try {
+    const { visitId } = req.params;
+    const appointment = await Appointment.findById(visitId);
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: "Wizyta nie znaleziona." });
+    }
+    if (appointment.patient) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejestracja dla tej wizyty została już zakończona.",
+      });
+    }
+
+    // Consents: prefer request body, fallback to visit's registrationData (from online booking)
+    const consentsFromVisit = Array.isArray(appointment.registrationData?.consents) ? appointment.registrationData.consents : [];
+
+    // isInternational: from body or from visit (so complete-registration keeps visit's flag when FE doesn't send it)
+    const fromBody = req.body.isInternationalPatient === true || String(req.body.isInternationalPatient || "").toLowerCase() === "true";
+    const fromVisit = !!(appointment.registrationData?.isInternationalPatient ?? appointment.metadata?.isInternational);
+    const isInternational = req.body.isInternationalPatient !== undefined && req.body.isInternationalPatient !== null && req.body.isInternationalPatient !== ""
+      ? fromBody
+      : fromVisit || fromBody;
+    let patientDoc = null;
+    let isExisting = false;
+    let peselWarning = null;
+    let pesel = null;
+
+    if (isInternational) {
+      // International patient (no PESEL): document number and key validated (same rigor as PESEL); key must be unique
+      const firstName = req.body.firstName != null ? String(req.body.firstName).trim() : "";
+      const lastName = req.body.lastName != null ? String(req.body.lastName).trim() : "";
+      const dateOfBirthRaw = req.body.dateOfBirth;
+      const documentCountry = req.body.documentCountry != null ? String(req.body.documentCountry).trim() : "";
+      const documentType = req.body.documentType != null ? String(req.body.documentType).trim() : "";
+      const docValidation = validateInternationalDocument({
+        documentNumber: req.body.documentNumber,
+        internationalPatientDocumentKey: req.body.internationalPatientDocumentKey,
+      });
+      if (!docValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: docValidation.warning || "W trybie międzynarodowym wymagane są: numer dokumentu i klucz dokumentu (internationalPatientDocumentKey).",
+        });
+      }
+      if (!firstName || !lastName || !dateOfBirthRaw || !documentCountry || !documentType) {
+        return res.status(400).json({
+          success: false,
+          message: "W trybie międzynarodowym wymagane są: imię, nazwisko, data urodzenia, kraj dokumentu i typ dokumentu.",
+        });
+      }
+      const existingByDocKey = await patient.findOne({
+        internationalPatientDocumentKey: docValidation.internationalPatientDocumentKey,
+        deleted: { $ne: true },
+      });
+      if (existingByDocKey) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+          existingPatientId: existingByDocKey._id.toString(),
+        });
+      }
+      const documents = (req.files || []).map((file) => createStandardizedDocument(file, "medical_record"));
+      const phoneCodeReq = req.body.phoneCode && String(req.body.phoneCode).trim() ? String(req.body.phoneCode).trim() : "+48";
+      const phoneFull = req.body.phone && String(req.body.phone).trim()
+        ? String(req.body.phone).replace(/\D/g, "").replace(/^0+/, "").trim()
+        : (req.body.mobileNumber && String(req.body.mobileNumber).replace(/\D/g, "").replace(/^0+/, "").trim()) || "";
+      const phoneToSave = phoneFull || `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
+      const streetVal = (req.body.street != null && req.body.street !== "undefined") ? String(req.body.street).trim() : "";
+      const zipCodeVal = (req.body.zipCode != null && req.body.zipCode !== "undefined") ? String(req.body.zipCode).trim() : "";
+      const cityVal = (req.body.city != null && req.body.city !== "undefined") ? String(req.body.city).trim() : "";
+      const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const newInternationalPatient = new patient({
+        name: { first: firstName, last: lastName },
+        email: emailVal || undefined,
+        phone: phoneToSave,
+        phoneCode: phoneFull ? phoneCodeReq : "+48",
+        password: hashedPassword,
+        role: "patient",
+        signupMethod: "email",
+        govtId: undefined,
+        npesei: patient.generateNpesei(),
+        internationalPatientDocumentKey: docValidation.internationalPatientDocumentKey,
+        documentCountry,
+        documentType,
+        documentNumber: docValidation.documentNumber,
+        patientId: `P-${Date.now()}`,
+        dateOfBirth: new Date(dateOfBirthRaw),
+        sex: req.body.sex || undefined,
+        smsConsentAgreed: !!req.body.smsConsentAgreed,
+        consents: (Array.isArray(req.body.consents) && req.body.consents.length) ? req.body.consents : consentsFromVisit,
+        address: streetVal || undefined,
+        pinCode: zipCodeVal || undefined,
+        city: cityVal || undefined,
+        isInternationalPatient: true,
+        documents,
+      });
+      const savedInternational = await newInternationalPatient.save();
+      patientDoc = await patient.findById(savedInternational._id).lean();
+      isExisting = false;
+    } else if (req.body.isExisting === true && req.body.patientId && mongoose.Types.ObjectId.isValid(req.body.patientId)) {
+      patientDoc = await patient.findById(req.body.patientId).lean();
+      if (!patientDoc || patientDoc.deleted) {
+        return res.status(404).json({
+          success: false,
+          message: "Pacjent nie znaleziony.",
+        });
+      }
+      isExisting = true;
+    } else {
+      const rawPesel = req.body.pesel;
+      pesel = rawPesel && String(rawPesel).replace(/\D/g, "");
+      if (!pesel || pesel.length !== 11) {
+        return res.status(400).json({
+          success: false,
+          message: "Prawidłowy numer PESEL (11 cyfr) jest wymagany do zakończenia rejestracji.",
+        });
+      }
+      const validation = validatePesel(pesel);
+      peselWarning = validation.warning || null;
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: validation.warning || "Nieprawidłowy format PESEL (11 cyfr).",
+        });
+      }
+      patientDoc = await patient.findOne({ govtId: pesel, deleted: { $ne: true } });
+      isExisting = !!patientDoc;
+    }
+
+    if (patientDoc && !isInternational) {
+      const { firstName, lastName, dateOfBirth, phone, phoneCode, mobileNumber, email, sex, street, zipCode, city } = req.body;
+      const updates = {};
+      if (firstName !== undefined || lastName !== undefined) {
+        updates.name = {
+          first: firstName !== undefined ? String(firstName).trim() : patientDoc.name?.first,
+          last: lastName !== undefined ? String(lastName).trim() : patientDoc.name?.last,
+        };
+      }
+      if (dateOfBirth !== undefined) updates.dateOfBirth = new Date(dateOfBirth);
+      if (email !== undefined) updates.email = email && email !== "undefined" ? String(email).trim() : "";
+      if (sex !== undefined) updates.sex = sex;
+      if (phone !== undefined || mobileNumber !== undefined || phoneCode !== undefined) {
+        const code = (phoneCode && String(phoneCode).trim()) || "+48";
+        const fullNum = phone && String(phone).trim()
+          ? String(phone).replace(/\D/g, "").replace(/^0+/, "")
+          : (mobileNumber && String(mobileNumber).replace(/\D/g, "").replace(/^0+/, "")) || "";
+        updates.phone = fullNum || patientDoc.phone || "";
+        updates.phoneCode = code;
+      }
+      if (street !== undefined && street !== "undefined") updates.address = String(street).trim();
+      if (zipCode !== undefined && zipCode !== "undefined") updates.pinCode = String(zipCode).trim();
+      if (city !== undefined && city !== "undefined") updates.city = String(city).trim();
+      if (req.body.smsConsentAgreed !== undefined) updates.smsConsentAgreed = !!req.body.smsConsentAgreed;
+      if (Array.isArray(req.body.consents) && req.body.consents.length) updates.consents = req.body.consents;
+      else if (consentsFromVisit.length) updates.consents = consentsFromVisit;
+      if (req.body.isInternationalPatient === true && !patientDoc.npesei) updates.npesei = patient.generateNpesei();
+      if (req.body.isInternationalPatient !== undefined) updates.isInternationalPatient = !!req.body.isInternationalPatient;
+      else updates.isInternationalPatient = !!isInternational;
+      if (Object.keys(updates).length > 0) {
+        await patient.updateOne({ _id: patientDoc._id }, { $set: updates });
+      }
+      patientDoc = await patient.findById(patientDoc._id).lean();
+    } else if (!patientDoc) {
+      const firstName = req.body.firstName || (req.body.name && String(req.body.name).trim().split(" ")[0]) || "Imię";
+      const lastName = req.body.lastName || (req.body.name && String(req.body.name).trim().split(" ").slice(1).join(" ")) || "Nazwisko";
+      const phoneCodeReq = req.body.phoneCode && String(req.body.phoneCode).trim() ? String(req.body.phoneCode).trim() : "+48";
+      const phoneFull = req.body.phone && String(req.body.phone).trim()
+        ? String(req.body.phone).replace(/\D/g, "").replace(/^0+/, "").trim()
+        : (req.body.mobileNumber && String(req.body.mobileNumber).replace(/\D/g, "").replace(/^0+/, "").trim()) || "";
+      const phoneToSave = phoneFull
+        ? phoneFull
+        : `__no_phone_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      const emailVal = req.body.email && req.body.email !== "undefined" ? String(req.body.email).trim() : "";
+      const streetVal = (req.body.street != null && req.body.street !== "undefined") ? String(req.body.street).trim() : "";
+      const zipCodeVal = (req.body.zipCode != null && req.body.zipCode !== "undefined") ? String(req.body.zipCode).trim() : "";
+      const cityVal = (req.body.city != null && req.body.city !== "undefined") ? String(req.body.city).trim() : "";
+      const isInternationalPatient = (req.body.isInternationalPatient !== undefined && req.body.isInternationalPatient !== null && req.body.isInternationalPatient !== "")
+        ? !!(req.body.isInternationalPatient === true || String(req.body.isInternationalPatient).toLowerCase() === "true")
+        : !!isInternational;
+      const tempPassword = APPOINTMENT_CONFIG.DEFAULT_TEMPORARY_PASSWORD;
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const newPatient = new patient({
+        name: { first: firstName, last: lastName },
+        email: emailVal || undefined,
+        phone: phoneToSave,
+        phoneCode: phoneFull ? phoneCodeReq : "+48",
+        password: hashedPassword,
+        role: "patient",
+        signupMethod: "email",
+        govtId: pesel,
+        ...(isInternationalPatient ? { npesei: patient.generateNpesei() } : {}),
+        patientId: `P-${Date.now()}`,
+        dateOfBirth: req.body.dateOfBirth ? new Date(req.body.dateOfBirth) : undefined,
+        sex: req.body.sex || undefined,
+        smsConsentAgreed: !!req.body.smsConsentAgreed,
+        consents: (Array.isArray(req.body.consents) && req.body.consents.length) ? req.body.consents : consentsFromVisit,
+        address: streetVal || undefined,
+        pinCode: zipCodeVal || undefined,
+        city: cityVal || undefined,
+        isInternationalPatient: isInternationalPatient || undefined,
+      });
+      const saved = await newPatient.save();
+      patientDoc = await patient.findById(saved._id).lean();
+    }
+
+    const patientDocRef = patientDoc && typeof patientDoc.toObject === "function" ? patientDoc.toObject() : patientDoc;
+    // Link visit to patient: existing (isExisting) or newly created
+    appointment.patient = patientDocRef._id;
+    appointment.bookedBy = patientDocRef._id;
+    await appointment.save();
+
+    const appointmentPopulated = await Appointment.findById(visitId)
+      .populate("patient", "name govtId npesei patientId dateOfBirth phone phoneCode email sex address pinCode city documentCountry documentType documentNumber internationalPatientDocumentKey documents")
+      .populate("doctor", "name")
+      .lean();
+
+    const maskNoPhone = (p) => {
+      if (!p || !p.phone || typeof p.phone !== "string") return p;
+      if (p.phone.startsWith("__no_phone_")) {
+        return { ...p, phone: "" };
+      }
+      return p;
+    };
+    if (appointmentPopulated?.patient) {
+      appointmentPopulated.patient = maskNoPhone(appointmentPopulated.patient);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: isExisting
+        ? "Rejestracja zakończona. Wizyta przypisana do istniejącego pacjenta."
+        : "Rejestracja zakończona. Utworzono nowego pacjenta i przypisano wizytę.",
+      appointment: appointmentPopulated,
+      patient: {
+        _id: patientDocRef._id,
+        patientId: patientDocRef.patientId,
+        name: patientDocRef.name,
+        govtId: patientDocRef.govtId || null,
+        npesei: patientDocRef.npesei || null,
+        documentCountry: patientDocRef.documentCountry || null,
+        documentType: patientDocRef.documentType || null,
+        documentNumber: patientDocRef.documentNumber || null,
+        internationalPatientDocumentKey: patientDocRef.internationalPatientDocumentKey || null,
+        phone: maskNoPhone(patientDocRef).phone,
+        phoneCode: patientDocRef.phoneCode || "+48",
+        street: patientDocRef.address || "",
+        zipCode: patientDocRef.pinCode || "",
+        city: patientDocRef.city || "",
+        ...(patientDocRef.documents && { documents: patientDocRef.documents }),
+      },
+      existing: isExisting,
+      ...(peselWarning && { peselWarning }),
+    });
+  } catch (error) {
+    console.error("Complete registration error:", error);
+    if (error.code === 11000) {
+      const msg = (error.message || "").toLowerCase();
+      const kv = error.keyValue || {};
+      const isPhone = msg.includes("phone") || "phone" in kv;
+      const isEmail = msg.includes("email") || "email" in kv;
+      const isGovtId = msg.includes("govtid") || msg.includes("govt_id") || "govtId" in kv;
+      if (isPhone) {
+        return res.status(409).json({
+          success: false,
+          message: "Ten numer telefonu jest już zarejestrowany w systemie.",
+        });
+      }
+      if (isEmail) {
+        return res.status(409).json({
+          success: false,
+          message: "Ten adres e-mail jest już zarejestrowany w systemie.",
+        });
+      }
+      if (isGovtId) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z tym numerem PESEL już istnieje w systemie. Użyj „Załaduj dane istniejącego pacjenta”.",
+        });
+      }
+      const isDocKey = msg.includes("internationalpatientdocumentkey") || "internationalPatientDocumentKey" in kv;
+      if (isDocKey) {
+        return res.status(409).json({
+          success: false,
+          message: "Pacjent z podanym kluczem dokumentu międzynarodowego już istnieje w systemie.",
+        });
+      }
+      const field = Object.keys(kv)[0] || "pole";
+      return res.status(409).json({
+        success: false,
+        message: `Dane pacjenta kolidują z istniejącym wpisem (zduplikowana wartość: ${field}).`,
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się zakończyć rejestracji.",
+      error: error.message,
+    });
+  }
+};
+
 exports.getAppointmentsByDoctor = async (req, res) => {
   try {
     const { doctorId } = req.params;
@@ -2001,7 +2367,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const appointments = await Appointment.find(query)
-      .populate("patient", "name email profilePicture sex dob")
+      .populate("patient", "name dateOfBirth email profilePicture sex patientId")
       .populate("doctor", "name email")
       .sort({ date: 1, startTime: 1 })
       .skip(skip)
@@ -2009,27 +2375,80 @@ exports.getAppointmentsByDoctor = async (req, res) => {
 
     const total = await Appointment.countDocuments(query);
 
-    const transformed = appointments.map((appt, index) => ({
-      id: appt._id.toString(),
-      name: `${appt.patient?.name.first || ""} ${
-        appt.patient?.name.last || ""
-      }`,
-      patient_id: appt.patient?._id || null,
-      username: `@${appt.patient?.name.first?.toLowerCase() || "user"}`,
-      avatar: appt.patient?.profilePicture || null,
-      sex: appt.patient?.sex || "Unknown",
-      mode: appt.mode || "offline",
-      joining_link: appt.joining_link || null,
-      age: calculateAge(appt.patient?.date),
-      status: appt.status || "Unknown",
-      date: formatDateToYYYYMMDD(appt.date),
-    }));
+    // Full-day counts (same date range), regardless of pagination
+    const liczbaWizytQuery = { ...query, status: { $in: ["booked", "checkedIn", "completed"] } };
+    const pozostaloWizytQuery = { ...query, status: { $in: ["booked", "checkedIn"] } };
+    const [liczbaWizyt, pozostaloWizyt] = await Promise.all([
+      Appointment.countDocuments(liczbaWizytQuery),
+      Appointment.countDocuments(pozostaloWizytQuery),
+    ]);
+
+    // patientId is on Patient discriminator; populate uses User and omits it. Fetch from Patient model.
+    const patientIds = [...new Set(appointments.map((a) => a.patient?._id?.toString()).filter(Boolean))];
+    const patientIdMap = new Map();
+    if (patientIds.length > 0) {
+      const patients = await patient
+        .find({ _id: { $in: patientIds.map((id) => new mongoose.Types.ObjectId(id)) } })
+        .select("patientId")
+        .lean();
+      patients.forEach((p) => {
+        if (p._id) patientIdMap.set(p._id.toString(), p.patientId != null ? String(p.patientId).trim() : null);
+      });
+    }
+
+    const rd = (a) => a?.registrationData;
+    const transformed = appointments.map((appt) => {
+      const fromReg = rd(appt);
+      const name = appt.patient
+        ? `${appt.patient?.name?.first || ""} ${appt.patient?.name?.last || ""}`.trim()
+        : (fromReg?.firstName || fromReg?.lastName
+            ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
+            : fromReg?.name || "");
+      const consultationType =
+        appt.consultation?.visitReason ||
+        appt.consultation?.consultationType ||
+        appt.metadata?.visitType ||
+        (appt.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni") ||
+        null;
+
+      const patientLessVisit = !appt.patient || !appt.patient._id;
+      const patientIdValue = appt.patient?._id
+        ? (patientIdMap.get(appt.patient._id.toString()) ?? null)
+        : null;
+      return {
+        id: appt._id.toString(),
+        name: name || "—",
+        patient_id: appt.patient?._id?.toString() || null,
+        patientId: patientIdValue,
+        patientLessVisit,
+        username: appt.patient?.name?.first
+          ? `@${appt.patient.name.first.toLowerCase()}`
+          : (fromReg?.firstName ? `@${String(fromReg.firstName).toLowerCase()}` : "—"),
+        avatar: appt.patient?.profilePicture || null,
+        sex: appt.patient?.sex ?? fromReg?.gender ?? fromReg?.sex ?? "Unknown",
+        mode: appt.mode || "offline",
+        joining_link: appt.joining_link || null,
+        age: appt.patient?.dateOfBirth
+          ? calculateAge(appt.patient.dateOfBirth)
+          : (fromReg?.dateOfBirth ? calculateAge(fromReg.dateOfBirth) : null),
+        status: appt.status || "Unknown",
+        date: formatDateToYYYYMMDD(appt.date),
+        startTime: appt.startTime || null,
+        endTime: appt.endTime || null,
+        consultationType,
+        visitType: consultationType,
+        visitReason: consultationType,
+        visitTypeVerified: Boolean(appt.consultation?.visitTypeVerified),
+      };
+    });
 
     res.status(200).json({
       success: true,
       total,
       page: parseInt(page),
       limit: parseInt(limit),
+      liczbaWizyt,
+      pozostaloWizyt,
       data: transformed,
     });
   } catch (error) {
@@ -2077,9 +2496,9 @@ exports.getAppointmentsByPatient = async (req, res) => {
 exports.updateAppointmentStatus = async (req, res) => {
   try {
     const { appointmentId } = req.params;
-    const { status } = req.body;
+    const { status, visitTypeVerified: bodyVisitTypeVerified } = req.body;
 
-    if (!["booked", "cancelled", "completed"].includes(status)) {
+    if (!["booked", "cancelled", "completed", "checkedIn", "no-show"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
@@ -2098,32 +2517,68 @@ exports.updateAppointmentStatus = async (req, res) => {
       });
     }
 
-    // Get doctor and patient details for SMS
-    const doctorDetails = await doctor.findById(appointment.doctor._id);
-    const patientDetails = await user.findById(appointment.patient._id);
+    const doctorDetails = await doctor.findById(appointment.doctor?._id);
+    const patientDetails = appointment.patient?._id
+      ? await user.findById(appointment.patient._id)
+      : null;
 
-    if (!doctorDetails || !patientDetails) {
+    if (!doctorDetails) {
       return res.status(404).json({
         success: false,
-        message: "Doctor or patient details not found",
+        message: "Doctor details not found",
       });
+    }
+
+    // Allow verifying visit type in the same request when completing (so frontend can send status: "completed" + visitTypeVerified: true in one call)
+    if (status === "completed" && bodyVisitTypeVerified === true) {
+      if (!appointment.consultation) appointment.consultation = {};
+      appointment.consultation.visitTypeVerified = true;
+    }
+
+    // Before completing: require visit type to be set and verified by doctor
+    if (status === "completed") {
+      const visitReasonResolved =
+        appointment.consultation?.visitReason ||
+        appointment.consultation?.consultationType ||
+        appointment.metadata?.visitType;
+      const hasVisitReason = visitReasonResolved && String(visitReasonResolved).trim();
+      const verifiedVisitType = Boolean(appointment.consultation?.visitTypeVerified);
+      // Allow closing when:
+      // - a visit reason exists
+      // - the visit type is verified
+      //
+      // Some legacy flows may not reliably flip `visitReasonVerified` while still
+      // setting `visitTypeVerified`. The FE expects "verify" to unblock completion.
+      if (!hasVisitReason || !verifiedVisitType) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację rodzaju wizyty przed zamknięciem.",
+          code: "VISIT_TYPE_NOT_VERIFIED",
+          visitReasonSet: !!hasVisitReason,
+          visitTypeVerified: verifiedVisitType,
+          visitReasonVerified: Boolean(appointment.consultation?.visitReasonVerified),
+        });
+      }
     }
 
     // Update appointment status
     appointment.status = status;
     await appointment.save();
 
-    // Send SMS notification
+    // Send SMS notification only when patient exists (visit-only appointments have no patient)
     let smsResult = null;
-    try {
-      smsResult = await sendAppointmentStatusSMS(
-        appointment,
-        patientDetails,
-        doctorDetails,
-        status
-      );
-    } catch (smsError) {
-      console.error("Error sending status update SMS:", smsError);
+    if (patientDetails) {
+      try {
+        smsResult = await sendAppointmentStatusSMS(
+          appointment,
+          patientDetails,
+          doctorDetails,
+          status
+        );
+      } catch (smsError) {
+        console.error("Error sending status update SMS:", smsError);
+      }
     }
 
     res.status(200).json({
@@ -2155,14 +2610,22 @@ exports.updateAppointmentStatus = async (req, res) => {
 exports.rescheduleAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
-    const { 
-      newDate, 
-      newStartTime, 
-      newEndTime, 
-      consultationType, 
+    const {
+      newDate: bodyNewDate,
+      newStartTime: bodyNewStartTime,
+      newEndTime: bodyNewEndTime,
+      date,
+      startTime,
+      endTime,
+      consultationType,
       smsToBeSent, // Used for this reschedule's notifications (one-time use)
       persistSmsConsent = false, // If true, skip sending all notifications (email and SMS); if false, send notifications based on smsToBeSent
     } = req.body;
+
+    // Accept both naming conventions: newDate/newStartTime/newEndTime or date/startTime/endTime
+    const newDate = bodyNewDate || date;
+    const newStartTime = bodyNewStartTime || startTime;
+    const newEndTime = bodyNewEndTime || endTime;
 
     // Validate required fields
     if (!newDate || !newStartTime) {
@@ -2211,15 +2674,27 @@ exports.rescheduleAppointment = async (req, res) => {
       });
     }
 
-    // Get doctor and patient details
-    const doctorDetails = await doctor.findById(appointment.doctor._id);
-    let patientDetails = await user.findById(appointment.patient._id);
+    // Visit-only appointments may have no patient; doctor is required for reschedule
+    if (!appointment.doctor) {
+      return res.status(400).json({
+        success: false,
+        message: "Nie można przełożyć wizyty bez przypisanego lekarza",
+      });
+    }
 
-    if (!doctorDetails || !patientDetails) {
+    const doctorId = appointment.doctor._id || appointment.doctor;
+    const doctorDetails = await doctor.findById(doctorId);
+    if (!doctorDetails) {
       return res.status(404).json({
         success: false,
-        message: "Nie znaleziono szczegółów lekarza lub pacjenta",
+        message: "Nie znaleziono szczegółów lekarza",
       });
+    }
+
+    let patientDetails = null;
+    if (appointment.patient) {
+      const patientId = appointment.patient._id || appointment.patient;
+      patientDetails = await user.findById(patientId);
     }
 
     // Note: persistSmsConsent field is now used to skip sending notifications
@@ -2247,7 +2722,7 @@ exports.rescheduleAppointment = async (req, res) => {
     endOfDay.setHours(23, 59, 59, 999);
 
     const existingAppointment = await Appointment.findOne({
-      doctor: appointment.doctor._id,
+      doctor: doctorId,
       date: { $gte: startOfDay, $lte: endOfDay },
       startTime: newStartTime,
       status: "booked",
@@ -2277,89 +2752,85 @@ exports.rescheduleAppointment = async (req, res) => {
     await appointment.save();
 
     // Send email notification if patient has email
-    // If persistSmsConsent is true, skip all notifications
+    // If persistSmsConsent is true, skip all notifications. If no patient (visit-only), skip.
     let emailSent = false;
+    let smsResult = null;
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    
+
     if (persistSmsConsent) {
       console.log("Skipping all notifications for reschedule: persistSmsConsent is true");
-    } else if (patientDetails.email && emailRegex.test(patientDetails.email)) {
-      try {
-        const formattedDate = formatDateForSMS(appointmentDate);
-        const formattedTime = formatTimeForSMS(newStartTime);
-        const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
-
-        const emailData = {
-          patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
-          doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
-          oldDate: oldFormattedDate,
-          oldTime: oldStartTime,
-          newDate: formattedDate,
-          newTime: newStartTime,
-          department: doctorDetails.specialization || "General",
-          mode: appointment.mode,
-        };
-
-        await sendEmail({
-          to: patientDetails.email,
-          subject: "Zmiana Terminu Wizyty – Centrum Medyczne 7",
-          html: createRescheduleEmailHtml(emailData),
-          text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została przełożona z ${oldFormattedDate} o godz ${oldStartTime} na ${formattedDate} o godz ${newStartTime}.`,
-        });
-
-        console.log(`Reschedule confirmation email sent to ${patientDetails.email}`);
-        emailSent = true;
-      } catch (emailError) {
-        console.error("Failed to send reschedule email:", emailError);
-      }
-    }
-
-    // Send SMS notification based on smsToBeSent (one-time use for this reschedule)
-    // If persistSmsConsent is true, skip all notifications
-    let smsResult = null;
-    
-    if (persistSmsConsent) {
-      console.log("Skipping SMS notification: persistSmsConsent is true");
+    } else if (!patientDetails) {
+      console.log("Skipping notifications for reschedule: no patient (visit-only or patient not found)");
     } else {
-      // Use smsToBeSent if provided, otherwise fall back to patient's database consent
-      const shouldSendSMS = smsToBeSent !== undefined 
-        ? Boolean(smsToBeSent) 
-        : Boolean(patientDetails.smsConsentAgreed);
-      
-      const hasPhone = Boolean(patientDetails.phone);
-      const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email);
-      
-      // For reschedule, send both email and SMS if consent is given and both channels are available
-      const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
-      
-      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
-      
-      if (shouldSendBoth) {
-      console.log("Sending SMS notification for rescheduled appointment");
-      try {
-        const formattedDate = formatDateForSMS(appointmentDate);
-        const formattedTime = formatTimeForSMS(newStartTime);
-        const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz. ${formattedTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+      // patientDetails is non-null here
+      if (patientDetails.email && emailRegex.test(patientDetails.email)) {
+        try {
+          const formattedDate = formatDateForSMS(appointmentDate);
+          const formattedTime = formatTimeForSMS(newStartTime);
+          const oldFormattedDate = format(oldDate, "dd.MM.yyyy");
 
-        const batchId = uuidv4();
-        await MessageReceipt.create({
-          content: message,
-          batchId,
-          recipient: {
-            userId: patientDetails._id.toString(),
-            phone: patientDetails.phone,
-          },
-          status: "PENDING",
-        });
+          const emailData = {
+            patientName: `${patientDetails.name.first} ${patientDetails.name.last}`,
+            doctorName: `Dr. ${doctorDetails.name.first} ${doctorDetails.name.last}`,
+            oldDate: oldFormattedDate,
+            oldTime: oldStartTime,
+            newDate: formattedDate,
+            newTime: newStartTime,
+            department: doctorDetails.specialization || "General",
+            mode: appointment.mode,
+          };
 
-        smsResult = await sendSMS(patientDetails.phone, message);
-        console.log("SMS sent successfully for rescheduled appointment");
-      } catch (smsError) {
-        console.error(
-          "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
-          smsError
-        );
+          await sendEmail({
+            to: patientDetails.email,
+            subject: "Zmiana Terminu Wizyty – Centrum Medyczne 7",
+            html: createRescheduleEmailHtml(emailData),
+            text: `Twoja wizyta u dr ${doctorDetails.name.first} ${doctorDetails.name.last} została przełożona z ${oldFormattedDate} o godz ${oldStartTime} na ${formattedDate} o godz ${newStartTime}.`,
+          });
+
+          console.log(`Reschedule confirmation email sent to ${patientDetails.email}`);
+          emailSent = true;
+        } catch (emailError) {
+          console.error("Failed to send reschedule email:", emailError);
+        }
       }
+
+      // Send SMS notification based on smsToBeSent (one-time use) or patient's DB consent
+      const shouldSendSMS =
+        smsToBeSent !== undefined
+          ? Boolean(smsToBeSent)
+          : Boolean(patientDetails.smsConsentAgreed);
+      const hasPhone = Boolean(patientDetails.phone);
+      const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email || "");
+      const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
+
+      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
+
+      if (shouldSendBoth) {
+        console.log("Sending SMS notification for rescheduled appointment");
+        try {
+          const formattedDate = formatDateForSMS(appointmentDate);
+          const formattedTime = formatTimeForSMS(newStartTime);
+          const message = `Twoja wizyta u dr ${doctorDetails.name.last} została przełożona na ${formattedDate} o godz. ${formattedTime} w naszej placówce. Prosimy o kontakt telefoniczny w celu zmiany terminu.`;
+
+          const batchId = uuidv4();
+          await MessageReceipt.create({
+            content: message,
+            batchId,
+            recipient: {
+              userId: patientDetails._id.toString(),
+              phone: patientDetails.phone,
+            },
+            status: "PENDING",
+          });
+
+          smsResult = await sendSMS(patientDetails.phone, message);
+          console.log("SMS sent successfully for rescheduled appointment");
+        } catch (smsError) {
+          console.error(
+            "Wystąpił błąd podczas wysyłania powiadomienia SMS:",
+            smsError
+          );
+        }
       } else {
         if (!shouldSendSMS) {
           console.log(`SMS not sent - consent not given for this reschedule (smsToBeSent: ${smsToBeSent}).`);
@@ -2398,12 +2869,6 @@ exports.rescheduleAppointment = async (req, res) => {
 
 exports.getAppointmentsDashboard = async (req, res) => {
   try {
-    // Authorization check for doctors - they can only see their own appointments
-    if (req.user && req.user.role === "doctor") {
-      // Add doctor filter to only show appointments for the authenticated doctor
-      req.query.doctor = req.user.id || req.user.d_id;
-    }
-
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const sortBy = req.query.sortBy || "date";
@@ -2411,53 +2876,85 @@ exports.getAppointmentsDashboard = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    // Get today's date at 00:00:00 in Poland timezone
+    // Upcoming only: from today 00:00 in Poland timezone; status = booked (reserved) only, no completed/cancelled/etc.
     const todayUTC = new Date();
     const todayInPoland = toZonedTime(todayUTC, "Europe/Warsaw");
     const today = new Date(todayInPoland);
     today.setHours(0, 0, 0, 0);
 
-    // Query only upcoming appointments
     const filter = {
-      status: { $nin: ["cancelled"] },
+      status: "booked",
       date: { $gte: today },
+      patient: { $ne: null },
     };
 
-    // Add doctor filter if provided (for doctor authorization)
-    if (req.query.doctor) {
-      filter.doctor = req.query.doctor;
+    // Doctor token → only that doctor's appointments. Admin/receptionist → all.
+    if (req.user && req.user.role === "doctor") {
+      filter.doctor = req.user.id || req.user.d_id;
     }
 
     const appointments = await Appointment.find(filter)
       .sort({ [sortBy]: order })
       .skip(skip)
       .limit(limit)
-      .populate("doctor patient bookedBy");
+      .populate("doctor", "name profilePicture")
+      .populate("patient", "name")
+      .lean();
 
     const total = await Appointment.countDocuments(filter);
 
     const formattedAppointments = await Promise.all(
       appointments.map(async (appt) => {
         const doctorUser = appt.doctor;
-        console.log(doctorUser, "doctorUser");
-        const doctorProfile = await doctor
-          .findOne({
-            _id: doctorUser._id,
-          })
-          .populate("specialization");
-        console.log(doctorProfile, "doctorProfile");
+        let doctorName = "Unassigned";
+        let specialty = "General";
+        let avatar = "/api/placeholder/40/40";
+
+        if (doctorUser) {
+          doctorName = `${doctorUser.name?.first || ""} ${doctorUser.name?.last || ""}`.trim() || "Doctor";
+          avatar = doctorUser.profilePicture || avatar;
+          const doctorProfile = await doctor
+            .findOne({ _id: doctorUser._id })
+            .populate("specialization")
+            .lean();
+          specialty = doctorProfile?.specialization?.[0]?.name || "General";
+        }
+
+        const fromReg = appt.registrationData;
+        const patientName = appt.patient
+          ? `${appt.patient.name?.first || ""} ${appt.patient.name?.last || ""}`.trim()
+          : (fromReg?.firstName || fromReg?.lastName
+            ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
+            : fromReg?.name || null);
+
+        const dateStr = new Date(appt.date).toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
+        const timeStr = `${appt.startTime || ""} - ${appt.endTime || ""}`.trim();
 
         return {
           id: appt._id,
-          name: `Dr. ${doctorUser.name.first} ${doctorUser.name.last}`,
-          specialty: doctorProfile?.specialization?.[0]?.name || "General",
-          avatar: doctorUser.profilePicture || `/api/placeholder/40/40`,
-          date: new Date(appt.date).toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          }),
-          time: `${appt.startTime} - ${appt.endTime}`,
+          appointmentId: appt._id,
+          name: doctorName,
+          specialty,
+          avatar,
+          date: dateStr,
+          time: timeStr,
+          doctor: {
+            id: doctorUser?._id,
+            name: doctorName,
+            specialty,
+            avatar,
+          },
+          patientName: patientName || null,
+          patientId: appt.patient?.patientId || null,
+          patientObjectId: appt.patient?._id || null,
+          status: appt.status || "booked",
+          mode: appt.mode || "offline",
+          startTime: appt.startTime,
+          endTime: appt.endTime,
         };
       })
     );
@@ -2503,27 +3000,28 @@ exports.cancelAppointment = async (req, res) => {
     appointment.status = "cancelled";
     await appointment.save();
 
-    // Send SMS notification only if requested
+    // Send SMS notification only if requested and appointment has a patient (visit-only has no patient)
     let smsResult = null;
     if (sendSMSNotification) {
       try {
-        // Get doctor and patient details for SMS
-        const doctorDetails = await doctor.findById(appointment.doctor._id);
-        const patientDetails = await user.findById(appointment.patient?._id);
+        const doctorDetails = await doctor.findById(appointment.doctor?._id);
+        const patientDetails = appointment.patient?._id
+          ? await user.findById(appointment.patient._id)
+          : null;
 
-        if (!doctorDetails || !patientDetails) {
-          return res.status(404).json({
+        if (doctorDetails && patientDetails) {
+          smsResult = await sendAppointmentStatusSMS(
+            appointment,
+            patientDetails,
+            doctorDetails,
+            "cancelled"
+          );
+        } else {
+          smsResult = {
             success: false,
-            message: "Doctor or patient details not found",
-          });
+            error: !appointment.patient ? "Visit-only appointment - no patient to notify" : "Doctor or patient details not found",
+          };
         }
-
-        smsResult = await sendAppointmentStatusSMS(
-          appointment,
-          patientDetails,
-          doctorDetails,
-          "cancelled"
-        );
       } catch (smsError) {
         console.error("Error sending cancellation SMS:", smsError);
         smsResult = {
@@ -2681,6 +3179,10 @@ exports.updateAppointmentDetails = async (req, res) => {
       treatmentStatus,
       roomNumber,
       id: patientId,
+      bloodPressureSystolic,
+      bloodPressureDiastolic,
+      pulse,
+      oxygenSaturation,
     } = patientData;
 
     console.log("patient id ", roomNumber, riskStatus, treatmentStatus);
@@ -2698,6 +3200,10 @@ exports.updateAppointmentDetails = async (req, res) => {
             treatmentStatus,
             roomNumber,
             riskStatus,
+            bloodPressureSystolic: bloodPressureSystolic ?? null,
+            bloodPressureDiastolic: bloodPressureDiastolic ?? null,
+            pulse: pulse ?? null,
+            oxygenSaturation: oxygenSaturation ?? null,
           },
           { new: true }
         );
@@ -3071,6 +3577,118 @@ exports.deleteReport = async (req, res) => {
   }
 };
 
+/**
+ * Get consents and basic visit/patient data for a visit (appointment).
+ * For visits with a linked patient: returns patient consents + patient details.
+ * For visit-only: returns registrationData.consents + registrationData fields.
+ * FE can use this to display and update name, email, phone, etc. (update via PUT appointment details or complete-registration).
+ *
+ * GET /appointments/:visitId/consents
+ */
+exports.getVisitConsents = async (req, res) => {
+  try {
+    const { visitId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(visitId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid visit ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(visitId)
+      .select("patient registrationData")
+      .lean();
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Visit not found",
+      });
+    }
+
+    let consents = [];
+    let source = "registration";
+    let patientData = {
+      name: null,
+      firstName: null,
+      lastName: null,
+      email: null,
+      phone: null,
+      phoneCode: null,
+      sex: null,
+      dateOfBirth: null,
+      govtId: null,
+    };
+
+    if (appointment.patient && appointment.patient._id) {
+      const patientDoc = await patient
+        .findById(appointment.patient._id)
+        .select("consents name email phone phoneCode sex dateOfBirth govtId")
+        .lean();
+      if (patientDoc) {
+        source = "patient";
+        const raw = patientDoc.consents;
+        if (Array.isArray(raw)) {
+          consents = raw;
+        } else if (typeof raw === "string") {
+          try {
+            consents = JSON.parse(raw) || [];
+          } catch {
+            consents = [];
+          }
+        }
+        const first = patientDoc.name?.first || "";
+        const last = patientDoc.name?.last || "";
+        patientData = {
+          name: [first, last].filter(Boolean).join(" ") || null,
+          firstName: first || null,
+          lastName: last || null,
+          email: patientDoc.email && String(patientDoc.email).trim() ? patientDoc.email.trim() : null,
+          phone: patientDoc.phone && String(patientDoc.phone).trim() ? patientDoc.phone : null,
+          phoneCode: patientDoc.phoneCode && String(patientDoc.phoneCode).trim() ? patientDoc.phoneCode : null,
+          sex: patientDoc.sex && String(patientDoc.sex).trim() ? patientDoc.sex : null,
+          dateOfBirth: patientDoc.dateOfBirth ? patientDoc.dateOfBirth : null,
+          govtId: patientDoc.govtId && String(patientDoc.govtId).trim() ? patientDoc.govtId : null,
+        };
+      }
+    }
+
+    if (source === "registration" && appointment.registrationData) {
+      const rd = appointment.registrationData;
+      if (Array.isArray(rd.consents)) consents = rd.consents;
+      const firstName = rd.firstName != null ? String(rd.firstName).trim() : (rd.name ? String(rd.name).trim().split(" ")[0] : null);
+      const lastName = rd.lastName != null ? String(rd.lastName).trim() : (rd.name && rd.name.trim().split(" ").length > 1 ? rd.name.trim().split(" ").slice(1).join(" ") : null);
+      const fullName = rd.name && String(rd.name).trim() ? rd.name.trim() : [firstName, lastName].filter(Boolean).join(" ") || null;
+      patientData = {
+        name: fullName,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        email: rd.email && String(rd.email).trim() ? rd.email.trim() : null,
+        phone: rd.phone && String(rd.phone).trim() ? rd.phone : null,
+        phoneCode: rd.phoneCode && String(rd.phoneCode).trim() ? rd.phoneCode : null,
+        sex: rd.sex && String(rd.sex).trim() ? rd.sex : null,
+        dateOfBirth: rd.dateOfBirth ? rd.dateOfBirth : null,
+        govtId: rd.govtId && String(rd.govtId).trim() ? rd.govtId : null,
+      };
+    }
+
+    return res.status(200).json({
+      success: true,
+      visitId,
+      source,
+      consents,
+      patientData,
+    });
+  } catch (error) {
+    console.error("Error fetching visit consents:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch visit consents",
+      error: error.message,
+    });
+  }
+};
+
 // Get appointment details including consultation, tests, and medications
 exports.getAppointmentDetails = async (req, res) => {
   try {
@@ -3083,7 +3701,6 @@ exports.getAppointmentDetails = async (req, res) => {
       });
     }
 
-    // Get appointment with basic population
     const appointment = await Appointment.findById(id)
       .populate("doctor", "name.first name.last")
       .populate("patient", "name.first name.last")
@@ -3096,28 +3713,41 @@ exports.getAppointmentDetails = async (req, res) => {
       });
     }
 
-    // Manually fetch patient data to get govtId and other fields
-    const patientData = await patient.findById(appointment.patient._id).lean();
-    
-    // Create appointmentData object with all required fields
-    const appointmentData = {
-      ...appointment,
-      patient: {
-        _id: appointment.patient._id,
-        name: appointment.patient.name,
-        patientId: patientData?.patientId || null,
-        age: patientData?.age || null,
-        dateOfBirth: patientData?.dateOfBirth || null,
-        height: patientData?.height || null,
-        weight: patientData?.weight || null,
-        bloodPressure: patientData?.bloodPressure || null,
-        temperature: patientData?.temperature || null,
-        riskStatus: patientData?.riskStatus || null,
-        treatmentStatus: patientData?.treatmentStatus || null,
-        roomNumber: patientData?.roomNumber || null,
-        govtId: patientData?.govtId || null
-      }
-    };
+    let appointmentData;
+    if (appointment.patient && appointment.patient._id) {
+      const patientData = await patient.findById(appointment.patient._id).lean();
+      appointmentData = {
+        ...appointment,
+        booking_source: appointment.booking_source || null,
+        registrationData: appointment.registrationData || null,
+        patient: {
+          _id: appointment.patient._id,
+          name: appointment.patient.name,
+          patientId: patientData?.patientId || null,
+          age: patientData?.age || null,
+          dateOfBirth: patientData?.dateOfBirth || null,
+          height: patientData?.height ?? null,
+          weight: patientData?.weight ?? null,
+          bloodPressure: patientData?.bloodPressure ?? null,
+          temperature: patientData?.temperature ?? null,
+          bloodPressureSystolic: patientData?.bloodPressureSystolic ?? null,
+          bloodPressureDiastolic: patientData?.bloodPressureDiastolic ?? null,
+          pulse: patientData?.pulse ?? null,
+          oxygenSaturation: patientData?.oxygenSaturation ?? null,
+          riskStatus: patientData?.riskStatus || null,
+          treatmentStatus: patientData?.treatmentStatus || null,
+          roomNumber: patientData?.roomNumber || null,
+          govtId: patientData?.govtId || null
+        }
+      };
+    } else {
+      appointmentData = {
+        ...appointment,
+        booking_source: appointment.booking_source || null,
+        registrationData: appointment.registrationData || null,
+        patient: null,
+      };
+    }
 
     // appointmentData is already defined above, no need to redeclare
 
@@ -3471,6 +4101,14 @@ exports.updateConsultation = async (req, res) => {
 
     // Prepare consultation update data
     const consultationUpdate = {
+      visitReason:
+        consultationData.visitReason !== undefined
+          ? (consultationData.visitReason && consultationData.visitReason.trim()) || null
+          : appointment.consultation?.visitReason,
+      visitTypeVerified:
+        consultationData.visitTypeVerified !== undefined
+          ? Boolean(consultationData.visitTypeVerified)
+          : appointment.consultation?.visitTypeVerified,
       consultationType:
         consultationData.consultationType ||
         appointment.consultation?.consultationType,
@@ -3538,10 +4176,16 @@ exports.updateConsultation = async (req, res) => {
       consultationUpdate.consultationDate = new Date();
     }
 
-    // Update the appointment
+    const updatePayload = { consultation: consultationUpdate };
+    if (consultationUpdate.visitReason) {
+      updatePayload.metadata = {
+        ...(appointment.metadata && typeof appointment.metadata === "object" ? appointment.metadata : {}),
+        visitType: consultationUpdate.visitReason,
+      };
+    }
     const updatedAppointment = await Appointment.findByIdAndUpdate(
       id,
-      { consultation: consultationUpdate },
+      updatePayload,
       { new: true, runValidators: true }
     );
 
@@ -3679,7 +4323,25 @@ exports.getAppointments = async (req, res) => {
       appointmentId,
       searchTerm,
       isClinicIp,
+      // Clinic-only filter: when true and isClinicIp=true, return only patient-less (visit-only) appointments
+      patientLessOnly,
+      // Appointment type (visit reason): filter by consultation.visitReason / metadata.visitType (e.g. "Konsultacja pierwszorazowa" or "Badanie USG")
+      visitType: visitTypeParam,
+      visitReason: visitReasonParam,
+      // Consultation form: "online" | "offline" – filter by appointment.mode
+      mode: modeParam,
     } = req.query;
+
+    // Support both visitReason and visitType query params (same filter)
+    const visitReasonOrType =
+      (visitReasonParam && String(visitReasonParam).trim()) ||
+      (visitTypeParam && String(visitTypeParam).trim());
+
+    // Derived flags
+    const visitOnlyFilter =
+      patientLessOnly === "true" ||
+      patientLessOnly === true ||
+      patientLessOnly === "1";
 
     // Validate pagination parameters
     const pageNum = parseInt(page);
@@ -3738,16 +4400,27 @@ exports.getAppointments = async (req, res) => {
       }
     }
 
-    // Doctor filter
-    if (doctorId) {
-      // Validate doctorId format
-      if (!mongoose.Types.ObjectId.isValid(doctorId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid doctor ID format"
-        });
+    // Doctor filter: accept doctorId as User _id or as doctor d_id (resolve to User _id for appointment query)
+    let resolvedDoctorId = null;
+    if (doctorId && String(doctorId).trim()) {
+      const idStr = String(doctorId).trim();
+      if (mongoose.Types.ObjectId.isValid(idStr)) {
+        const doctorUser = await user.findOne(
+          { role: "doctor", $or: [{ _id: new mongoose.Types.ObjectId(idStr) }, { d_id: idStr }] },
+          { _id: 1 }
+        ).lean();
+        if (doctorUser) {
+          resolvedDoctorId = doctorUser._id;
+        } else {
+          resolvedDoctorId = new mongoose.Types.ObjectId(idStr);
+        }
+      } else {
+        const doctorUser = await user.findOne({ role: "doctor", d_id: idStr }, { _id: 1 }).lean();
+        if (doctorUser) resolvedDoctorId = doctorUser._id;
       }
-      query.doctor = new mongoose.Types.ObjectId(doctorId);
+      if (resolvedDoctorId) {
+        query.doctor = resolvedDoctorId;
+      }
     }
 
     // Appointment ID filter
@@ -3773,42 +4446,7 @@ exports.getAppointments = async (req, res) => {
 
     // Handle isClinicIp=true case - Group by date but keep response format the same
     if (isClinicIp === "true") {
-      // Get appointments using aggregation pipeline for better search
-      let appointmentsPipeline = [
-        // First lookup to get patient details
-        {
-          $lookup: {
-            from: "users",
-            localField: "patient",
-            foreignField: "_id",
-            as: "patientData",
-          },
-        },
-        // Unwind the patient data array
-        {
-          $unwind: "$patientData",
-        },
-        // Filter out deleted patients
-        {
-          $match: {
-            "patientData.deleted": { $ne: true }
-          }
-        },
-        // Lookup to get doctor details
-        {
-          $lookup: {
-            from: "users",
-            localField: "doctor",
-            foreignField: "_id",
-            as: "doctorData",
-          },
-        },
-        {
-          $unwind: "$doctorData",
-        },
-      ];
-
-      // Build the match conditions for the clinic case
+      // Build the match conditions for the clinic case (used at start of pipeline and for search)
       const matchConditions = {};
       
       // Add base query conditions (status, date range, doctorId)
@@ -3818,6 +4456,11 @@ exports.getAppointments = async (req, res) => {
         } else {
           matchConditions.status = status.toLowerCase();
         }
+      }
+      // When filtering for visit-only (patientLessOnly=true) and no explicit status is provided,
+      // default to excluding cancelled visits so reception sees only active (non-cancelled) visit-only appointments.
+      if (visitOnlyFilter && (!status || status === "all")) {
+        matchConditions.status = { $ne: "cancelled" };
       }
 
       if (startDate || endDate) {
@@ -3842,17 +4485,23 @@ exports.getAppointments = async (req, res) => {
           }
           matchConditions.date.$lte = endDateObj;
         }
+        // When only startDate is sent (no endDate), treat as single "displayed day": that full day only so appointments for that day are returned
+        if (startDate && !endDate) {
+          const parts = String(startDate).trim().split("-");
+          if (parts.length >= 3) {
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            const d = parseInt(parts[2], 10);
+            if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+              matchConditions.date.$gte = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
+              matchConditions.date.$lte = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
+            }
+          }
+        }
       }
 
-      if (doctorId) {
-        // Validate doctorId format
-        if (!mongoose.Types.ObjectId.isValid(doctorId)) {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid doctor ID format"
-          });
-        }
-        matchConditions.doctor = new mongoose.Types.ObjectId(doctorId);
+      if (resolvedDoctorId) {
+        matchConditions.doctor = resolvedDoctorId;
       }
 
       if (appointmentId) {
@@ -3866,34 +4515,95 @@ exports.getAppointments = async (req, res) => {
         matchConditions._id = new mongoose.Types.ObjectId(appointmentId);
       }
 
-      // Add base conditions if they exist
-      if (Object.keys(matchConditions).length > 0) {
-        appointmentsPipeline.push({
-          $match: matchConditions,
+      // Visit type / visit reason filter (Rodzaj wizyty): match consultation.visitReason or metadata.visitType
+      if (visitReasonOrType) {
+        const vt = String(visitReasonOrType).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const vtRe = new RegExp(vt, "i");
+        matchConditions.$and = matchConditions.$and || [];
+        matchConditions.$and.push({
+          $or: [
+            { "consultation.visitReason": vtRe },
+            { "metadata.visitType": vtRe },
+            { "consultation.consultationType": vtRe },
+          ],
         });
       }
 
-      // Add search conditions if searchTerm exists
-      if (searchTerm) {
+      // Consultation form filter (in-person vs online): appointment.mode
+      if (modeParam && String(modeParam).trim()) {
+        const modeVal = String(modeParam).trim().toLowerCase();
+        if (modeVal === "online" || modeVal === "offline") {
+          matchConditions.mode = modeVal;
+        }
+      }
+
+      // Pipeline: match first (include all appointment filters), then lookup patient/doctor.
+      // Use preserveNullAndEmptyArrays on patient unwind so visit-only (no patient) appointments are included.
+      let appointmentsPipeline = [];
+      if (Object.keys(matchConditions).length > 0) {
+        appointmentsPipeline.push({ $match: matchConditions });
+      }
+      appointmentsPipeline.push(
+        {
+          $lookup: {
+            from: "users",
+            localField: "patient",
+            foreignField: "_id",
+            as: "patientData",
+          },
+        },
+        // Keep visit-only appointments: do not drop when patient is null
+        { $unwind: { path: "$patientData", preserveNullAndEmptyArrays: true } },
+        // Exclude only when patient exists and is deleted
+        {
+          $match: {
+            $or: [
+              { patientData: { $exists: false } },
+              { patientData: null },
+              { "patientData.deleted": { $ne: true } },
+            ],
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "doctor",
+            foreignField: "_id",
+            as: "doctorData",
+          },
+        },
+        { $unwind: "$doctorData" }
+      );
+
+      // Clinic-only filter: when visitOnlyFilter is true, keep only visit-only (no patient) appointments
+      if (visitOnlyFilter) {
         appointmentsPipeline.push({
           $match: {
             $or: [
-              // Patient name search (first and last)
-              {
-                "patientData.name.first": { $regex: searchTerm, $options: "i" },
-              },
-              {
-                "patientData.name.last": { $regex: searchTerm, $options: "i" },
-              },
-              // Full name search (combined first and last)
+              { patient: null },
+              { patientData: { $exists: false } },
+              { patientData: null },
+            ],
+          },
+        });
+      }
+
+      // Add search conditions if searchTerm exists (include registrationData for visit-only)
+      if (searchTerm) {
+        const searchRegex = { $regex: searchTerm, $options: "i" };
+        appointmentsPipeline.push({
+          $match: {
+            $or: [
+              { "patientData.name.first": searchRegex },
+              { "patientData.name.last": searchRegex },
               {
                 $expr: {
                   $regexMatch: {
                     input: {
                       $concat: [
-                        "$patientData.name.first",
+                        { $ifNull: ["$patientData.name.first", ""] },
                         " ",
-                        "$patientData.name.last",
+                        { $ifNull: ["$patientData.name.last", ""] },
                       ],
                     },
                     regex: searchTerm,
@@ -3901,45 +4611,25 @@ exports.getAppointments = async (req, res) => {
                   },
                 },
               },
-              // Patient contact details
-              { "patientData.email": { $regex: searchTerm, $options: "i" } },
-              { "patientData.phone": { $regex: searchTerm, $options: "i" } },
-              // Patient ID
-              {
-                "patientData.patientId": { $regex: searchTerm, $options: "i" },
-              },
-              // Appointment details
-              { notes: { $regex: searchTerm, $options: "i" } },
-              {
-                "consultation.consultationNotes": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
-              {
-                "consultation.description": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
-              {
-                "consultation.interview": { $regex: searchTerm, $options: "i" },
-              },
-              {
-                "consultation.physicalExamination": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
-              {
-                "consultation.treatment": { $regex: searchTerm, $options: "i" },
-              },
-              {
-                "consultation.recommendations": {
-                  $regex: searchTerm,
-                  $options: "i",
-                },
-              },
+              { "patientData.email": searchRegex },
+              { "patientData.phone": searchRegex },
+              { "patientData.patientId": searchRegex },
+              { "patientData.govtId": searchRegex },
+              { tempPesel: searchRegex },
+              { "registrationData.pendingPesel": searchRegex },
+              { notes: searchRegex },
+              { "consultation.consultationNotes": searchRegex },
+              { "consultation.description": searchRegex },
+              { "consultation.interview": searchRegex },
+              { "consultation.physicalExamination": searchRegex },
+              { "consultation.treatment": searchRegex },
+              { "consultation.recommendations": searchRegex },
+              // Visit-only: search registrationData
+              { "registrationData.firstName": searchRegex },
+              { "registrationData.lastName": searchRegex },
+              { "registrationData.name": searchRegex },
+              { "registrationData.phone": searchRegex },
+              { "registrationData.email": searchRegex },
             ],
           },
         });
@@ -3950,7 +4640,7 @@ exports.getAppointments = async (req, res) => {
 
       let appointments = await Appointment.aggregate(appointmentsPipeline);
 
-      // Process appointments data
+      // Process appointments data (include visit-only: patient null, optional registrationData)
       let appointmentsWithAge = appointments.map((appointment) => {
         const patientData = appointment.patientData;
         let age = null;
@@ -3967,29 +4657,38 @@ exports.getAppointments = async (req, res) => {
           }
         }
 
+        const hasPatient = patientData && (patientData._id || patientData.id);
+        const mode = appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline";
         return {
           id: appointment._id,
+          _id: appointment._id,
           date: appointment.date,
           startTime: appointment.startTime,
           endTime: appointment.endTime,
           meetLink: appointment?.joining_link || "",
           status: appointment.status,
-          mode: appointment.mode,
+          mode,
+          modeDisplay: mode === "online" ? "online" : "in-person",
           checkIn: appointment.checkedIn,
           checkInDate: appointment.checkInDate,
-          patient: {
-            patient_status: patientData?.status,
-            id: patientData?._id,
-            patientId: patientData?.patientId,
-            name: patientData
-              ? `${patientData.name.first} ${patientData.name.last}`
-              : null,
-            sex: patientData?.sex,
-            age: age,
-            phoneNumber: patientData?.phone,
-            profilePicture: patientData?.profilePicture || null,
-            email: patientData?.email,
-          },
+          patient: hasPatient
+            ? {
+                patient_status: patientData?.status,
+                id: patientData?._id,
+                _id: patientData?._id,
+                patientId: patientData?.patientId,
+                name: `${patientData.name?.first || ""} ${patientData.name?.last || ""}`.trim() || null,
+                sex: patientData?.sex,
+                age: age,
+                phoneNumber: patientData?.phone,
+                profilePicture: patientData?.profilePicture || null,
+                email: patientData?.email,
+              }
+            : null,
+          patient_id: hasPatient ? patientData?._id : null,
+          isVisitOnly: !hasPatient,
+          registrationData: appointment.registrationData || null,
+          registrationType: appointment.registrationType || "online registration",
           doctor: appointment.doctorData
             ? {
                 id: appointment.doctorData._id,
@@ -3998,6 +4697,11 @@ exports.getAppointments = async (req, res) => {
               }
             : null,
           metadata: appointment.metadata || {},
+          isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
+          role: appointment.createdByRole != null ? appointment.createdByRole : "online",
+          visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
+          visitReason: appointment.consultation?.visitReason || appointment.consultation?.consultationType || appointment.metadata?.visitType || (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) || null,
+          visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         };
       });
 
@@ -4052,7 +4756,7 @@ exports.getAppointments = async (req, res) => {
           ...patientQuery,
         })
         .select(
-          "name email profilePicture sex dateOfBirth patientId status phone consultingDoctor"
+          "name email profilePicture sex dateOfBirth patientId status phone consultingDoctor govtId"
         )
         .sort({ "name.first": 1 })
         .lean();
@@ -4069,7 +4773,8 @@ exports.getAppointments = async (req, res) => {
             fullName.includes(searchLower) ||
             (patient.email && patient.email.toLowerCase().includes(searchLower)) ||
             (patient.phone && patient.phone.includes(searchTerm)) ||
-            (patient.patientId && patient.patientId.toLowerCase().includes(searchLower))
+            (patient.patientId && patient.patientId.toLowerCase().includes(searchLower)) ||
+            (patient.govtId && patient.govtId.includes(searchTerm))
           );
         });
       }
@@ -4078,11 +4783,25 @@ exports.getAppointments = async (req, res) => {
         status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
       : {})
       
-      // Build appointment query with all filters (but without search term for now)
+      // Build appointment query. Non-clinic: only appointments with a patient (exclude visit-only). Clinic (isClinicIp true) includes visit-only in its branch above.
       let appointmentQuery;
       try {
+        const visitReasonMatch = visitReasonOrType
+          ? (() => {
+              const vt = String(visitReasonOrType).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const vtRe = new RegExp(vt, "i");
+              return {
+                $or: [
+                  { "consultation.visitReason": vtRe },
+                  { "metadata.visitType": vtRe },
+                  { "consultation.consultationType": vtRe },
+                ],
+              };
+            })()
+          : {};
         appointmentQuery = {
-        ...(doctorId ? { doctor: new mongoose.Types.ObjectId(doctorId) } : {}),
+        patient: { $ne: null },
+        ...(resolvedDoctorId ? { doctor: resolvedDoctorId } : {}),
         ...(appointmentId ? { _id: new mongoose.Types.ObjectId(appointmentId) } : {}),
         ...(status && status !== "all" && status !== "no_appointment" ? 
           status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
@@ -4111,6 +4830,7 @@ exports.getAppointments = async (req, res) => {
               },
             }
           : {}),
+        ...visitReasonMatch,
         };
       } catch (dateError) {
         return res.status(400).json({
@@ -4121,28 +4841,14 @@ exports.getAppointments = async (req, res) => {
 
       console.log("appointment query", appointmentQuery);
 
-      // Get all appointments for these patients
-      const allAppointments = await Appointment.find({
-        ...appointmentQuery,
-        patient: { $in: allPatients.map(p => p._id) }
-      })
+      // Non-clinic: only appointments with patient (no visit-only)
+      const allAppointments = await Appointment.find(appointmentQuery)
         .populate("doctor", "name email")
-        .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture")
+        .populate("patient", "name email phone patientId status sex dateOfBirth profilePicture govtId")
         .sort({ date: 1 }) // Sort by date in ascending order
         .lean();
 
       console.log("allAppointments", allAppointments);
-
-      // Create a map of patient ID to their latest appointment
-      const patientAppointmentMap = new Map();
-      allAppointments.forEach((appointment) => {
-        const patientId = appointment.patient?._id.toString();
-        if (patientId && !patientAppointmentMap.has(patientId)) {
-          patientAppointmentMap.set(patientId, appointment);
-        }
-      });
-
-      console.log("patientAppointmentMap", patientAppointmentMap);
 
       // Helper function to calculate age
       const calculatePatientAge = (dateOfBirth) => {
@@ -4158,74 +4864,144 @@ exports.getAppointments = async (req, res) => {
         return age;
       };
 
-      // Process all patients
-      const processedPatients = allPatients.map((patient) => {
-        const patientId = patient._id.toString();
-        const latestAppointment = patientAppointmentMap.get(patientId);
-        const age = calculatePatientAge(patient.dateOfBirth);
-
-        if (latestAppointment) {
-          // Patient has appointments - use appointment data
-          return {
-            id: latestAppointment._id,
-            date: latestAppointment.date || new Date(),
-            startTime: latestAppointment.startTime || "00:00",
-            endTime: latestAppointment.endTime || "00:00",
-            meetLink: latestAppointment.joining_link || "",
-            status: latestAppointment.status || "zaplanowane",
-            mode: latestAppointment.mode || "klinika",
-            checkIn: latestAppointment.checkedIn || false,
-            checkInDate: latestAppointment.checkInDate || null,
-            isAppointment: true,
-            patient: {
-              patient_status: patient.status,
-              id: patient._id,
-              patientId: patient.patientId,
-              name: `${patient.name.first} ${patient.name.last}`,
-              sex: patient.sex,
-              age: age,
-              phoneNumber: patient.phone,
-              profilePicture: patient.profilePicture || null,
-              email: patient.email,
-            },
-            doctor: latestAppointment.doctor
-              ? {
-                  id: latestAppointment.doctor._id,
-                  name: `${latestAppointment.doctor.name.first} ${latestAppointment.doctor.name.last}`,
-                  email: latestAppointment.doctor.email,
-                }
-              : null,
-            metadata: latestAppointment.metadata || {},
-          };
-        } else {
-          // Patient has no appointments - create entry with no_appointment status
-          return {
-            id: null, // No appointment ID
-            date: new Date(), // Current date as placeholder
-            startTime: "00:00",
-            endTime: "00:00",
-            meetLink: "",
-            status: "no_appointment",
-            mode: "none",
-            checkIn: false,
-            checkInDate: null,
-            isAppointment: false,
-            patient: {
-              patient_status: patient.status,
-              id: patient._id,
-              patientId: patient.patientId,
-              name: `${patient.name.first} ${patient.name.last}`,
-              sex: patient.sex,
-              age: age,
-              phoneNumber: patient.phone,
-              profilePicture: patient.profilePicture || null,
-              email: patient.email,
-            },
-            doctor: null,
-            metadata: {},
-          };
+      // Non-clinic: one row per patient, showing only that patient's first visit (earliest date + time)
+      const sortedByFirstVisit = [...allAppointments].sort((a, b) => {
+        const dA = new Date(a.date);
+        const dB = new Date(b.date);
+        if (dA.getTime() !== dB.getTime()) return dA.getTime() - dB.getTime();
+        return (a.startTime || "00:00").localeCompare(b.startTime || "00:00");
+      });
+      const firstVisitByPatient = new Map(); // patientId -> appointment (first chronologically)
+      sortedByFirstVisit.forEach((apt) => {
+        const pid = apt.patient?._id?.toString();
+        if (!pid) return;
+        if (!firstVisitByPatient.has(pid)) {
+          firstVisitByPatient.set(pid, apt);
         }
       });
+
+      const appointmentRows = [];
+      const patientIdsInAppointments = new Set();
+      firstVisitByPatient.forEach((appointment) => {
+        const patientId = appointment.patient?._id?.toString();
+        if (patientId) {
+          patientIdsInAppointments.add(patientId);
+        }
+        const isVisitOnly = !appointment.patient || !appointment.patient._id;
+        const patientDoc = appointment.patient;
+        const age = patientDoc?.dateOfBirth ? calculatePatientAge(patientDoc.dateOfBirth) : null;
+        appointmentRows.push({
+          id: appointment._id,
+          _id: appointment._id,
+          date: appointment.date || new Date(),
+          startTime: appointment.startTime || "00:00",
+          endTime: appointment.endTime || "00:00",
+          meetLink: appointment.joining_link || "",
+          status: appointment.status || "zaplanowane",
+          mode: appointment.mode || "klinika",
+          checkIn: appointment.checkedIn || false,
+          checkInDate: appointment.checkInDate || null,
+          isAppointment: true,
+          patient: isVisitOnly
+            ? null
+            : {
+                patient_status: patientDoc?.status,
+                id: patientDoc._id,
+                _id: patientDoc._id,
+                patientId: patientDoc.patientId,
+                name: `${patientDoc.name?.first || ""} ${patientDoc.name?.last || ""}`.trim() || null,
+                sex: patientDoc?.sex,
+                age,
+                phoneNumber: patientDoc?.phone,
+                profilePicture: patientDoc?.profilePicture || null,
+                email: patientDoc?.email,
+                govtId: patientDoc?.govtId || null,
+              },
+          patient_id: isVisitOnly ? null : patientDoc?._id,
+          isVisitOnly,
+          tempPesel: appointment.tempPesel || null,
+          ...(appointment.registrationData && { registrationData: appointment.registrationData }),
+          registrationType: appointment.registrationType || "online registration",
+          doctor: appointment.doctor
+            ? {
+                id: appointment.doctor._id,
+                name: `${appointment.doctor.name.first} ${appointment.doctor.name.last}`,
+                email: appointment.doctor.email,
+              }
+            : null,
+          metadata: appointment.metadata || {},
+          isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
+          role: appointment.createdByRole != null ? appointment.createdByRole : "online",
+          visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
+          visitReason: appointment.consultation?.visitReason || appointment.consultation?.consultationType || appointment.metadata?.visitType || (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) || null,
+          visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
+        });
+      });
+
+      // Apply search to appointment rows (patient or registrationData)
+      let filteredAppointmentRows = appointmentRows;
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        filteredAppointmentRows = appointmentRows.filter((row) => {
+          if (row.patient) {
+            const name = (row.patient.name || "").toLowerCase();
+            const email = (row.patient.email || "").toLowerCase();
+            const phone = String(row.patient.phoneNumber || row.patient.phone || "");
+            const patientId = (row.patient.patientId || "").toLowerCase();
+            const govtId = String(row.patient.govtId || "");
+            return name.includes(searchLower) || email.includes(searchLower) || phone.includes(searchTerm) || patientId.includes(searchLower) || govtId.includes(searchTerm);
+          }
+          if (row.registrationData) {
+            const rd = row.registrationData;
+            const firstName = (rd.firstName || rd.name || "").toLowerCase();
+            const lastName = (rd.lastName || "").toLowerCase();
+            const name = (rd.name || "").toLowerCase();
+            const phone = String(rd.phone || "");
+            const email = (rd.email || "").toLowerCase();
+            const pendingPesel = String(rd.pendingPesel || "");
+            const matchReg = firstName.includes(searchLower) || lastName.includes(searchLower) || name.includes(searchLower) || phone.includes(searchTerm) || email.includes(searchLower) || pendingPesel.includes(searchTerm);
+            if (matchReg) return true;
+          }
+          if (row.tempPesel && String(row.tempPesel).includes(searchTerm)) return true;
+          return false;
+        });
+      }
+
+      // Add rows for patients who have no appointments (no_appointment)
+      const processedPatients = [
+        ...filteredAppointmentRows,
+        ...allPatients
+          .filter((p) => !patientIdsInAppointments.has(p._id.toString()))
+          .map((patient) => {
+            const age = calculatePatientAge(patient.dateOfBirth);
+            return {
+              id: null,
+              date: new Date(),
+              startTime: "00:00",
+              endTime: "00:00",
+              meetLink: "",
+              status: "no_appointment",
+              mode: "none",
+              checkIn: false,
+              checkInDate: null,
+              isAppointment: false,
+              patient: {
+                patient_status: patient.status,
+                id: patient._id,
+                patientId: patient.patientId,
+                name: `${patient.name.first} ${patient.name.last}`,
+                sex: patient.sex,
+                age: age,
+                phoneNumber: patient.phone,
+                profilePicture: patient.profilePicture || null,
+                email: patient.email,
+              },
+              doctor: null,
+              registrationType: null,
+              metadata: {},
+            };
+          }),
+      ];
 
              // Filter by status
        let filteredPatients = processedPatients;
@@ -4276,6 +5052,131 @@ exports.getAppointments = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch appointments",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get visit reason dictionary (categories + types) for registration and doctor verification.
+ * All values are in Polish. FE: show category dropdown → then type dropdown; send displayName as visitReason.
+ * @route GET /api/appointments/visit-reasons
+ */
+exports.getVisitReasons = async (req, res) => {
+  try {
+    const categories = getVisitReasonsConfig();
+    res.status(200).json({
+      success: true,
+      data: { categories },
+    });
+  } catch (error) {
+    console.error("Error fetching visit reasons:", error);
+    res.status(500).json({
+      success: false,
+      message: "Nie udało się pobrać słownika rodzajów wizyt",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Verify (confirm) appointment's selected visit reason.
+ * Only doctor/admin are allowed.
+ *
+ * @route PATCH /api/appointments/visit-reason/verify/:id
+ */
+exports.verifyVisitReason = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    // Consider all places where FE/backend may store the selected visit type/reason.
+    // Close logic checks visitReason OR consultationType OR metadata.visitType, so verify must match it.
+    const existingReason =
+      appointment.consultation?.visitReason ??
+      appointment.consultation?.consultationType ??
+      appointment.metadata?.visitType;
+    if (!existingReason || !String(existingReason).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Appointment has no visit reason to verify",
+        code: "VISIT_REASON_NOT_SET",
+      });
+    }
+
+    if (!appointment.consultation) appointment.consultation = {};
+    appointment.consultation.visitReasonVerified = true;
+    // If doctor/admin verified the selected visit reason, treat visit type as verified too.
+    appointment.consultation.visitTypeVerified = true;
+    await appointment.save();
+
+    return res.status(200).json({
+      success: true,
+      appointmentId: appointment._id,
+      visitReasonVerified: true,
+    });
+  } catch (error) {
+    console.error("verifyVisitReason error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get visitReasonVerified status for a single appointment.
+ * Any authenticated role can call.
+ *
+ * @route GET /api/appointments/visit-reason/verify/:id/status
+ */
+exports.getVisitReasonVerifiedStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    const appointment = await Appointment.findById(id)
+      .select("consultation.visitReasonVerified")
+      .lean();
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      appointmentId: id,
+      visitReasonVerified: Boolean(appointment.consultation?.visitReasonVerified),
+    });
+  } catch (error) {
+    console.error("getVisitReasonVerifiedStatus error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
       error: error.message,
     });
   }

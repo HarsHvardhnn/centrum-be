@@ -6,9 +6,16 @@ const mongoose = require("mongoose");
 const consultationSchema = new mongoose.Schema({
   consultationType: {
     type: String,
-    enum: ["Clinic Consulting", "Online Consultation", "Home Visit", "Konsultacja w przychodni",
-      "Konsultacja online", "Wizyta domowa"],
+    // Do not hard-restrict values: FE can send dynamic visit reason types.
+    // Visit reasons are validated/controlled via the visit-reasons dictionary flow.
+    // Any string is accepted here to avoid blocking updates like "Iniekcja".
   },
+  /** Visit reason display name (Polish), e.g. "Konsultacja pierwszorazowa". Primary field for Rodzaj wizyty. */
+  visitReason: { type: String, default: null },
+  /** True only after doctor/admin confirms/validates the selected visit reason. */
+  visitReasonVerified: { type: Boolean, default: false },
+  /** True after doctor has confirmed or changed the visit type; required before completing the visit. */
+  visitTypeVerified: { type: Boolean, default: true },
   consultationDate: Date,
   consultationNotes: String,
   description: String,
@@ -127,12 +134,20 @@ const appointmentSchema = new mongoose.Schema(
     patient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+      default: null,
     },
     bookedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+      default: null,
+    },
+    // ONLINE = registered by patient online; RECEPTION = by reception staff
+    booking_source: {
+      type: String,
+      enum: ["ONLINE", "RECEPTION"],
+      default: null,
     },
     date: {
       type: Date,
@@ -160,8 +175,15 @@ const appointmentSchema = new mongoose.Schema(
     },
     createdBy: {
       type: String,
-      enum: ["receptionist", "online", "doctor"],
+      enum: ["receptionist", "online", "doctor", "admin"],
       default: "online"
+    },
+    // Role of the user who created the appointment (from token); null when no token (e.g. public /book)
+    createdByRole: { type: String, default: null },
+    registrationType: {
+      type: String,
+      enum: ["online registration", "receptionist registration", "admin registration", "offline registration"],
+      default: "online registration",
     },
     checkedIn:{
       type:Boolean,
@@ -178,7 +200,7 @@ const appointmentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["booked", "cancelled", "completed","checkedIn"],
+      enum: ["booked", "cancelled", "completed", "checkedIn", "no-show"],
       default: "booked",
     },
     joining_link: {
@@ -193,14 +215,26 @@ const appointmentSchema = new mongoose.Schema(
     // New fields for health data and reports
     healthData: healthDataSchema,
     reports: [reportSchema],
+    // Registration data when visit created without patient (online / reception first visit)
+    registrationData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    // PESEL entered during online booking but patient not yet created; used for complete-registration flow
+    tempPesel: { type: String, default: null },
     metadata: {
-      patientSource: String,
       visitType: String,
       isInternational: Boolean,
+      isInternationalPatient: Boolean,
+      toBeCompleted: Boolean, // true when online booking created visit only (no patient linked); complete at reception
       isWalkin: Boolean,
       needsAttention: Boolean,
       enableRepeats: Boolean,
       isNewPatient: Boolean,
+      documentCountry: String,
+      documentType: String,
+      documentNumber: String,
+      internationalPatientDocumentKey: String,
       consultationFee: {
         type: Number,
         default: 0

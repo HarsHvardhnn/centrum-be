@@ -1,4 +1,4 @@
-const puppeteer = require("puppeteer-core");
+const puppeteer = require("puppeteer");
 const fs = require("fs");
 const path = require("path");
 const Patient = require("../models/user-entity/patient");
@@ -10,6 +10,7 @@ const mongoose = require("mongoose");
 
 // Import the standardized document helper from patient controller
 const { createStandardizedDocument } = require("./patientController");
+const { getVisitMedicalCodes } = require("../services/visitMedicalCodesService");
 
 // Function to convert logo to base64
 const getLogoBase64 = async () => {
@@ -28,14 +29,39 @@ const getLogoBase64 = async () => {
   }
 };
 
-// Function to find Chrome executable (copied from patientBillController)
+// Find Chrome binary inside a directory (e.g. .cache/puppeteer); returns path or null.
+function findChromeInDir(dir) {
+  if (!dir || !fs.existsSync(dir)) return null;
+  const names = ["chrome", "chromium", "chrome-headless-shell"];
+  const trySubdirs = (d, depth) => {
+    if (depth > 5) return null;
+    try {
+      const entries = fs.readdirSync(d, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(d, e.name);
+        if (e.isFile() && (e.name === "chrome" || e.name === "chromium" || e.name === "chrome-headless-shell"))
+          return full;
+        if (e.isDirectory() && (e.name.startsWith("chrome") || e.name.startsWith("linux") || e.name.startsWith("headless"))) {
+          const found = trySubdirs(full, depth + 1);
+          if (found) return found;
+        }
+      }
+    } catch (_) {}
+    return null;
+  };
+  return trySubdirs(dir, 0);
+}
+
+// Function to find Chrome executable. On Render use .cache/puppeteer (filled by postinstall) or CHROME_EXECUTABLE_PATH.
 const findChrome = () => {
   const possiblePaths = [
     process.env.CHROME_EXECUTABLE_PATH,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
     "/usr/bin/chromium-browser",
     "/usr/bin/chromium",
+    "/snap/bin/chromium",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -48,8 +74,29 @@ const findChrome = () => {
     }
   }
 
+  // Project cache (Render: .puppeteerrc.cjs sets cacheDirectory to .cache/puppeteer; postinstall installs Chrome there)
+  const cacheDirs = [
+    path.join(process.cwd(), ".cache", "puppeteer"),
+    process.env.PUPPETEER_CACHE_DIR,
+    "/opt/render/.cache/puppeteer",
+  ].filter(Boolean);
+  for (const cacheDir of cacheDirs) {
+    const found = findChromeInDir(cacheDir);
+    if (found) return found;
+  }
+
+  // Fallback: use Chromium from "puppeteer" (executablePath() respects .puppeteerrc.cjs)
+  try {
+    const executablePath = puppeteer.executablePath();
+    if (executablePath && fs.existsSync(executablePath)) {
+      return executablePath;
+    }
+  } catch (e) {
+    // executablePath() failed
+  }
+
   throw new Error(
-    "Chrome executable not found. Please install Chrome or set CHROME_EXECUTABLE_PATH environment variable."
+    "Chrome executable not found. On Render: ensure .puppeteerrc.cjs exists, postinstall runs 'npx puppeteer browsers install chrome', and PUPPETEER_SKIP_CHROMIUM_DOWNLOAD is not set to true. Or set CHROME_EXECUTABLE_PATH."
   );
 };
 
@@ -108,6 +155,17 @@ exports.generateVisitCard = async (req, res) => {
       });
     }
 
+    // Do not allow generating a new visit card unless the doctor/admin verified the visit reason.
+    const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
+    if (!visitReasonVerified) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Nie można wygenerować karty wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację.",
+        code: "VISIT_REASON_NOT_VERIFIED",
+      });
+    }
+
     // Get the patient from appointment
     const patient = appointment.patient;
     if (!patient) {
@@ -124,8 +182,20 @@ exports.generateVisitCard = async (req, res) => {
     // Get consultation data from appointment
     const consultationData = appointment.consultation || {};
 
-    // Create a unique filename
-    const filename = `visit_card_${patient._id}_${uuidv4()}.pdf`;
+    // ICD-10 diagnoses and ICD-9 procedures for this visit (per spec: Main Section)
+    const medicalCodes = await getVisitMedicalCodes(appointmentId);
+    const diagnoses = medicalCodes.diagnoses || [];
+    const procedures = medicalCodes.procedures || [];
+    // Medications for this visit (show at beginning of documentation when present)
+    const medications = appointment.medications || [];
+
+    // Spec: file naming karta_wizyty_PESEL_DATE.pdf
+    const peselForFile = (patient.govtId && String(patient.govtId).replace(/\D/g, "")) || (patient.npesei && String(patient.npesei).replace(/\s/g, "_")) || "brak";
+    const dateForFile = appointment.date
+      ? new Date(appointment.date).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const pdfBaseName = `karta_wizyty_${peselForFile}_${dateForFile}.pdf`;
+    const filename = pdfBaseName;
     const tempFilePath = path.join(__dirname, "..", "temp", filename);
 
     // Make sure temp directory exists
@@ -134,54 +204,73 @@ exports.generateVisitCard = async (req, res) => {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Format visit time
+    // Format visit time (spec: Start Time and End Time)
     const visitTime = appointment.startTime || "10:00";
+    const visitTimeDisplay = visitTime;
 
-    // Get doctor's name
-    let doctorName = "Dr. ";
+    // Get doctor's name (no "Dr." prefix – show "Lekarz: Name Surname" only)
+    let doctorName = "";
     if (appointment.doctor) {
-      doctorName += `${appointment.doctor.name.first} ${appointment.doctor.name.last}`;
+      doctorName = `${appointment.doctor.name.first || ""} ${appointment.doctor.name.last || ""}`.trim();
     } else {
-      doctorName += req.user
-        ? `${req.user.name.first} ${req.user.name.last}`
-        : "Harsh Vardhan Chawla";
+      doctorName = req.user
+        ? `${req.user.name.first || ""} ${req.user.name.last || ""}`.trim()
+        : "";
     }
+    doctorName = doctorName.replace(/^\s*Dr\.?\s*/i, "").trim();
 
     // Get patient's full name
     const patientName =
       `${patient.name?.first || ""} ${patient.name?.last || ""}`.trim() ||
       "Jan Kowalski";
 
-    // Get patient's date of birth
+    // Get patient's date of birth (null if missing – row hidden)
     const dob = patient.dateOfBirth
       ? new Date(patient.dateOfBirth).toLocaleDateString("pl-PL")
-      : "6.01.2004";
+      : null;
 
-    // Get patient's address - construct from available fields
+    // Get patient's address: street, postal code, city, province, country
+    // e.g. "Testowa 4A/9, 26-110 Skarżysko-Kamienna, świętokrzyskie, Poland"
     const addressParts = [];
-    if (patient.address) addressParts.push(patient.address);
-    if (patient.city) addressParts.push(patient.city);
-    if (patient.district) addressParts.push(patient.district);
-    if (patient.state) addressParts.push(patient.state);
-    if (patient.pinCode) addressParts.push(patient.pinCode);
-    if (patient.country) addressParts.push(patient.country);
+    if (patient.address && String(patient.address).trim()) addressParts.push(patient.address.trim());
+    if (patient.pinCode && patient.city) {
+      addressParts.push(`${String(patient.pinCode).trim()} ${String(patient.city).trim()}`);
+    } else if (patient.pinCode) {
+      addressParts.push(String(patient.pinCode).trim());
+    } else if (patient.city && String(patient.city).trim()) {
+      addressParts.push(patient.city.trim());
+    }
+    if (patient.state && String(patient.state).trim()) addressParts.push(patient.state.trim());
+    if (patient.district && String(patient.district).trim() && !patient.state) addressParts.push(patient.district.trim());
+    if (patient.country && String(patient.country).trim()) addressParts.push(patient.country.trim());
 
     const address =
       addressParts.length > 0
         ? addressParts.join(", ")
-        : "Złota 44/1, Warszawa, mazowieckie, 00-000, Polska";
+        : null;
 
-    // Get patient's phone
-    const phone = patient.phone || patient.phoneFormatted || "730953325";
+    // Visit/consultation type for "Rodzaj wizyty" (prefer visitReason from dictionary)
+    const visitTypeLabel =
+      appointment.consultation?.visitReason ||
+      appointment.consultation?.consultationType ||
+      appointment.metadata?.visitType ||
+      (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) ||
+      "—";
 
-    // Get patient gender (case-insensitive; fallback when not set)
+    // Get patient's phone (no placeholder – show nothing or "—" when missing)
+    let phone = (patient.phone || patient.phoneFormatted || "").trim() || null;
+    if (phone && (/^__no_phone/i.test(phone) || /__no_phone/i.test(phone))) {
+      phone = null;
+    }
+
+    // Get patient gender (null when not set – row hidden)
     const sex = (patient.sex || "").trim();
     const gender =
       /^male$/i.test(sex)
         ? "Mężczyzna"
         : /^female$/i.test(sex)
         ? "Kobieta"
-        : "—";
+        : null;
 
     // Get logo as base64
     const logoBase64 = await getLogoBase64();
@@ -202,11 +291,11 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             body {
-                font-family: 'Arial', sans-serif;
+                font-family: 'Arial', Helvetica, sans-serif;
                 margin: 0;
                 padding: 15px;
-                font-size: 10px;
-                line-height: 1.2;
+                font-size: 14px;
+                line-height: 1.45;
                 color: #333;
                 background: white;
             }
@@ -249,7 +338,7 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .company-name {
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
                 color: #2c3e50;
                 line-height: 1.1;
@@ -257,8 +346,8 @@ exports.generateVisitCard = async (req, res) => {
             
             .company-info {
                 text-align: right;
-                font-size: 8px;
-                line-height: 1.2;
+                font-size: 11px;
+                line-height: 1.3;
             }
             
             .separator-line {
@@ -284,7 +373,7 @@ exports.generateVisitCard = async (req, res) => {
             .main-content {
                 display: flex;
                 gap: 30px;
-                margin-bottom: 15px;
+                margin-bottom: 10px;
                 page-break-inside: avoid;
             }
             
@@ -293,59 +382,86 @@ exports.generateVisitCard = async (req, res) => {
             }
             
             .section-title {
-                font-size: 10px;
+                font-size: 15px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 8px;
+                margin-bottom: 5px;
                 text-transform: uppercase;
                 page-break-after: avoid;
             }
             
             .info-row {
                 margin-bottom: 4px;
-                font-size: 9px;
+                font-size: 14px;
+                display: flex;
+                align-items: flex-start;
             }
             
             .info-label {
                 font-weight: bold;
-                display: inline-block;
-                width: 100px;
+                flex-shrink: 0;
+                width: 120px;
+            }
+            
+            .info-value {
+                flex: 1;
+                min-width: 0;
+                text-align: left;
             }
             
             .visit-card-title {
                 text-align: center;
-                font-size: 14px;
+                font-size: 20px;
                 font-weight: bold;
                 color: #2c3e50;
-                margin: 15px 0 10px 0;
-                padding: 8px 0;
+                margin: 6px 0 4px 0;
+                padding: 2px 0;
                 page-break-inside: avoid;
                 page-break-after: avoid;
             }
             
             .consultation-section {
-                margin-bottom: 15px;
+                margin-bottom: 0;
                 page-break-inside: auto;
             }
             
             .consultation-item {
-                margin-bottom: 15px;
+                margin-bottom: 2px;
                 page-break-inside: avoid;
             }
             
             .consultation-label {
                 font-weight: bold;
                 color: #2c3e50;
-                margin-bottom: 5px;
-                font-size: 9px;
+                margin-bottom: 0;
+                font-size: 14px;
                 page-break-after: avoid;
             }
             
             .consultation-content {
-                font-size: 9px;
-                line-height: 1.3;
+                font-size: 14px;
+                line-height: 1.25;
                 word-wrap: break-word;
                 white-space: pre-wrap;
+                margin: 0;
+                padding: 0;
+            }
+            
+            .diagnosis-line {
+                margin-bottom: 1px;
+                line-height: 1.25;
+            }
+            
+            .diagnosis-line:last-child {
+                margin-bottom: 0;
+            }
+            
+            .consultation-content .info-row {
+                margin-bottom: 2px;
+            }
+            
+            .consultation-content .info-row:last-child {
+                margin-bottom: 0;
             }
             
             /* Content wrapper for proper spacing */
@@ -357,11 +473,11 @@ exports.generateVisitCard = async (req, res) => {
             bottom: 0;
             left: 0;
             right: 0;
-            height: 25px;
+            height: 28px;
             display: flex;
             align-items: center;
             padding: 0;
-            font-size: 8px;
+            font-size: 10px;
             page-break-inside: avoid;
         }
         
@@ -463,95 +579,91 @@ exports.generateVisitCard = async (req, res) => {
             <div class="main-content">
                 <div class="left-column">
                     <div class="section-title">DANE PACJENTA</div>
-                    <div class="info-row">
-                        <span class="info-label">Imię i nazwisko:</span>
-                        <span>${patientName}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Płeć:</span>
-                        <span>${gender}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">PESEL:</span>
-                        <span>${patient.govtId || "04526398512"}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Data urodzenia:</span>
-                        <span>${dob}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Adres zamieszkania:</span>
-                        <span>${address}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Numer telefonu:</span>
-                        <span>${phone}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">ID Pacjenta:</span>
-                        <span>${patient.patientId || "P-174945520900"}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Adres E-mail:</span>
-                        <span>${patient.email?.trim() || "—"}</span>
-                    </div>
+                    ${patientName ? `<div class="info-row"><span class="info-label">Imię i nazwisko:</span><span class="info-value">${patientName}</span></div>` : ""}
+                    ${gender ? `<div class="info-row"><span class="info-label">Płeć:</span><span class="info-value">${gender}</span></div>` : ""}
+                    ${patient.govtId ? `<div class="info-row"><span class="info-label">PESEL:</span><span class="info-value">${patient.govtId}</span></div>` : ""}
+                    ${dob ? `<div class="info-row"><span class="info-label">Data urodzenia:</span><span class="info-value">${dob}</span></div>` : ""}
+                    ${address ? `<div class="info-row"><span class="info-label">Adres:</span><span class="info-value">${address}</span></div>` : ""}
+                    ${phone ? `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">${phone}</span></div>` : `<div class="info-row"><span class="info-label">Numer telefonu:</span><span class="info-value">—</span></div>`}
+                    ${(patient.patientId && patient.patientId.toString().trim()) ? `<div class="info-row"><span class="info-label">ID Pacjenta:</span><span class="info-value">${patient.patientId}</span></div>` : ""}
+                    ${(patient.email && patient.email.trim()) ? `<div class="info-row"><span class="info-label">Adres E-mail:</span><span class="info-value">${patient.email.trim()}</span></div>` : ""}
                 </div>
                 
                 <div class="right-column">
                     <div class="section-title">SZCZEGÓŁY WIZYTY:</div>
-                    <div class="info-row">
-                        <span class="info-label">Data wizyty:</span>
-                        <span>${visitDate}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Godzina wizyty:</span>
-                        <span>${visitTime}</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Lekarz:</span>
-                        <span>${doctorName}</span>
-                    </div>
+                    ${visitDate ? `<div class="info-row"><span class="info-label">Data wizyty:</span><span class="info-value">${visitDate}</span></div>` : ""}
+                    ${visitTimeDisplay ? `<div class="info-row"><span class="info-label">Godzina wizyty:</span><span class="info-value">${visitTimeDisplay}</span></div>` : ""}
+                    ${doctorName ? `<div class="info-row"><span class="info-label">Lekarz:</span><span class="info-value">${doctorName}</span></div>` : ""}
+                    ${visitTypeLabel && visitTypeLabel !== "—" ? `<div class="info-row"><span class="info-label">Rodzaj wizyty:</span><span class="info-value">${visitTypeLabel}</span></div>` : ""}
                 </div>
             </div>
             
             <div class="visit-card-title">KARTA WIZYTY</div>
             
+            ${medications.length > 0 ? `
+            <div class="consultation-item">
+              <div class="consultation-label">Leki:</div>
+              <div class="consultation-content">
+                ${medications.map((m) => `<div class="info-row">${m.name || ""}${m.dosage ? " – " + m.dosage : ""}${m.frequency ? ", " + m.frequency : ""}</div>`).join("")}
+              </div>
+            </div>
+            ` : ""}
+            ${diagnoses.length > 0 ? `
+            <div class="consultation-item">
+              <div class="consultation-label">Rozpoznanie:</div>
+              <div class="consultation-content">${diagnoses
+                .map((d) =>
+                  d.isPrimary
+                    ? `<div class="diagnosis-line"><strong>${d.code} – ${d.name} (główne)</strong></div>`
+                    : `<div class="diagnosis-line">${d.code} – ${d.name}</div>`
+                )
+                .join("")}</div>
+            </div>
+            ` : ""}
+            ${procedures.length > 0 ? `
+            <div class="consultation-item">
+              <div class="consultation-label">Procedury:</div>
+              <div class="consultation-content">${procedures
+                .map((p) => `<div class="info-row">${p.code} – ${p.name}</div>`)
+                .join("")}</div>
+            </div>
+            ` : ""}
+            
             <div class="consultation-section">
+                ${consultationData.interview ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Wywiad z pacjentem:</div>
-                    <div class="consultation-content">${
-                      consultationData.interview || "Brak danych wywiadu"
-                    }</div>
+                    <div class="consultation-content">${consultationData.interview}</div>
                 </div>
-                
+                ` : ""}
+                ${consultationData.physicalExamination ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Badanie przedmiotowe:</div>
-                    <div class="consultation-content">${
-                      consultationData.physicalExamination ||
-                      "Brak danych badania"
-                    }</div>
+                    <div class="consultation-content">${consultationData.physicalExamination}</div>
                 </div>
-                
+                ` : ""}
+                ${consultationData.treatment ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Zastosowane leczenie:</div>
-                    <div class="consultation-content">${
-                      consultationData.treatment || "Brak danych leczenia"
-                    }</div>
+                    <div class="consultation-content">${consultationData.treatment}</div>
                 </div>
-                
+                ` : ""}
+                ${consultationData.recommendations ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Zalecenia:</div>
-                    <div class="consultation-content">${
-                      consultationData.recommendations || "Brak zaleceń"
-                    }</div>
+                    <div class="consultation-content">${consultationData.recommendations}</div>
                 </div>
-                
+                ` : ""}
+                <div class="consultation-item">
+                    <div class="consultation-label">Kontrola:</div>
+                    <div class="consultation-content">${consultationData.consultationNotes && String(consultationData.consultationNotes).trim() ? consultationData.consultationNotes : "brak"}</div>
+                </div>
+                ${consultationData.description ? `
                 <div class="consultation-item">
                     <div class="consultation-label">Notatki:</div>
-                    <div class="consultation-content">${
-                      consultationData.description || "Brak notatek"
-                    }</div>
+                    <div class="consultation-content">${consultationData.description}</div>
                 </div>
+                ` : ""}
             </div>
         </div><div class="footer">
 
@@ -561,7 +673,7 @@ exports.generateVisitCard = async (req, res) => {
     </html>
     `;
 
-    // Launch browser with puppeteer-core
+    // Launch browser (uses system Chrome if CHROME_EXECUTABLE_PATH set, else Puppeteer's bundled Chromium)
     browser = await puppeteer.launch({
       headless: true,
       executablePath: findChrome(),
@@ -597,14 +709,17 @@ exports.generateVisitCard = async (req, res) => {
       margin: {
         top: "15mm",
         right: "0mm",
-        bottom: "0mm",
+        bottom: "18mm",
         left: "0mm",
       },
       displayHeaderFooter: true,
       footerTemplate: `
-        <div style="width: 100%; height: 7px; display: flex; margin: 0; padding: 0;">
-          <div style="width: 72.33%; height: 100%; background: #008C8C;"></div>
-          <div style="width: 27.67%; height: 100%; background: #2c3e50;"></div>
+        <div style="width: 100%; font-size: 11px; color: #333;">
+          <div style="width: 100%; height: 7px; display: flex; margin: 0; padding: 0;">
+            <div style="width: 72.33%; height: 100%; background: #008C8C;"></div>
+            <div style="width: 27.67%; height: 100%; background: #2c3e50;"></div>
+          </div>
+          <div style="text-align: right; padding: 6px 15px 0 0; font-weight: 500;">Strona <span class="pageNumber"></span> z <span class="totalPages"></span></div>
         </div>
       `,
       headerTemplate: "<div></div>",
@@ -625,10 +740,7 @@ exports.generateVisitCard = async (req, res) => {
         use_filename: true,
         unique_filename: true,
         access_mode: "public",
-        public_id: `karta_wizyty_${patientName.replace(
-          /\s+/g,
-          "_"
-        )}_${visitDate.replace(/\./g, "_")}_CM7`,
+        public_id: `karta_wizyty_${peselForFile}_${dateForFile}`,
         format: "pdf",
       });
 
@@ -675,29 +787,9 @@ exports.generateVisitCard = async (req, res) => {
       appointment.reports.push(newReport);
       await appointment.save();
 
-      // Save the standardized document reference to the patient as well for backward compatibility
-      try {
-        const patientDoc = await Patient.findById(patient._id);
-        if (patientDoc) {
-          if (!patientDoc.documents) {
-            patientDoc.documents = [];
-          }
-
-          // Create standardized document for patient's documents array
-          const patientDocument = createStandardizedDocument(
-            mockFileData,
-            "report"
-          );
-          patientDocument.documentType = "visit-card"; // Override document type for patient
-          patientDocument.appointmentId = appointmentId; // Add appointment reference
-
-          patientDoc.documents.push(patientDocument);
-          await patientDoc.save();
-        }
-      } catch (patientSaveError) {
-        console.error("Error saving patient document:", patientSaveError);
-        // Continue execution - the visit card is still generated successfully
-      }
+      // Spec: "The file is saved exclusively in the Medical Documents section of this specific visit.
+      // It must not appear in the general patient documents available to the reception."
+      // So we do NOT push to patient.documents – only appointment.reports.
 
       // Return the download URL
       return res.status(200).json({
@@ -741,6 +833,88 @@ exports.generateVisitCard = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Nie udało się wygenerować karty wizyty",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get all visit cards for a patient (from all their appointments that have a visit-card report).
+ * @param {Object} req - Express request object with patientId parameter
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON with array of visit cards, each with appointment context
+ */
+exports.getVisitCardsByPatientId = async (req, res) => {
+  try {
+    const patientId = req.params.patientId;
+
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID format",
+      });
+    }
+
+    // Patient can only access their own visit cards
+    if (req.user && req.user.role === "patient" && req.user._id.toString() !== patientId) {
+      return res.status(403).json({
+        success: false,
+        message: "Nieautoryzowany dostęp do danych tego pacjenta",
+      });
+    }
+
+    const appointments = await Appointment.find({ patient: patientId })
+      .populate("doctor", "name.first name.last")
+      .sort({ date: -1, startTime: -1 })
+      .lean()
+      .exec();
+
+    const visitCardsList = [];
+
+    for (const apt of appointments) {
+      const reports = apt.reports || [];
+      const cards = reports.filter(
+        (r) => r.type === "Visit Card" || r.type === "visit-card"
+      );
+      for (const card of cards) {
+        const url = card.fileUrl || card.url || card.downloadUrl;
+        if (!url) continue;
+        visitCardsList.push({
+          appointmentId: apt._id,
+          date: apt.date,
+          startTime: apt.startTime,
+          endTime: apt.endTime,
+          status: apt.status,
+          doctor: apt.doctor
+            ? {
+                id: apt.doctor._id,
+                name: `${apt.doctor.name?.first || ""} ${apt.doctor.name?.last || ""}`.trim(),
+              }
+            : null,
+          visitCard: {
+            reportId: card._id,
+            url,
+            name: card.name || card.fileName || "Karta wizyty",
+            type: card.type || card.documentType || "visit-card",
+            createdAt: card.uploadedAt || card.updatedAt || card.createdAt,
+          },
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        patientId,
+        visitCards: visitCardsList,
+        total: visitCardsList.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching visit cards by patient:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Nie udało się pobrać kart wizyty",
       error: error.message,
     });
   }

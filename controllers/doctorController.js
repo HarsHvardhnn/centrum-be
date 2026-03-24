@@ -11,6 +11,7 @@ const { generateUniqueSlug } = require("../utils/slugUtils");
 const UserService = require("../models/userServices");
 const DoctorSchedule = require("../models/doctorSchedule");
 const ScheduleException = require("../models/scheduleException");
+const Specialization = require("../models/specialization");
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
@@ -36,6 +37,23 @@ const getEndOfDayPoland = (date) => {
 const getCurrentDatePoland = () => {
   const now = new Date();
   return toZonedTime(now, POLAND_TIMEZONE);
+};
+
+// Convert "HH:mm" or "H:mm" to minutes since midnight (for slot availability checks)
+const timeStrToMinutes = (str) => {
+  if (!str || typeof str !== "string") return 0;
+  const parts = str.trim().split(":");
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h * 60 + m;
+};
+
+// Check if current time (Poland "HH:mm") falls within [startTime, endTime) (inclusive start, exclusive end)
+const isTimeInSlot = (currentTimeStr, startTime, endTime) => {
+  const now = timeStrToMinutes(currentTimeStr);
+  const start = timeStrToMinutes(startTime || "00:00");
+  const end = timeStrToMinutes(endTime || "24:00");
+  return now >= start && now < end;
 };
 
 // Helper function to generate default weekly schedule pattern
@@ -136,6 +154,9 @@ const addDoctor = async (req, res) => {
       });
     }
 
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(String(doctorData.password || "").trim(), saltRounds);
+
     // Create the base user document
     const userData = {
       name: {
@@ -146,7 +167,7 @@ const addDoctor = async (req, res) => {
       phone: phoneNumber,
       shortDescription: doctorData.shortDescription || "",
       specializations: doctorData.specializations,
-      password: doctorData.password, // In production, this should be hashed
+      password: hashedPassword,
       role: "doctor", // This triggers the discriminator
       signupMethod: doctorData.signupMethod || "email",
       profilePicture: req.file?.path || "",
@@ -161,6 +182,7 @@ const addDoctor = async (req, res) => {
     const doctorFields = {
       d_id: `dr-${Date.now()}`, // Generate unique ID
       slug: slug, // Add generated slug
+      order: doctorData.order != null ? Number(doctorData.order) : null,
       specialization: doctorData.specialization || [],
       qualifications: doctorData.qualifications || [],
       experience: doctorData.experience || 0,
@@ -225,8 +247,8 @@ const addDoctor = async (req, res) => {
       specializations: newDoctor.specialization,
       bio: newDoctor.bio,
       consultationFee: newDoctor.consultationFee,
-      offlineConsultationFee: newDoctor.offlineConsultationFee
-      // Removed weeklyShifts as it's no longer part of the doctor model
+      offlineConsultationFee: newDoctor.offlineConsultationFee,
+      order: newDoctor.order != null ? newDoctor.order : null,
     };
 
     res.status(201).json({
@@ -245,89 +267,302 @@ const addDoctor = async (req, res) => {
 };
 
 /**
- * Get all doctors
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get all doctors with optional filters (search, specialization, department, date, status, visitType, availability, experience).
+ * See docs/BACKEND_DOCTORS_LIST_FILTERS.md.
  */
 const getAllDoctors = async (req, res) => {
   try {
-    // Extract query parameters
     const {
+      search,
       specialization,
+      department,
+      date: dateParam,
+      status: statusParam,
+      visitType: visitTypeParam,
+      availability: availabilityParam,
+      experience: experienceParam,
       page = 1,
       limit = 10,
       sortBy = "name.first",
       sortOrder = "asc",
     } = req.query;
 
-    // Convert page and limit to integers
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
-
-    // Calculate skip value for pagination
     const skip = (pageNum - 1) * limitNum;
 
-    // Create base query for doctors
-    let query = { role: "doctor" };
+    let query = { role: "doctor", deleted: false };
 
-    // Add department filter if provided
-    if (specialization) {
-    
-        query = {
-          role: "doctor",
-          specialization: { $in: [specialization] },
-        };}
+    // Search: name (first/last) or email, case-insensitive
+    if (search && String(search).trim()) {
+      const term = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(term, "i");
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { "name.first": re },
+          { "name.last": re },
+          { email: re },
+        ],
+      });
+    }
 
-    // Create sort configuration
+    // Specialization: by ID (ObjectId) or by name (e.g. Kardiolog, Dermatolog)
+    if (specialization && String(specialization).trim()) {
+      const specVal = String(specialization).trim();
+      if (mongoose.Types.ObjectId.isValid(specVal) && String(new mongoose.Types.ObjectId(specVal)) === specVal) {
+        query.specialization = { $in: [new mongoose.Types.ObjectId(specVal)] };
+      } else {
+        const specDocs = await Specialization.find({ name: new RegExp(`^${specVal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).select("_id").lean();
+        const specIds = (specDocs || []).map((s) => s._id);
+        if (specIds.length === 0) {
+          return res.status(200).json({
+            success: true,
+            count: 0,
+            doctors: [],
+            pagination: {
+              total: 0,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPrevPage: false,
+              nextPage: null,
+              prevPage: null,
+            },
+          });
+        }
+        query.specialization = { $in: specIds };
+      }
+    }
+
+    // Department: exact match
+    if (department && String(department).trim()) {
+      query.department = String(department).trim();
+    }
+
+    // Experience: minimum years
+    if (experienceParam !== undefined && experienceParam !== "" && !isNaN(Number(experienceParam))) {
+      query.experience = { $gte: Number(experienceParam) };
+    }
+
+    // Date / status / visitType: restrict to doctors who have matching appointment(s)
+    let doctorIdsFromAppointments = null;
+    if (dateParam || statusParam || visitTypeParam) {
+      const apptQuery = {};
+      if (dateParam) {
+        const d = new Date(dateParam);
+        if (!isNaN(d.getTime())) {
+          const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setHours(23, 59, 59, 999);
+          apptQuery.date = { $gte: dayStart, $lte: dayEnd };
+        }
+      }
+      if (statusParam && String(statusParam).trim()) {
+        const raw = String(statusParam).trim();
+        const statusMap = {
+          zaplanowane: "booked",
+          zarezerwowana: "booked",
+          anulowane: "cancelled",
+          zakończone: "completed",
+          booked: "booked",
+          cancelled: "cancelled",
+          completed: "completed",
+          checkedin: "checkedIn",
+          "no-show": "no-show",
+        };
+        apptQuery.status = statusMap[raw.toLowerCase()] || raw.toLowerCase();
+      }
+      if (visitTypeParam && String(visitTypeParam).trim()) {
+        const vt = String(visitTypeParam).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const vtRe = new RegExp(vt, "i");
+        apptQuery.$or = [
+          { "consultation.visitReason": vtRe },
+          { "consultation.consultationType": vtRe },
+          { "metadata.visitType": vtRe },
+        ];
+      }
+      const apptDocs = await appointment.find(apptQuery).select("doctor").lean();
+      const ids = [...new Set(apptDocs.map((a) => a.doctor && a.doctor.toString()).filter(Boolean))];
+      if (ids.length === 0) {
+        return res.status(200).json({
+          success: true,
+          count: 0,
+          doctors: [],
+          pagination: {
+            total: 0,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false,
+            nextPage: null,
+            prevPage: null,
+          },
+        });
+      }
+      doctorIdsFromAppointments = ids.map((id) => new mongoose.Types.ObjectId(id));
+      query._id = { $in: doctorIdsFromAppointments };
+    }
+
+    // Availability: currently available (in active slot now) or unavailable
+    if (availabilityParam === "true" || availabilityParam === "false") {
+      const todayPoland = getCurrentDatePoland();
+      const startToday = getStartOfDayPoland(todayPoland);
+      const endToday = getEndOfDayPoland(todayPoland);
+      const todayStr = format(todayPoland, "yyyy-MM-dd");
+      const currentTimeStr = format(todayPoland, "HH:mm");
+      const schedulesToday = await DoctorSchedule.find({
+        $or: [
+          { date: { $gte: startToday, $lte: endToday } },
+          { date: todayStr },
+        ],
+        isActive: true,
+        timeBlocks: { $elemMatch: { isActive: true } },
+      })
+        .select("doctorId timeBlocks")
+        .lean();
+      const availableIds = new Set();
+      schedulesToday.forEach((s) => {
+        const blocks = s.timeBlocks || [];
+        const inSlot = blocks.some(
+          (b) => b.isActive !== false && isTimeInSlot(currentTimeStr, b.startTime, b.endTime)
+        );
+        if (inSlot && s.doctorId) availableIds.add(s.doctorId.toString());
+      });
+      const availableObjectIds = [...availableIds].map((id) => new mongoose.Types.ObjectId(id));
+      if (availabilityParam === "true") {
+        if (availableObjectIds.length === 0) {
+          return res.status(200).json({
+            success: true,
+            count: 0,
+            doctors: [],
+            pagination: {
+              total: 0,
+              page: pageNum,
+              limit: limitNum,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPrevPage: false,
+              nextPage: null,
+              prevPage: null,
+            },
+          });
+        }
+        if (doctorIdsFromAppointments) {
+          const intersection = doctorIdsFromAppointments.filter((id) => availableIds.has(id.toString()));
+          if (intersection.length === 0) {
+            return res.status(200).json({
+              success: true,
+              count: 0,
+              doctors: [],
+              pagination: {
+                total: 0,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: 0,
+                hasNextPage: false,
+                hasPrevPage: false,
+                nextPage: null,
+                prevPage: null,
+              },
+            });
+          }
+          query._id = { $in: intersection };
+        } else {
+          query._id = { $in: availableObjectIds };
+        }
+      } else {
+        if (doctorIdsFromAppointments) {
+          const notAvailable = doctorIdsFromAppointments.filter((id) => !availableIds.has(id.toString()));
+          query._id = { $in: notAvailable };
+        } else {
+          query._id = { $nin: availableObjectIds };
+        }
+      }
+    }
+
     const sortConfig = {};
     sortConfig[sortBy] = sortOrder === "desc" ? -1 : 1;
 
-    // Count total documents for pagination metadata
     const totalDocs = await User.countDocuments(query);
 
-    // Find doctors based on query with pagination and sorting
-    const doctors = await User.find({ ...query, deleted: false })
+    const doctors = await User.find(query)
       .populate("specialization")
-      .select('name specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating')
+      .select("name email specialization experience profilePicture bio onlineConsultationFee offlineConsultationFee qualifications slug d_id ratings averageRating department")
       .sort(sortConfig)
       .skip(skip)
       .limit(limitNum)
       .lean();
 
+    // Who has an active schedule today (Poland) AND current time is within one of today's slots?
+    const doctorIds = doctors.map((d) => d._id);
+    const todayPoland = getCurrentDatePoland();
+    const startToday = getStartOfDayPoland(todayPoland);
+    const endToday = getEndOfDayPoland(todayPoland);
+    const todayStr = format(todayPoland, "yyyy-MM-dd");
+    const currentTimeStr = format(todayPoland, "HH:mm"); // e.g. "21:00" for 9pm Poland
 
-    const formattedDoctors = doctors.map((doc) => ({
-      _id: doc._id,
-      id: doc.d_id,
-      slug: doc.slug, // Add slug for SEO URLs
-      name: `${doc.name.first} ${doc.name.last}`,
-      nameObj: {
-        first: doc.name.first,
-        last: doc.name.last
-      },
-      specialty:
-        doc.specialization && doc.specialization[0]
-          ? doc.specialization[0]
-          : "General",
-      department: doc.department || "", // Include the department in the response
-      available: doc.isAvailable,
-      status: doc.isAvailable ? "Available" : "Unavailable",
-      experience: doc.experience || 0,
-      experienceText: doc.experience ? `${doc.experience} years` : "0 years",
-      image: doc.profilePicture,
-      visitType: "Consultation",
-      date: new Date().toISOString().split("T")[0],
-      qualifications: doc.qualifications || [],
-      specializations: doc.specialization || [],
-      bio: doc?.bio || "",
-      shortDescription: doc?.shortDescription || "",
-      consultationFee: doc.consultationFee || 0,
-      offlineConsultationFee: doc.offlineConsultationFee || 0,
-      onlineConsultationFee: doc.onlineConsultationFee || 0,
-      ratings: {
-        average: doc.averageRating || 0,
-        total: doc.ratings || 0
-      }
-    }));
+    const schedulesToday = await DoctorSchedule.find({
+      doctorId: { $in: doctorIds },
+      $or: [
+        { date: { $gte: startToday, $lte: endToday } },
+        { date: todayStr },
+      ],
+      isActive: true,
+      timeBlocks: { $elemMatch: { isActive: true } },
+    })
+      .select("doctorId timeBlocks")
+      .lean();
+
+    // Available only if current time (Poland) falls within at least one active time block (startTime <= now < endTime)
+    const isCurrentlyAvailableSet = new Set();
+    schedulesToday.forEach((s) => {
+      const blocks = s.timeBlocks || [];
+      const inSlot = blocks.some(
+        (b) => b.isActive !== false && isTimeInSlot(currentTimeStr, b.startTime, b.endTime)
+      );
+      if (inSlot) isCurrentlyAvailableSet.add(s.doctorId.toString());
+    });
+
+    const formattedDoctors = doctors.map((doc) => {
+      const available = isCurrentlyAvailableSet.has(doc._id.toString());
+      return {
+        _id: doc._id,
+        id: doc.d_id,
+        slug: doc.slug, // Add slug for SEO URLs
+        name: `${doc.name.first} ${doc.name.last}`,
+        nameObj: {
+          first: doc.name.first,
+          last: doc.name.last
+        },
+        specialty:
+          doc.specialization && doc.specialization[0]
+            ? doc.specialization[0]
+            : "General",
+        department: doc.department || "", // Include the department in the response
+        available,
+        status: available ? "Available" : "Unavailable",
+        experience: doc.experience || 0,
+        experienceText: doc.experience ? `${doc.experience} years` : "0 years",
+        image: doc.profilePicture,
+        visitType: "Consultation",
+        date: new Date().toISOString().split("T")[0],
+        qualifications: doc.qualifications || [],
+        specializations: doc.specialization || [],
+        bio: doc?.bio || "",
+        shortDescription: doc?.shortDescription || "",
+        consultationFee: doc.consultationFee || 0,
+        offlineConsultationFee: doc.offlineConsultationFee || 0,
+        onlineConsultationFee: doc.onlineConsultationFee || 0,
+        ratings: {
+          average: doc.averageRating || 0,
+          total: doc.ratings || 0
+        }
+      };
+    });
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(totalDocs / limitNum);
@@ -367,6 +602,8 @@ const getAllDoctors = async (req, res) => {
 const getDoctorById = async (req, res) => {
   try {
     const { id } = req.params;
+    // Always use today's date (Poland) for "that day's" shift timing; FE does not send date.
+    const requestedDate = getCurrentDatePoland();
 
     let query = {};
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -385,9 +622,27 @@ const getDoctorById = async (req, res) => {
       });
     }
 
+    // That day's shift timing from DoctorSchedule (date-based), not hardcoded weekly pattern
+    const schedule = await DoctorSchedule.findOne({
+      doctorId: doctor._id,
+      date: {
+        $gte: getStartOfDayPoland(requestedDate),
+        $lte: getEndOfDayPoland(requestedDate),
+      },
+      isActive: true,
+    }).lean();
+
+    const shiftsForDate = schedule?.timeBlocks?.length
+      ? {
+          date: format(requestedDate, "yyyy-MM-dd"),
+          timeBlocks: schedule.timeBlocks.filter((b) => b.isActive !== false).map((b) => ({ startTime: b.startTime, endTime: b.endTime })),
+        }
+      : null;
+
     res.status(200).json({
       success: true,
       doctor,
+      shiftsForDate,
     });
   } catch (error) {
     console.error("Error fetching doctor:", error);
@@ -1595,8 +1850,8 @@ const updateDoctor = async (req, res) => {
       'onlineConsultationFee',
       'offlineConsultationFee',
       'singleSessionMode',
-      'shortDescription'
-      // Removed weeklyShifts and offSchedule - now handled by separate schedule models
+      'shortDescription',
+      'order',
     ];
 
     // Filter out fields that are not allowed to be updated
@@ -1606,6 +1861,11 @@ const updateDoctor = async (req, res) => {
         obj[key] = updateData[key];
         return obj;
       }, {});
+
+    // Coerce order to number or null when updating
+    if (updateData.order !== undefined) {
+      filteredUpdates.order = updateData.order === null || updateData.order === "" ? null : Number(updateData.order);
+    }
 
     // Only add profilePicture to updates if a new file was uploaded
     if (req.file?.path) {
@@ -1645,8 +1905,8 @@ const updateDoctor = async (req, res) => {
       shortDescription: updatedDoctor.shortDescription,
       singleSessionMode: updatedDoctor.singleSessionMode,
       signupMethod: updatedDoctor.signupMethod,
-      isAvailable: updatedDoctor.isAvailable
-      // Removed weeklyShifts and offSchedule - now handled by separate schedule models
+      isAvailable: updatedDoctor.isAvailable,
+      order: updatedDoctor.order != null ? updatedDoctor.order : null,
     };
 
     res.status(200).json({

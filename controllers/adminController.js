@@ -14,13 +14,14 @@ exports.addReceptionist = async (req, res) => {
     if (existingUser)
       return res.status(400).json({ message: "Email already in use" });
 
-
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(String(password || "").trim(), saltRounds);
 
     const newReceptionist = new user({
       name: { first: firstName, last: lastName },
       email,
       phone,
-      password,
+      password: hashedPassword,
       role: "receptionist",
       signupMethod,
     });
@@ -106,8 +107,9 @@ exports.getAllNonAdminUsers = async (req, res) => {
 
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase().trim();
+      const searchDigitsOnly = searchTerm.replace(/\D/g, "");
       query.$or = [
-        { 
+        {
           $expr: {
             $regexMatch: {
               input: { $toLower: { $concat: ["$name.first", " ", "$name.last"] } },
@@ -117,7 +119,9 @@ exports.getAllNonAdminUsers = async (req, res) => {
           }
         },
         { email: { $regex: searchLower, $options: "i" } },
-        { phone: { $regex: searchLower, $options: "i" } }
+        { phone: { $regex: searchTerm.trim(), $options: "i" } },
+        ...(searchDigitsOnly ? [{ govtId: { $regex: searchDigitsOnly, $options: "i" } }] : []),
+        { patientId: { $regex: searchLower, $options: "i" } }
       ];
     }
 
@@ -128,18 +132,36 @@ exports.getAllNonAdminUsers = async (req, res) => {
     const [users, total] = await Promise.all([
       user
         .find(query)
-        .select("name email phone role profilePicture signupMethod deleted")
+        .select(
+          "name email phone role profilePicture signupMethod deleted patientId d_id"
+        )
         .skip(skip)
         .limit(limit)
-        .sort(sort),
+        .sort(sort)
+        .lean(),
 
       user.countDocuments(query),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
+    const formattedUsers = users.map((u) => ({
+      // Ensure plain object output (no Mongoose internals)
+      patientId: u.role === "patient" ? u.patientId || null : null,
+      doctorId: u.role === "doctor" ? u.d_id || null : null,
+      // Keep the rest the FE expects
+      _id: u._id,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      role: u.role,
+      profilePicture: u.profilePicture,
+      signupMethod: u.signupMethod,
+      deleted: u.deleted,
+    }));
+
     res.status(200).json({
-      users,
+      users: formattedUsers,
       pagination: {
         totalUsers: total,
         currentPage: page,

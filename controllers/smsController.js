@@ -1,4 +1,50 @@
 const MessageReceipt = require("../models/smsData");
+const mongoose = require("mongoose");
+
+/**
+ * Permanently delete multiple SMS history records (bulk). Body: { ids: string[] }
+ * @route POST /sms-data/bulk-delete
+ * @access Admin, Receptionist
+ */
+exports.bulkPermanentDeleteSmsHistory = async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Podaj tablicę identyfikatorów (ids) do usunięcia",
+      });
+    }
+
+    const validIds = ids
+      .filter((id) => id != null && (typeof id === "string" || mongoose.Types.ObjectId.isValid(id)))
+      .map((id) => (typeof id === "string" ? id.trim() : id))
+      .filter(Boolean);
+
+    if (validIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Brak prawidłowych identyfikatorów",
+      });
+    }
+
+    const result = await MessageReceipt.deleteMany({ _id: { $in: validIds } });
+
+    return res.status(200).json({
+      success: true,
+      message: `Trwale usunięto ${result.deletedCount} wpisów historii SMS`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("Error bulk deleting SMS history:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Nie udało się trwale usunąć wpisów historii SMS",
+      error: error.message,
+    });
+  }
+};
 
 /**
  * Get all SMS data with pagination, sorting, and filtering

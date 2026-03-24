@@ -1,0 +1,343 @@
+{
+  "info": {
+    "name": "Patient / Visit / Registration Spec (Admin)",
+    "description": "Test the admin-side backend changes: visit-only creation, complete registration, PESEL by-pesel, patient list filter, no-show, etc. Set collection variables (baseUrl, token, doctorId) then run in order or use individual requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" },
+    { "key": "doctorId", "value": "" },
+    { "key": "patientId", "value": "" },
+    { "key": "visitId", "value": "" },
+    { "key": "pesel", "value": "44051401359" },
+    { "key": "peselNew", "value": "99010101234" }
+  ],
+  "item": [
+    {
+      "name": "0. Auth & Setup",
+      "item": [
+        {
+          "name": "Login (receptionist / admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var json = pm.response.json();",
+                  "  if (json.token) pm.collectionVariables.set('token', json.token);",
+                  "  if (json.accessToken) pm.collectionVariables.set('token', json.accessToken);",
+                  "  if (json.data && json.data.token) pm.collectionVariables.set('token', json.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"receptionist@example.com\",\n  \"password\": \"your_password\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Adjust email/password to a receptionist or admin. If your login returns token in a different path, update the test script to set {{token}}."
+          }
+        },
+        {
+          "name": "Get Doctors (get doctorId)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/docs",
+            "description": "Use response to copy a doctor _id into collection variable doctorId (or use your existing doctors endpoint)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Reception – First visit (visit only)",
+      "item": [
+        {
+          "name": "Reception first visit – create visit only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var json = pm.response.json();",
+                  "  var appt = json.appointment || json.data && json.data.appointment || json;",
+                  "  if (appt && appt._id) pm.collectionVariables.set('visitId', appt._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctorId\": \"{{doctorId}}\",\n  \"date\": \"2026-03-01\",\n  \"startTime\": \"10:00\",\n  \"consultationType\": \"offline\",\n  \"firstName\": \"Jan\",\n  \"lastName\": \"Kowalski\",\n  \"phone\": \"123456789\",\n  \"message\": \"First visit – visit only\"\n}"
+            },
+            "url": "{{baseUrl}}/appointments/reception",
+            "description": "No patientId, no PESEL. Expect 201, appointment.patient null, booking_source RECEPTION, registrationData set."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Complete registration",
+      "item": [
+        {
+          "name": "Complete registration – new PESEL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var json = pm.response.json();",
+                  "  if (json.patient && json.patient._id) pm.collectionVariables.set('patientId', json.patient._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pesel\": \"{{pesel}}\",\n  \"firstName\": \"Jan\",\n  \"lastName\": \"Kowalski\",\n  \"dateOfBirth\": \"1944-05-14\",\n  \"phone\": \"123456789\",\n  \"email\": \"jan.kowalski@example.com\",\n  \"sex\": \"Male\",\n  \"smsConsentAgreed\": true\n}"
+            },
+            "url": "{{baseUrl}}/appointments/{{visitId}}/complete-registration",
+            "description": "Use a visitId from a visit-only appointment. Expect 200, existing: false, patient and appointment returned."
+          }
+        },
+        {
+          "name": "Complete registration – existing PESEL (link)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pesel\": \"{{pesel}}\",\n  \"firstName\": \"Jan\",\n  \"lastName\": \"Kowalski\",\n  \"phone\": \"123456789\",\n  \"email\": \"jan.kowalski@example.com\",\n  \"sex\": \"Male\"\n}"
+            },
+            "url": "{{baseUrl}}/appointments/{{visitId}}/complete-registration",
+            "description": "Use another visit-only visitId and same PESEL as above. Expect 200, existing: true, no new patient."
+          }
+        },
+        {
+          "name": "Complete registration – invalid checksum (peselWarning)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pesel\": \"12345678901\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"Checksum\",\n  \"phone\": \"987654321\",\n  \"email\": \"checksum@example.com\",\n  \"sex\": \"Male\"\n}"
+            },
+            "url": "{{baseUrl}}/appointments/{{visitId}}/complete-registration",
+            "description": "Use a visit-only visitId. Expect 200 with peselWarning in response; registration still succeeds."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Patients – by-pesel & list",
+      "item": [
+        {
+          "name": "Check PESEL exists – yes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/patients/by-pesel?pesel={{pesel}}",
+            "description": "Expect 200, exists: true, patient object when PESEL is in DB."
+          }
+        },
+        {
+          "name": "Check PESEL exists – no",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/patients/by-pesel?pesel=00000000000",
+            "description": "Expect 200, exists: false."
+          }
+        },
+        {
+          "name": "Get patients list (filtered)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/patients/data/simple",
+            "description": "Expect only patients with patientId or govtId (completed registration)."
+          }
+        },
+        {
+          "name": "Get all patients",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/patients",
+            "description": "Same filter: only patients with patientId or govtId."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Appointments – get & status",
+      "item": [
+        {
+          "name": "Get appointment by ID (with patient)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/appointments/{{visitId}}",
+            "description": "Expect 200, patient populated, booking_source present."
+          }
+        },
+        {
+          "name": "Get appointment by ID (visit only – no patient)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/appointments/{{visitId}}",
+            "description": "Use a visitId that has no patient. Expect 200, patient: null, booking_source, registrationData."
+          }
+        },
+        {
+          "name": "Update appointment status – no-show",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"no-show\"\n}" },
+            "url": "{{baseUrl}}/appointments/{{visitId}}/status",
+            "description": "Expect 200; status no-show accepted."
+          }
+        },
+        {
+          "name": "Update appointment status – booked",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"booked\"\n}" },
+            "url": "{{baseUrl}}/appointments/{{visitId}}/status"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Reception – Follow-up",
+      "item": [
+        {
+          "name": "Reception follow-up (with patientId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctorId\": \"{{doctorId}}\",\n  \"patientId\": \"{{patientId}}\",\n  \"date\": \"2026-03-02\",\n  \"startTime\": \"11:00\",\n  \"consultationType\": \"offline\",\n  \"message\": \"Follow-up visit\"\n}"
+            },
+            "url": "{{baseUrl}}/appointments/reception",
+            "description": "Expect 201, appointment has patient and bookedBy set, booking_source RECEPTION."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Patient – create & update",
+      "item": [
+        {
+          "name": "Create patient – with PESEL (new)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Anna Nowak\",\n  \"email\": \"anna.nowak@example.com\",\n  \"phone\": \"600111222\",\n  \"govtId\": \"{{peselNew}}\",\n  \"sex\": \"Female\",\n  \"dateOfBirth\": \"1999-01-01\",\n  \"consultingSpecialization\": \"\",\n  \"consultingDoctor\": \"{{doctorId}}\",\n  \"consents\": \"[]\"\n}"
+            },
+            "url": "{{baseUrl}}/patients",
+            "description": "Expect 201. PESEL required; use a PESEL not yet in DB (e.g. peselNew). Add consultingSpecialization if your API requires it."
+          }
+        },
+        {
+          "name": "Create patient – without PESEL (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"No PESEL\",\n  \"email\": \"nopesel@example.com\",\n  \"phone\": \"600333444\",\n  \"sex\": \"Male\",\n  \"dateOfBirth\": \"1985-05-05\",\n  \"consultingDoctor\": \"{{doctorId}}\",\n  \"consents\": \"[]\"\n}"
+            },
+            "url": "{{baseUrl}}/patients",
+            "description": "Expect 400 – PESEL required."
+          }
+        },
+        {
+          "name": "Create patient – duplicate PESEL (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Duplicate PESEL\",\n  \"email\": \"dup@example.com\",\n  \"phone\": \"600555666\",\n  \"govtId\": \"{{pesel}}\",\n  \"sex\": \"Male\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"consultingDoctor\": \"{{doctorId}}\",\n  \"consents\": \"[]\"\n}"
+            },
+            "url": "{{baseUrl}}/patients",
+            "description": "Use a PESEL already in DB (e.g. {{pesel}}). Expect 409."
+          }
+        },
+        {
+          "name": "Update patient – try change patientId (expect 400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"P-9999999999\",\n  \"fullName\": \"Jan Kowalski\"\n}"
+            },
+            "url": "{{baseUrl}}/patients/{{patientId}}",
+            "description": "Expect 400 – Patient ID cannot be changed."
+          }
+        }
+      ]
+    }
+  ]
+}

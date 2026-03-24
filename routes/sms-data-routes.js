@@ -10,6 +10,13 @@ router.get(
   smsController.getAllSmsData
 );
 
+// Permanently delete multiple SMS history records (bulk). Body: { ids: string[] }
+router.post(
+  "/bulk-delete",
+  authorizeRoles(["admin", "receptionist"]),
+  smsController.bulkPermanentDeleteSmsHistory
+);
+
 // Get SMS data by ID
 router.get(
   "/:id",

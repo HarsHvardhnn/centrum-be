@@ -5,17 +5,21 @@ const { ObjectId } = mongoose.Types;
 const User = require("../models/user-entity/user");
 
 
-// Get appointment statistics for a doctor by month/timeline
+// Format date as dd.mm.rrrr for display (Zakres label)
+function formatDateDDMMYYYY(d) {
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+// Get appointment statistics for a doctor: 3 counts (Zarezerwowane, Zakończone, Anulowane) + date range.
+// Simplified for "Wizyty lekarskie" section: no chart, only tiles + Zakres label.
+// Timeframe: day (Dzień) = today; week (Tydzień) = Mon–Sun current week; month (Miesiąc) = 1st–last of current month.
 exports.getDoctorAppointmentStats = async (req, res) => {
   try {
     const { doctorId } = req.params;
-    const { 
-      startDate, 
-      endDate, 
-      timeframe, // New parameter: 'today', 'week', 'month', 'year'
-      groupBy = 'month',  // Default grouping by month
-      includeRevenue = 'false' // Whether to include revenue statistics
-    } = req.query;
+    const { timeframe } = req.query; // 'day'|'today' | 'week' | 'month'
 
     if (!mongoose.Types.ObjectId.isValid(doctorId)) {
       return res.status(400).json({
@@ -24,146 +28,45 @@ exports.getDoctorAppointmentStats = async (req, res) => {
       });
     }
 
-    // Validate dates
-    let start, end;
-    
-    // If timeframe is provided and no explicit dates, calculate start and end dates based on timeframe
-    if (timeframe && !startDate && !endDate) {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      switch (timeframe.toLowerCase()) {
-        case 'today':
-          start = new Date(today);
-          start.setHours(0, 0, 0, 0);
-          end = new Date(today);
-          end.setHours(23, 59, 59, 999);
-          break;
-        case 'week':
-          // This week (Monday to Sunday)
-          const dayOfWeek = now.getDay();
-          const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to Monday
-          start = new Date(now);
-          start.setDate(diff);
-          start.setHours(0, 0, 0, 0);
-          end = new Date(start);
-          end.setDate(end.getDate() + 6);
-          end.setHours(23, 59, 59, 999);
-          break;
-        case 'month':
-          // Current month
-          start = new Date(now.getFullYear(), now.getMonth(), 1);
-          start.setHours(0, 0, 0, 0);
-          end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-          end.setHours(23, 59, 59, 999);
-          break;
-        case 'year':
-          // Current year
-          start = new Date(now.getFullYear(), 0, 1);
-          start.setHours(0, 0, 0, 0);
-          end = new Date(now.getFullYear(), 11, 31);
-          end.setHours(23, 59, 59, 999);
-          break;
-        default:
-          return res.status(400).json({
-            success: false,
-            message: "Nieprawidłowy parametr timeframe. Dozwolone wartości: today, week, month, year"
-          });
-      }
-    } else {
-      // Use provided dates or defaults (startDate/endDate take precedence over timeframe)
-      if (startDate) {
-        start = new Date(startDate);
-        if (isNaN(start.getTime())) {
-          return res.status(400).json({
-            success: false,
-            message: "Nieprawidłowy format daty początkowej. Proszę użyć YYYY-MM-DD"
-          });
-        }
-        // Set time to beginning of day
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let start;
+    let end;
+
+    const tf = (timeframe || "month").toString().toLowerCase();
+    switch (tf) {
+      case "day":
+      case "today":
+        start = new Date(today);
         start.setHours(0, 0, 0, 0);
-      } else {
-        // Default to 6 months ago if no startDate
-        start = new Date();
-        start.setMonth(start.getMonth() - 6);
-        start.setDate(1);
+        end = new Date(today);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case "week":
+        // Monday–Sunday of current week
+        const dayOfWeek = now.getDay(); // 0 Sun .. 6 Sat
+        const toMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        start = new Date(today);
+        start.setDate(start.getDate() + toMonday);
         start.setHours(0, 0, 0, 0);
-      }
-
-      if (endDate) {
-        end = new Date(endDate);
-        if (isNaN(end.getTime())) {
-          return res.status(400).json({
-            success: false,
-            message: "Nieprawidłowy format daty końcowej. Proszę użyć YYYY-MM-DD"
-          });
-        }
-        // Set time to end of day
+        end = new Date(start);
+        end.setDate(end.getDate() + 6);
         end.setHours(23, 59, 59, 999);
-      } else {
-        // Default to current date if no endDate
-        end = new Date();
+        break;
+      case "month":
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        start.setHours(0, 0, 0, 0);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         end.setHours(23, 59, 59, 999);
-      }
-    }
-
-    // Validate dates are in order
-    if (start > end) {
-      return res.status(400).json({
-        success: false,
-        message: "Data początkowa nie może być po dacie końcowej"
-      });
-    }
-
-    // Auto-set groupBy based on timeframe if not explicitly provided
-    let finalGroupBy = groupBy;
-    if (timeframe && groupBy === 'month') {
-      switch (timeframe.toLowerCase()) {
-        case 'today':
-          finalGroupBy = 'day';
-          break;
-        case 'week':
-          finalGroupBy = 'day';
-          break;
-        case 'month':
-          finalGroupBy = 'day';
-          break;
-        case 'year':
-          finalGroupBy = 'month';
-          break;
-      }
-    }
-
-    // Define the date grouping format based on groupBy parameter
-    let dateGroupFormat;
-    let dateFormat; // For formatting the response
-    
-    switch(finalGroupBy.toLowerCase()) {
-      case 'day':
-        dateGroupFormat = { $dateToString: { format: "%Y-%m-%d", date: "$date" } };
-        dateFormat = "YYYY-MM-DD";
         break;
-      case 'week':
-        dateGroupFormat = { 
-          $dateToString: { 
-            format: "%Y-W%U", 
-            date: "$date"
-          }
-        };
-        dateFormat = "YYYY-WW";
-        break;
-      case 'year':
-        dateGroupFormat = { $dateToString: { format: "%Y", date: "$date" } };
-        dateFormat = "YYYY";
-        break;
-      case 'month':
       default:
-        dateGroupFormat = { $dateToString: { format: "%Y-%m", date: "$date" } };
-        dateFormat = "YYYY-MM";
+        return res.status(400).json({
+          success: false,
+          message: "Nieprawidłowy parametr timeframe. Dozwolone: day, today, week, month"
+        });
     }
 
-    // Basic aggregation pipeline for appointment statistics
-    const aggregationPipeline = [
+    const pipeline = [
       {
         $match: {
           doctor: new mongoose.Types.ObjectId(doctorId),
@@ -172,85 +75,57 @@ exports.getDoctorAppointmentStats = async (req, res) => {
       },
       {
         $group: {
-          _id: dateGroupFormat,
-          total: { $sum: 1 },
-          completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } },
-          cancelled: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
-          booked: { $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] } },
-          online: { $sum: { $cond: [{ $eq: ["$mode", "online"] }, 1, 0] } },
-          offline: { $sum: { $cond: [{ $eq: ["$mode", "offline"] }, 1, 0] } }
+          _id: null,
+          zarezerwowane: {
+            $sum: {
+              $cond: [
+                { $in: ["$status", ["booked", "checkedIn"]] },
+                1,
+                0
+              ]
+            }
+          },
+          zakończone: {
+            $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] }
+          },
+          anulowane: {
+            $sum: {
+              $cond: [
+                { $in: ["$status", ["cancelled", "no-show"]] },
+                1,
+                0
+              ]
+            }
+          }
         }
-      },
-      { $sort: { _id: 1 } } // Sort by date
+      }
     ];
 
-    // Execute the aggregation
-    const appointmentStats = await Appointment.aggregate(aggregationPipeline);
+    const result = await Appointment.aggregate(pipeline);
+    const counts = result[0] || {
+      zarezerwowane: 0,
+      zakończone: 0,
+      anulowane: 0
+    };
 
-    // If revenue is requested, get revenue statistics
-    let revenueStats = [];
-    if (includeRevenue === 'true') {
-      const revenuePipeline = [
-        {
-          $match: {
-            appointment: { $exists: true },
-            isDeleted: false
-          }
-        },
-        {
-          $lookup: {
-            from: "appointments",
-            localField: "appointment",
-            foreignField: "_id",
-            as: "appointmentData"
-          }
-        },
-        { $unwind: "$appointmentData" },
-        {
-          $match: {
-            "appointmentData.doctor": new mongoose.Types.ObjectId(doctorId),
-            "appointmentData.date": { $gte: start, $lte: end }
-          }
-        },
-        {
-          $group: {
-            _id: dateGroupFormat,
-            totalRevenue: { $sum: { $toDouble: "$totalAmount" } },
-            billCount: { $sum: 1 },
-            avgRevenue: { $avg: { $toDouble: "$totalAmount" } }
-          }
-        },
-        { $sort: { _id: 1 } }
-      ];
-
-      revenueStats = await PatientBill.aggregate(revenuePipeline);
-    }
-
-    // Fill in gaps in the date range
-    const stats = fillDateGaps(appointmentStats, revenueStats, start, end, finalGroupBy);
-
-    // Add metadata to response
-    const response = {
+    return res.status(200).json({
       success: true,
       data: {
         doctorId,
-        timeframe: {
-          startDate: start.toISOString().split('T')[0],
-          endDate: end.toISOString().split('T')[0],
-          groupBy: finalGroupBy,
-          ...(timeframe && { timeframe: timeframe.toLowerCase() })
-        },
-        dateFormat,
-        stats
+        timeframe: tf === "today" ? "day" : tf,
+        rangeStart: start.toISOString().split("T")[0],
+        rangeEnd: end.toISOString().split("T")[0],
+        rangeLabel: `Zakres: ${formatDateDDMMYYYY(start)} – ${formatDateDDMMYYYY(end)}`,
+        zarezerwowane: counts.zarezerwowane ?? 0,
+        zakończone: counts.zakończone ?? 0,
+        anulowane: counts.anulowane ?? 0
       }
-    };
-
-    return res.status(200).json(response);
+    });
   } catch (error) {
-    console.error("Error fetching doctor statistics:", error);
+    console.error("Error fetching doctor appointment stats:", error);
     return res.status(500).json({
       success: false,
-      message: "Nie udało się pobrać statystyk lekarza",
+      message: "Nie udało się pobrać statystyk wizyt lekarza",
       error: error.message
     });
   }

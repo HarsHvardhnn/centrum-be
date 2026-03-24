@@ -1,9 +1,10 @@
 node_modules
+.cache
 
 .env
 
 env
-
+ignore-docs
 
 /node_modules
 
