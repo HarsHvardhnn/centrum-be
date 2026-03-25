@@ -2535,29 +2535,18 @@ exports.updateAppointmentStatus = async (req, res) => {
       appointment.consultation.visitTypeVerified = true;
     }
 
-    // Before completing: require visit type to be set and verified by doctor
+    // Before completing: at least one of visit-reason or visit-type must be verified.
     if (status === "completed") {
-      const visitReasonResolved =
-        appointment.consultation?.visitReason ||
-        appointment.consultation?.consultationType ||
-        appointment.metadata?.visitType;
-      const hasVisitReason = visitReasonResolved && String(visitReasonResolved).trim();
-      const verifiedVisitType = Boolean(appointment.consultation?.visitTypeVerified);
-      // Allow closing when:
-      // - a visit reason exists
-      // - the visit type is verified
-      //
-      // Some legacy flows may not reliably flip `visitReasonVerified` while still
-      // setting `visitTypeVerified`. The FE expects "verify" to unblock completion.
-      if (!hasVisitReason || !verifiedVisitType) {
+      const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
+      const visitTypeVerified = appointment.consultation?.visitTypeVerified === true;
+      if (!visitReasonVerified && !visitTypeVerified) {
         return res.status(400).json({
           success: false,
           message:
-            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację rodzaju wizyty przed zamknięciem.",
+            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację (rodzaj wizyty lub przyczyna wizyty) przed zamknięciem.",
           code: "VISIT_TYPE_NOT_VERIFIED",
-          visitReasonSet: !!hasVisitReason,
-          visitTypeVerified: verifiedVisitType,
-          visitReasonVerified: Boolean(appointment.consultation?.visitReasonVerified),
+          visitReasonVerified,
+          visitTypeVerified,
         });
       }
     }

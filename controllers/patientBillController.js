@@ -81,6 +81,20 @@ exports.generateBill = async (req, res) => {
       });
     }
 
+    // Same rule as PATCH /appointments/:id/status → completed: require at least one verification flag.
+    const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
+    const visitTypeVerified = appointment.consultation?.visitTypeVerified === true;
+    if (!visitReasonVerified && !visitTypeVerified) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Nie można wystawić faktury i zamknąć wizyty bez weryfikacji rodzaju wizyty. Potwierdź weryfikację (PATCH visit-reason/verify lub konsultacja) przed kontynuacją.",
+        code: "VISIT_TYPE_NOT_VERIFIED",
+        visitReasonVerified,
+        visitTypeVerified,
+      });
+    }
+
     const invoiceId=await generateNextInvoiceId();
  
     // Get consultation charges
