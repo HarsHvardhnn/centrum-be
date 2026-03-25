@@ -253,12 +253,36 @@ exports.generateVisitCard = async (req, res) => {
         ? addressParts.join(", ")
         : null;
 
-    // Visit/consultation type for "Rodzaj wizyty" (prefer visitReason from dictionary)
+    // Rodzaj wizyty: same source as verified "visit reason" in the app.
+    // Important: `consultation.consultationType` is often a generic placeholder ("Konsultacja w przychodni");
+    // the dictionary value lives in `consultation.visitReason` and is mirrored on `metadata.visitType`.
+    const isGenericRodzajPlaceholder = (s) => {
+      if (!s || typeof s !== "string") return true;
+      const t = s.trim().toLowerCase();
+      return [
+        "konsultacja w przychodni",
+        "konsultacja online",
+        "online",
+        "offline",
+        "stacjonarna",
+        "stacjonarna wizyta",
+      ].includes(t);
+    };
+    const visitReasonTrim = String(appointment.consultation?.visitReason || "").trim();
+    const metadataVisitTypeTrim = String(appointment.metadata?.visitType || "").trim();
+    const consultationTypeTrim = String(appointment.consultation?.consultationType || "").trim();
+    const modeFallback =
+      appointment.mode === "online"
+        ? "Konsultacja online"
+        : appointment.mode === "offline"
+          ? "Konsultacja w przychodni"
+          : null;
     const visitTypeLabel =
-      appointment.consultation?.visitReason ||
-      appointment.consultation?.consultationType ||
-      appointment.metadata?.visitType ||
-      (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) ||
+      visitReasonTrim ||
+      metadataVisitTypeTrim ||
+      (!isGenericRodzajPlaceholder(consultationTypeTrim) ? consultationTypeTrim : "") ||
+      modeFallback ||
+      consultationTypeTrim ||
       "—";
 
     // Get patient's phone (no placeholder – show nothing or "—" when missing)
