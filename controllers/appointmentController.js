@@ -5245,6 +5245,7 @@ exports.verifyVisitReason = async (req, res) => {
       success: true,
       appointmentId: appointment._id,
       visitReasonVerified: true,
+      visitTypeVerified: true,
     });
   } catch (error) {
     console.error("verifyVisitReason error:", error);
@@ -5274,7 +5275,7 @@ exports.getVisitReasonVerifiedStatus = async (req, res) => {
     }
 
     const appointment = await Appointment.findById(id)
-      .select("consultation.visitReasonVerified")
+      .select("consultation.visitReasonVerified consultation.visitTypeVerified")
       .lean();
 
     if (!appointment) {
@@ -5288,6 +5289,7 @@ exports.getVisitReasonVerifiedStatus = async (req, res) => {
       success: true,
       appointmentId: id,
       visitReasonVerified: Boolean(appointment.consultation?.visitReasonVerified),
+      visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
     });
   } catch (error) {
     console.error("getVisitReasonVerifiedStatus error:", error);
