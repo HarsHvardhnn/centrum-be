@@ -4222,10 +4222,14 @@ exports.updateConsultation = async (req, res) => {
         consultationData.visitReason !== undefined
           ? (consultationData.visitReason && consultationData.visitReason.trim()) || null
           : appointment.consultation?.visitReason,
+      visitReasonVerified:
+        consultationData.visitReasonVerified !== undefined
+          ? Boolean(consultationData.visitReasonVerified)
+          : appointment.consultation?.visitReasonVerified ?? false,
       visitTypeVerified:
         consultationData.visitTypeVerified !== undefined
           ? Boolean(consultationData.visitTypeVerified)
-          : appointment.consultation?.visitTypeVerified,
+          : appointment.consultation?.visitTypeVerified ?? true,
       consultationType:
         consultationData.consultationType ||
         appointment.consultation?.consultationType,
