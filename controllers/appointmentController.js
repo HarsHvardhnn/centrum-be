@@ -3144,17 +3144,28 @@ exports.updateAppointmentDetails = async (req, res) => {
     const { id } = req.params;
     const {
       consultationData,
-      patientData,
+      patientData = {},
       medications,
       tests,
       healthData,
       reports,
+      status: bodyStatus,
+      visitTypeVerified: bodyVisitTypeVerified,
+      visitReasonVerified: bodyVisitReasonVerified,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid appointment ID format",
+      });
+    }
+
+    const existingAppointment = await Appointment.findById(id).lean();
+    if (!existingAppointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
       });
     }
 
@@ -3202,27 +3213,143 @@ exports.updateAppointmentDetails = async (req, res) => {
       }
     }
 
-    // Handle consultation data if provided
+    // Handle consultation data if provided (merge with existing — do not wipe visitReason / verification flags)
     if (consultationData) {
-      const consultDate = new Date(consultationData.date);
+      const existingConsult = existingAppointment.consultation || {};
+      const consultDate = new Date(
+        consultationData.date ?? consultationData.consultationDate
+      );
+      const notesVal =
+        consultationData.notes !== undefined
+          ? consultationData.notes
+          : consultationData.consultationNotes !== undefined
+            ? consultationData.consultationNotes
+            : existingConsult.consultationNotes;
+      const consultationStatusRaw =
+        consultationData.consultationStatus !== undefined
+          ? consultationData.consultationStatus
+          : consultationData.status !== undefined
+            ? consultationData.status
+            : existingConsult.consultationStatus || "Scheduled";
+      const visitReasonMerged =
+        consultationData.visitReason !== undefined
+          ? (consultationData.visitReason && String(consultationData.visitReason).trim()) || null
+          : existingConsult.visitReason;
+      const visitReasonVerifiedMerged =
+        consultationData.visitReasonVerified !== undefined
+          ? Boolean(consultationData.visitReasonVerified)
+          : existingConsult.visitReasonVerified ?? false;
+      const visitTypeVerifiedMerged =
+        consultationData.visitTypeVerified !== undefined
+          ? Boolean(consultationData.visitTypeVerified)
+          : existingConsult.visitTypeVerified ?? true;
+
       updateData.consultation = {
-        consultationType: consultationData.consultationType,
-        consultationNotes: consultationData.notes,
-        description: consultationData.description,
-        treatmentCategory: consultationData?.treatmentCategory || "",
+        ...existingConsult,
+        consultationType:
+          consultationData.consultationType !== undefined
+            ? consultationData.consultationType
+            : existingConsult.consultationType,
+        consultationNotes: notesVal,
+        description:
+          consultationData.description !== undefined
+            ? consultationData.description
+            : existingConsult.description,
+        treatmentCategory:
+          consultationData?.treatmentCategory !== undefined
+            ? consultationData.treatmentCategory || ""
+            : existingConsult.treatmentCategory || "",
         consultationDate: !isNaN(consultDate.getTime())
           ? consultDate
-          : new Date(),
-        consultationStatus: consultationData.status || "Scheduled",
-        isOnline: consultationData.isOnline || false,
-        interview: consultationData.interview || "",
-        physicalExamination: consultationData.physicalExamination || "",
-        treatment: consultationData.treatment || "",
-        recommendations: consultationData.recommendations || "",
-        roomNumber: consultationData.roomNumber || null,
-        isRisky: consultationData.isRisky || false,
-        time: consultationData.time || "",
+          : existingConsult.consultationDate || new Date(),
+        consultationStatus: consultationStatusRaw,
+        isOnline:
+          consultationData.isOnline !== undefined
+            ? consultationData.isOnline
+            : existingConsult.isOnline || false,
+        interview:
+          consultationData.interview !== undefined
+            ? consultationData.interview || ""
+            : existingConsult.interview || "",
+        physicalExamination:
+          consultationData.physicalExamination !== undefined
+            ? consultationData.physicalExamination || ""
+            : existingConsult.physicalExamination || "",
+        treatment:
+          consultationData.treatment !== undefined
+            ? consultationData.treatment || ""
+            : existingConsult.treatment || "",
+        recommendations:
+          consultationData.recommendations !== undefined
+            ? consultationData.recommendations || ""
+            : existingConsult.recommendations || "",
+        roomNumber:
+          consultationData.roomNumber !== undefined
+            ? consultationData.roomNumber
+            : existingConsult.roomNumber ?? null,
+        isRisky:
+          consultationData.isRisky !== undefined
+            ? consultationData.isRisky
+            : existingConsult.isRisky || false,
+        time:
+          consultationData.time !== undefined
+            ? consultationData.time || ""
+            : existingConsult.time || "",
+        visitReason: visitReasonMerged,
+        visitReasonVerified: visitReasonVerifiedMerged,
+        visitTypeVerified: visitTypeVerifiedMerged,
       };
+    }
+
+    // Same as PATCH /appointments/:id/status: allow verifying in the same request when completing.
+    if (bodyVisitTypeVerified === true || bodyVisitReasonVerified === true) {
+      if (!updateData.consultation) {
+        updateData.consultation = {
+          ...(existingAppointment.consultation || {}),
+        };
+      }
+      if (bodyVisitTypeVerified === true) {
+        updateData.consultation.visitTypeVerified = true;
+      }
+      if (bodyVisitReasonVerified === true) {
+        updateData.consultation.visitReasonVerified = true;
+      }
+    }
+
+    // Same rule as status PATCH / billing: completing requires at least one verification flag.
+    const completingByAppointmentStatus =
+      bodyStatus !== undefined &&
+      String(bodyStatus).toLowerCase() === "completed";
+    const consultationStatusStr = consultationData
+      ? String(
+          consultationData.consultationStatus !== undefined
+            ? consultationData.consultationStatus
+            : consultationData.status !== undefined
+              ? consultationData.status
+              : ""
+        ).toLowerCase()
+      : "";
+    const completingByConsultation =
+      consultationStatusStr === "completed" || consultationStatusStr === "zakończone";
+
+    if (completingByAppointmentStatus) {
+      updateData.status = "completed";
+    }
+
+    if (completingByAppointmentStatus || completingByConsultation) {
+      const c = updateData.consultation || existingAppointment.consultation || {};
+      const visitReasonVerified = c.visitReasonVerified === true;
+      const visitTypeVerified = c.visitTypeVerified === true;
+      if (!visitReasonVerified && !visitTypeVerified) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Potwierdź weryfikację (visit reason lub visit type) przed zapisem.",
+          code: "VISIT_TYPE_NOT_VERIFIED",
+          visitReasonVerified,
+          visitTypeVerified,
+        });
+      }
     }
 
     // Handle medications if provided
