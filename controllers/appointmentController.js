@@ -5201,8 +5201,8 @@ exports.getVisitReasons = async (req, res) => {
 };
 
 /**
- * Verify (confirm) appointment's selected visit reason.
- * Only doctor/admin are allowed.
+ * Set consultation visit reason / visit type verification flags (doctor/admin).
+ * Does not require visitReason to be populated.
  *
  * @route PATCH /api/appointments/visit-reason/verify/:id
  */
@@ -5214,28 +5214,6 @@ exports.verifyVisitReason = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid appointment ID format",
-      });
-    }
-
-    const appointment = await Appointment.findById(id).lean();
-    if (!appointment) {
-      return res.status(404).json({
-        success: false,
-        message: "Appointment not found",
-      });
-    }
-
-    // Consider all places where FE/backend may store the selected visit type/reason.
-    // Close logic checks visitReason OR consultationType OR metadata.visitType, so verify must match it.
-    const existingReason =
-      appointment.consultation?.visitReason ??
-      appointment.consultation?.consultationType ??
-      appointment.metadata?.visitType;
-    if (!existingReason || !String(existingReason).trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Appointment has no visit reason to verify",
-        code: "VISIT_REASON_NOT_SET",
       });
     }
 
