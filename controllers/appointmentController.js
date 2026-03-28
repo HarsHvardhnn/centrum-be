@@ -5217,7 +5217,8 @@ exports.verifyVisitReason = async (req, res) => {
       });
     }
 
-    const appointment = await Appointment.findById(id);
+    // Read from primary to avoid replica lag showing stale consultation on first open.
+    const appointment = await Appointment.findById(id).read("primary").lean();
     if (!appointment) {
       return res.status(404).json({
         success: false,
@@ -5239,17 +5240,59 @@ exports.verifyVisitReason = async (req, res) => {
       });
     }
 
-    if (!appointment.consultation) appointment.consultation = {};
-    appointment.consultation.visitReasonVerified = true;
-    // If doctor/admin verified the selected visit reason, treat visit type as verified too.
-    appointment.consultation.visitTypeVerified = true;
-    await appointment.save();
+    // Merge flags into consultation (do not rely on dot-path $set only): when `consultation`
+    // is missing or null, some drivers/versions apply the first update inconsistently; a
+    // pipeline + $mergeObjects always writes a full subdocument object and preserves fields.
+    const verifyPipeline = [
+      {
+        $set: {
+          consultation: {
+            $mergeObjects: [
+              {
+                $cond: [
+                  { $eq: [{ $type: "$consultation" }, "object"] },
+                  "$consultation",
+                  {},
+                ],
+              },
+              {
+                visitReasonVerified: true,
+                visitTypeVerified: true,
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const updated = await Appointment.findOneAndUpdate({ _id: id }, verifyPipeline, {
+      new: true,
+    })
+      .read("primary")
+      .select("consultation.visitReasonVerified consultation.visitTypeVerified");
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    const visitReasonVerified = updated.consultation?.visitReasonVerified === true;
+    const visitTypeVerified = updated.consultation?.visitTypeVerified === true;
+
+    if (!visitReasonVerified || !visitTypeVerified) {
+      console.error("verifyVisitReason: flags not true after atomic update", {
+        appointmentId: id,
+        consultation: updated.consultation,
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      appointmentId: appointment._id,
-      visitReasonVerified: true,
-      visitTypeVerified: true,
+      appointmentId: updated._id,
+      visitReasonVerified,
+      visitTypeVerified,
     });
   } catch (error) {
     console.error("verifyVisitReason error:", error);
@@ -5279,6 +5322,7 @@ exports.getVisitReasonVerifiedStatus = async (req, res) => {
     }
 
     const appointment = await Appointment.findById(id)
+      .read("primary")
       .select("consultation.visitReasonVerified consultation.visitTypeVerified")
       .lean();
 
