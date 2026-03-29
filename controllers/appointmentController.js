@@ -15,7 +15,7 @@ const Service = require("../models/services");
 const bcrypt = require("bcrypt");
 const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
-const { toZonedTime } = require("date-fns-tz");
+const { toZonedTime, toDate, formatInTimeZone } = require("date-fns-tz");
 const patient = require("../models/user-entity/patient");
 const path = require("path");
 const fs = require("fs");
@@ -4430,6 +4430,39 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
   }
 };
 
+/** End of "today" for appointment list filters (clinic TZ). Used when startDate is set but endDate is omitted. */
+function endOfAppointmentListToday() {
+  const tz = "Europe/Warsaw";
+  const ymd = formatInTimeZone(new Date(), tz, "yyyy-MM-dd");
+  return toDate(`${ymd}T23:59:59.999`, { timeZone: tz });
+}
+
+function buildAppointmentListDateRange(startDate, endDate) {
+  const hasStart = startDate != null && String(startDate).trim() !== "";
+  const hasEnd = endDate != null && String(endDate).trim() !== "";
+  if (!hasStart && !hasEnd) {
+    return { range: null };
+  }
+  const range = {};
+  if (hasStart) {
+    const startDateObj = new Date(startDate);
+    if (isNaN(startDateObj.getTime())) {
+      return { error: "Invalid start date format" };
+    }
+    range.$gte = startDateObj;
+  }
+  if (hasEnd) {
+    const endDateObj = new Date(endDate);
+    if (isNaN(endDateObj.getTime())) {
+      return { error: "Invalid end date format" };
+    }
+    range.$lte = endDateObj;
+  } else if (hasStart) {
+    range.$lte = endOfAppointmentListToday();
+  }
+  return { range };
+}
+
 exports.getAppointments = async (req, res) => {
   try {
     const {
@@ -4482,6 +4515,14 @@ exports.getAppointments = async (req, res) => {
       });
     }
 
+    const dateRangeResult = buildAppointmentListDateRange(startDate, endDate);
+    if (dateRangeResult.error) {
+      return res.status(400).json({
+        success: false,
+        message: dateRangeResult.error,
+      });
+    }
+
     // Build query
     const query = {};
 
@@ -4495,30 +4536,8 @@ exports.getAppointments = async (req, res) => {
     }
 
 
-
-    // Date range filter - support single dates and date ranges
-    if (startDate || endDate) {
-      query.date = {};
-      if (startDate) {
-        const startDateObj = new Date(startDate);
-        if (isNaN(startDateObj.getTime())) {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid start date format"
-          });
-        }
-        query.date.$gte = startDateObj;
-      }
-      if (endDate) {
-        const endDateObj = new Date(endDate);
-        if (isNaN(endDateObj.getTime())) {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid end date format"
-          });
-        }
-        query.date.$lte = endDateObj;
-      }
+    if (dateRangeResult.range) {
+      query.date = dateRangeResult.range;
     }
 
     // Doctor filter: accept doctorId as User _id or as doctor d_id (resolve to User _id for appointment query)
@@ -4584,41 +4603,8 @@ exports.getAppointments = async (req, res) => {
         matchConditions.status = { $ne: "cancelled" };
       }
 
-      if (startDate || endDate) {
-        matchConditions.date = {};
-        if (startDate) {
-          const startDateObj = new Date(startDate);
-          if (isNaN(startDateObj.getTime())) {
-            return res.status(400).json({
-              success: false,
-              message: "Invalid start date format"
-            });
-          }
-          matchConditions.date.$gte = startDateObj;
-        }
-        if (endDate) {
-          const endDateObj = new Date(endDate);
-          if (isNaN(endDateObj.getTime())) {
-            return res.status(400).json({
-              success: false,
-              message: "Invalid end date format"
-            });
-          }
-          matchConditions.date.$lte = endDateObj;
-        }
-        // When only startDate is sent (no endDate), treat as single "displayed day": that full day only so appointments for that day are returned
-        if (startDate && !endDate) {
-          const parts = String(startDate).trim().split("-");
-          if (parts.length >= 3) {
-            const y = parseInt(parts[0], 10);
-            const m = parseInt(parts[1], 10) - 1;
-            const d = parseInt(parts[2], 10);
-            if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-              matchConditions.date.$gte = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
-              matchConditions.date.$lte = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
-            }
-          }
-        }
+      if (dateRangeResult.range) {
+        matchConditions.date = { ...dateRangeResult.range };
       }
 
       if (resolvedDoctorId) {
@@ -4927,30 +4913,7 @@ exports.getAppointments = async (req, res) => {
         ...(status && status !== "all" && status !== "no_appointment" ? 
           status === "checkedIn" ? { status: status } : { status: status.toLowerCase() }
         : {}),
-        ...(startDate || endDate
-          ? {
-              date: {
-                ...(startDate ? { 
-                  $gte: (() => {
-                    const startDateObj = new Date(startDate);
-                    if (isNaN(startDateObj.getTime())) {
-                      throw new Error("Invalid start date format");
-                    }
-                    return startDateObj;
-                  })()
-                } : {}),
-                ...(endDate ? { 
-                  $lte: (() => {
-                    const endDateObj = new Date(endDate);
-                    if (isNaN(endDateObj.getTime())) {
-                      throw new Error("Invalid end date format");
-                    }
-                    return endDateObj;
-                  })()
-                } : {}),
-              },
-            }
-          : {}),
+        ...(dateRangeResult.range ? { date: { ...dateRangeResult.range } } : {}),
         ...visitReasonMatch,
         };
       } catch (dateError) {
