@@ -15,7 +15,7 @@ const Service = require("../models/services");
 const bcrypt = require("bcrypt");
 const sendEmail = require("../utils/mailer");
 const { format } = require("date-fns");
-const { toZonedTime, toDate, formatInTimeZone } = require("date-fns-tz");
+const { toZonedTime } = require("date-fns-tz");
 const patient = require("../models/user-entity/patient");
 const path = require("path");
 const fs = require("fs");
@@ -4430,13 +4430,7 @@ exports.getDoctorAppointmentsByDate = async (req, res) => {
   }
 };
 
-/** End of "today" for appointment list filters (clinic TZ). Used when startDate is set but endDate is omitted. */
-function endOfAppointmentListToday() {
-  const tz = "Europe/Warsaw";
-  const ymd = formatInTimeZone(new Date(), tz, "yyyy-MM-dd");
-  return toDate(`${ymd}T23:59:59.999`, { timeZone: tz });
-}
-
+/** Date filter for appointment list: startDate → $gte only; endDate → $lte only when provided (no default cap). */
 function buildAppointmentListDateRange(startDate, endDate) {
   const hasStart = startDate != null && String(startDate).trim() !== "";
   const hasEnd = endDate != null && String(endDate).trim() !== "";
@@ -4457,8 +4451,6 @@ function buildAppointmentListDateRange(startDate, endDate) {
       return { error: "Invalid end date format" };
     }
     range.$lte = endDateObj;
-  } else if (hasStart) {
-    range.$lte = endOfAppointmentListToday();
   }
   return { range };
 }
