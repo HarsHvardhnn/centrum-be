@@ -2107,7 +2107,7 @@ exports.removePatientEmail = async (req, res) => {
 
 /**
  * GET /patients/:patientId/visits
- * Returns all visits (appointments) for a patient in a simple shape for modals: date, time, doctor, visit type.
+ * Returns all visits (appointments) for a patient in a simple shape for modals: date, time, doctor, visit type, notes (appointment-level).
  * Auth: doctor, receptionist, admin, or patient (only their own).
  */
 exports.getPatientVisits = async (req, res) => {
@@ -2143,6 +2143,7 @@ exports.getPatientVisits = async (req, res) => {
         visitType,
         mode: a.mode || null,
         status: a.status || null,
+        notes: a.notes != null ? String(a.notes) : null,
       };
     });
 
