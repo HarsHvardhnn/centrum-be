@@ -4761,6 +4761,7 @@ exports.getAppointments = async (req, res) => {
         return {
           id: appointment._id,
           _id: appointment._id,
+          created_at: appointment.createdAt ?? null,
           date: appointment.date,
           startTime: appointment.startTime,
           endTime: appointment.endTime,
@@ -4969,6 +4970,7 @@ exports.getAppointments = async (req, res) => {
         appointmentRows.push({
           id: appointment._id,
           _id: appointment._id,
+          created_at: appointment.createdAt ?? null,
           date: appointment.date || new Date(),
           startTime: appointment.startTime || "00:00",
           endTime: appointment.endTime || "00:00",
