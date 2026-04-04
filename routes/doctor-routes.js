@@ -21,6 +21,14 @@ const {
 } = require("../controllers/doctorController");
 const {upload} = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
+const userServicesController = require("../controllers/userServicesController");
+
+/** Maps :doctorId → user-services handler params (UserService links services to doctor user _id). */
+function aliasDoctorServicesParams(req, res, next) {
+  req.params.userId = req.params.doctorId;
+  req.params.userType = "doctor";
+  next();
+}
 
 router.post("/", upload.single("file"), addDoctor);
 
@@ -32,6 +40,14 @@ router.get("/profile/slug/:slug", getDoctorBySlug);
 // Doctor profile endpoints
 router.get("/profile", authorizeRoles(["doctor"]), getDoctorProfile);
 router.get("/profile/:doctorId", getDoctorProfile);
+
+// Services linked to this doctor (User services modal / catalog) — same data as GET /user-services/:userId/doctor
+router.get(
+  "/:doctorId/services",
+  authorizeRoles(["admin", "doctor", "receptionist", "patient"]),
+  aliasDoctorServicesParams,
+  userServicesController.getUserServices
+);
 
 router.get("/:id", getDoctorById);
 

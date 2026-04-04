@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
 const { generateNextInvoiceId } = require("./invoiceName");
 const patientServices = require("../models/patientServices");
+const { getVisitTypeDisplayForFe } = require("../utils/visitTypeDisplay");
 const puppeteer = require('puppeteer-core');
 // const path = require('path');
 // const fs = require('fs');
@@ -646,7 +647,7 @@ exports.generateInvoice = async (req, res) => {
       })
       .populate({
         path: "appointment",
-        select: "date startTime endTime doctor consultation mode",
+        select: "date startTime endTime doctor consultation mode metadata",
         populate: {
           path: "doctor",
           select: "name email",
@@ -748,6 +749,8 @@ exports.generateInvoice = async (req, res) => {
 
     const patientAddress = constructPatientAddress(bill.patient);
     console.log(patientAddress,"patientAddress")
+
+    const visitTypeForInvoice = getVisitTypeDisplayForFe(bill.appointment || {});
 
     // Enhanced HTML content with better styling
     const htmlContent = `
@@ -1020,7 +1023,7 @@ exports.generateInvoice = async (req, res) => {
                 </div>
                 <div class="info-row">
                     <span class="info-label">Typ konsultacji:</span>
-                    <span>${bill.appointment?.consultation?.consultationType || "Konsultacja ogólna"}</span>
+                    <span>${visitTypeForInvoice}</span>
                 </div>
             </div>
         </div>

@@ -5,6 +5,7 @@ const { validatePesel } = require("../utils/peselValidation");
 const { validateInternationalDocument, validateDocumentKey, validateDocumentNumber, normalizeDocumentKey, normalizeDocumentNumber } = require("../utils/internationalDocumentValidation");
 const doctor = require("../models/user-entity/doctor");
 const Appointment = require("../models/appointment");
+const { getVisitTypeDisplayForFe } = require("../utils/visitTypeDisplay");
 const VisitDiagnosis = require("../models/visitDiagnosis");
 const user = require("../models/user-entity/user");
 const Specialization = require("../models/specialization");
@@ -2129,7 +2130,7 @@ exports.getPatientVisits = async (req, res) => {
       const doctorName = a.doctor?.name
         ? `${a.doctor.name.first || ""} ${a.doctor.name.last || ""}`.trim()
         : null;
-      const visitType = a.consultation?.visitReason || a.consultation?.consultationType || a.metadata?.visitType || (a.mode === "online" ? "Konsultacja online" : a.mode === "offline" ? "Konsultacja w przychodni" : null) || a.mode || "—";
+      const visitType = getVisitTypeDisplayForFe(a);
       return {
         visitId: a._id,
         date: a.date ? new Date(a.date).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" }) : null,
@@ -2349,8 +2350,8 @@ exports.getAppointmentsList = async (req, res) => {
         internationalPatientDocumentKey,
         role: appointment.createdByRole != null ? appointment.createdByRole : "online",
         visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
-        visitReason: appointment.consultation?.visitReason ?? null,
-        consultationType: appointment.consultation?.consultationType ?? null,
+        visitReason: getVisitTypeDisplayForFe(appointment),
+        consultationType: getVisitTypeDisplayForFe(appointment),
         visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         registrationData: fromReg || null,
       };

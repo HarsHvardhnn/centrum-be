@@ -29,6 +29,7 @@ const {
   getVisitReasons: getVisitReasonsConfig,
   getOnlineRegistrationVisitReason,
 } = require("../config/visitReasons");
+const { getVisitTypeDisplayForFe } = require("../utils/visitTypeDisplay");
 const { validatePesel } = require("../utils/peselValidation");
 const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 
@@ -2404,12 +2405,7 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         : (fromReg?.firstName || fromReg?.lastName
             ? [fromReg.firstName, fromReg.lastName].filter(Boolean).join(" ")
             : fromReg?.name || "");
-      const consultationType =
-        appt.consultation?.visitReason ||
-        appt.consultation?.consultationType ||
-        appt.metadata?.visitType ||
-        (appt.mode === "online" ? "Konsultacja online" : "Konsultacja w przychodni") ||
-        null;
+      const consultationType = getVisitTypeDisplayForFe(appt);
 
       const patientLessVisit = !appt.patient || !appt.patient._id;
       const patientIdValue = appt.patient?._id
@@ -2481,7 +2477,10 @@ exports.getAppointmentsByPatient = async (req, res) => {
     res.status(200).json({
       success: true,
       count: appointments.length,
-      data: appointments,
+      data: appointments.map((a) => ({
+        ...a,
+        visitType: getVisitTypeDisplayForFe(a),
+      })),
     });
   } catch (error) {
     console.error("Error fetching patient appointments:", error);
@@ -2571,9 +2570,13 @@ exports.updateAppointmentStatus = async (req, res) => {
       }
     }
 
+    const statusPlain = appointment.toObject ? appointment.toObject() : appointment;
     res.status(200).json({
       success: true,
-      data: appointment,
+      data: {
+        ...statusPlain,
+        visitType: getVisitTypeDisplayForFe(statusPlain),
+      },
       notifications: {
         sms: smsResult
           ? {
@@ -2943,6 +2946,7 @@ exports.getAppointmentsDashboard = async (req, res) => {
           patientObjectId: appt.patient?._id || null,
           status: appt.status || "booked",
           mode: appt.mode || "offline",
+          visitType: getVisitTypeDisplayForFe(appt),
           startTime: appt.startTime,
           endTime: appt.endTime,
         };
@@ -3476,9 +3480,15 @@ exports.updateAppointmentDetails = async (req, res) => {
       });
     }
 
+    const updatedPlain = updatedAppointment.toObject
+      ? updatedAppointment.toObject()
+      : updatedAppointment;
     res.status(200).json({
       success: true,
-      data: updatedAppointment,
+      data: {
+        ...updatedPlain,
+        visitType: getVisitTypeDisplayForFe(updatedPlain),
+      },
       message: "Appointment updated successfully",
     });
   } catch (error) {
@@ -3915,6 +3925,8 @@ exports.getAppointmentDetails = async (req, res) => {
       appointmentData.reports = [];
     }
 
+    appointmentData.visitType = getVisitTypeDisplayForFe(appointment);
+
     res.status(200).json({
       success: true,
       data: appointmentData,
@@ -3958,7 +3970,10 @@ exports.getPatientAppointments = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: appointments,
+      data: appointments.map((a) => ({
+        ...a,
+        visitType: getVisitTypeDisplayForFe(a),
+      })),
     });
   } catch (error) {
     console.error("Error fetching patient appointments:", error);
@@ -4315,11 +4330,15 @@ exports.updateConsultation = async (req, res) => {
       updatedAppointment.consultation.time = updatedAppointment.startTime;
     }
 
+    const consultPlain = updatedAppointment.toObject
+      ? updatedAppointment.toObject()
+      : updatedAppointment;
     res.status(200).json({
       success: true,
       message: "Consultation updated successfully",
       data: {
         consultation: updatedAppointment.consultation,
+        visitType: getVisitTypeDisplayForFe(consultPlain),
       },
     });
   } catch (error) {
@@ -4800,7 +4819,7 @@ exports.getAppointments = async (req, res) => {
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
           role: appointment.createdByRole != null ? appointment.createdByRole : "online",
           visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
-          visitReason: appointment.consultation?.visitReason || appointment.consultation?.consultationType || appointment.metadata?.visitType || (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) || null,
+          visitReason: getVisitTypeDisplayForFe(appointment),
           visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         };
       });
@@ -5011,7 +5030,7 @@ exports.getAppointments = async (req, res) => {
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
           role: appointment.createdByRole != null ? appointment.createdByRole : "online",
           visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
-          visitReason: appointment.consultation?.visitReason || appointment.consultation?.consultationType || appointment.metadata?.visitType || (appointment.mode === "online" ? "Konsultacja online" : appointment.mode === "offline" ? "Konsultacja w przychodni" : null) || null,
+          visitReason: getVisitTypeDisplayForFe(appointment),
           visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         });
       });
