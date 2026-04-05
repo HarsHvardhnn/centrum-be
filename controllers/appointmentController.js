@@ -29,7 +29,10 @@ const {
   getVisitReasons: getVisitReasonsConfig,
   getOnlineRegistrationVisitReason,
 } = require("../config/visitReasons");
-const { getVisitTypeDisplayForFe } = require("../utils/visitTypeDisplay");
+const {
+  getVisitTypeDisplayForFe,
+  decorateAppointmentResponseForFe,
+} = require("../utils/visitTypeDisplay");
 const { validatePesel } = require("../utils/peselValidation");
 const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 
@@ -1573,8 +1576,9 @@ exports.createAppointment = async (req, res) => {
     }
 
     // Prepare response data
+    const apptPlain = appointment.toObject ? appointment.toObject() : appointment;
     const responseData = {
-      appointment,
+      appointment: decorateAppointmentResponseForFe(apptPlain),
       isNewUser,
       temporaryPassword: isNewUser ? temporaryPassword : undefined,
       emailSent,
@@ -1878,8 +1882,9 @@ exports.createReceptionAppointment = async (req, res) => {
       await appointment.save();
     }
 
+    const apptPlainReception = appointment.toObject ? appointment.toObject() : appointment;
     const responseData = {
-      appointment,
+      appointment: decorateAppointmentResponseForFe(apptPlainReception),
       isNewUser,
       temporaryPassword: isNewUser ? temporaryPassword : undefined,
       emailSent,
@@ -2264,7 +2269,7 @@ exports.completeRegistration = async (req, res) => {
       message: isExisting
         ? "Rejestracja zakończona. Wizyta przypisana do istniejącego pacjenta."
         : "Rejestracja zakończona. Utworzono nowego pacjenta i przypisano wizytę.",
-      appointment: appointmentPopulated,
+      appointment: decorateAppointmentResponseForFe(appointmentPopulated),
       patient: {
         _id: patientDocRef._id,
         patientId: patientDocRef.patientId,
@@ -2477,10 +2482,7 @@ exports.getAppointmentsByPatient = async (req, res) => {
     res.status(200).json({
       success: true,
       count: appointments.length,
-      data: appointments.map((a) => ({
-        ...a,
-        visitType: getVisitTypeDisplayForFe(a),
-      })),
+      data: appointments.map((a) => decorateAppointmentResponseForFe(a)),
     });
   } catch (error) {
     console.error("Error fetching patient appointments:", error);
@@ -2573,10 +2575,7 @@ exports.updateAppointmentStatus = async (req, res) => {
     const statusPlain = appointment.toObject ? appointment.toObject() : appointment;
     res.status(200).json({
       success: true,
-      data: {
-        ...statusPlain,
-        visitType: getVisitTypeDisplayForFe(statusPlain),
-      },
+      data: decorateAppointmentResponseForFe(statusPlain),
       notifications: {
         sms: smsResult
           ? {
@@ -2835,11 +2834,12 @@ exports.rescheduleAppointment = async (req, res) => {
       }
     }
 
+    const reschedulePlain = appointment.toObject ? appointment.toObject() : appointment;
     res.status(200).json({
       success: true,
       message: "Wizyta została pomyślnie przełożona",
       data: {
-        appointment,
+        appointment: decorateAppointmentResponseForFe(reschedulePlain),
         oldDate: oldDate,
         oldStartTime: oldStartTime,
         oldEndTime: oldEndTime,
@@ -3485,10 +3485,7 @@ exports.updateAppointmentDetails = async (req, res) => {
       : updatedAppointment;
     res.status(200).json({
       success: true,
-      data: {
-        ...updatedPlain,
-        visitType: getVisitTypeDisplayForFe(updatedPlain),
-      },
+      data: decorateAppointmentResponseForFe(updatedPlain),
       message: "Appointment updated successfully",
     });
   } catch (error) {
@@ -3619,12 +3616,13 @@ exports.uploadAppointmentReport = async (req, res) => {
     appointment.reports.push(report);
     await appointment.save();
 
+    const apptAfterReport = appointment.toObject ? appointment.toObject() : appointment;
     res.status(200).json({
       success: true,
       message: "Report uploaded successfully",
       data: {
         report,
-        appointment,
+        appointment: decorateAppointmentResponseForFe(apptAfterReport),
       },
     });
   } catch (error) {
@@ -3925,11 +3923,9 @@ exports.getAppointmentDetails = async (req, res) => {
       appointmentData.reports = [];
     }
 
-    appointmentData.visitType = getVisitTypeDisplayForFe(appointment);
-
     res.status(200).json({
       success: true,
-      data: appointmentData,
+      data: decorateAppointmentResponseForFe(appointmentData),
     });
   } catch (error) {
     console.error("Error fetching appointment:", error);
@@ -3970,10 +3966,7 @@ exports.getPatientAppointments = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: appointments.map((a) => ({
-        ...a,
-        visitType: getVisitTypeDisplayForFe(a),
-      })),
+      data: appointments.map((a) => decorateAppointmentResponseForFe(a)),
     });
   } catch (error) {
     console.error("Error fetching patient appointments:", error);
@@ -4333,12 +4326,13 @@ exports.updateConsultation = async (req, res) => {
     const consultPlain = updatedAppointment.toObject
       ? updatedAppointment.toObject()
       : updatedAppointment;
+    const decoratedConsultResponse = decorateAppointmentResponseForFe(consultPlain);
     res.status(200).json({
       success: true,
       message: "Consultation updated successfully",
       data: {
-        consultation: updatedAppointment.consultation,
-        visitType: getVisitTypeDisplayForFe(consultPlain),
+        consultation: decoratedConsultResponse.consultation,
+        visitType: decoratedConsultResponse.visitType,
       },
     });
   } catch (error) {

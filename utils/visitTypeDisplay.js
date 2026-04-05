@@ -118,8 +118,27 @@ function getVisitTypeDisplayForFe(appointment) {
   return LABEL_FOLLOWUP;
 }
 
+/**
+ * Shapes a plain appointment object for JSON responses: sets visitType and
+ * consultation.visitReason to the same display label as getVisitTypeDisplayForFe.
+ * Does not persist; safe for API output only.
+ *
+ * @param {object|null|undefined} plain - toObject() / lean appointment
+ * @returns {object}
+ */
+function decorateAppointmentResponseForFe(plain) {
+  if (!plain || typeof plain !== "object") return plain;
+  const label = getVisitTypeDisplayForFe(plain);
+  const out = { ...plain, visitType: label };
+  if (plain.consultation != null && typeof plain.consultation === "object") {
+    out.consultation = { ...plain.consultation, visitReason: label };
+  }
+  return out;
+}
+
 module.exports = {
   getVisitTypeDisplayForFe,
+  decorateAppointmentResponseForFe,
   isFirstVisitAppointment,
   VISIT_TYPE_LABELS: {
     online: LABEL_ONLINE,
