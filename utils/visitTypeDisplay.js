@@ -4,11 +4,12 @@
  * - First visit → "Konsultacja pierwszorazowa"
  * - Otherwise → "Konsultacja lekarska"
  *
- * Priority:
- * 1) mode === online → always online label
- * 2) metadata.visitType slug: first-visit* → pierwszorazowa; any other non-empty slug → lekarska
- *    (so "re-visit" wins over stale consultation.visitReason still saying pierwszorazowa)
- * 3) No slug: legacy — isNewPatient / consultation text with "pierwszorazowa"
+ * Slugs are read in order: metadata.visitType → consultation.visitReason → consultation.consultationType
+ * (so visitReason: "re-visit" works even when metadata.visitType is empty).
+ *
+ * metadata.visitType: any non-empty value not in first-visit slugs → lekarska (unchanged).
+ * visitReason / consultationType: first-visit / re-visit slugs, or short hyphenated technical slugs → mapped;
+ *   Polish sentences fall through to legacy (pierwszorazowa in text, isNewPatient).
  */
 
 const LABEL_ONLINE = "Konsultacja online";
@@ -22,7 +23,6 @@ const FIRST_VISIT_SLUGS = new Set([
   "pierwszorazowa",
 ]);
 
-/** Explicit follow-up slugs (optional; any non-first non-empty slug already maps to lekarska). */
 const REVISIT_SLUGS = new Set([
   "re-visit",
   "re_visit",
@@ -36,6 +36,42 @@ const REVISIT_SLUGS = new Set([
 
 function norm(s) {
   return String(s ?? "").trim().toLowerCase();
+}
+
+/** Technical slug on visitReason / consultationType (not Polish sentence). */
+function isHyphenTechnicalSlug(s) {
+  if (!s || s.length >= 60) return false;
+  if (s.includes("konsultacja")) return false;
+  return s.includes("-");
+}
+
+/**
+ * @returns {"first"|"followup"|null} null = no structured decision, use legacy text
+ */
+function resolveStructuredSlugs(appointment) {
+  if (!appointment || typeof appointment !== "object") return null;
+
+  const m = norm(appointment.metadata?.visitType);
+  if (m) {
+    if (FIRST_VISIT_SLUGS.has(m)) return "first";
+    return "followup";
+  }
+
+  const visitReason = norm(appointment.consultation?.visitReason);
+  if (visitReason) {
+    if (FIRST_VISIT_SLUGS.has(visitReason)) return "first";
+    if (REVISIT_SLUGS.has(visitReason)) return "followup";
+    if (isHyphenTechnicalSlug(visitReason)) return "followup";
+  }
+
+  const ctype = norm(appointment.consultation?.consultationType);
+  if (ctype) {
+    if (FIRST_VISIT_SLUGS.has(ctype)) return "first";
+    if (REVISIT_SLUGS.has(ctype)) return "followup";
+    if (isHyphenTechnicalSlug(ctype)) return "followup";
+  }
+
+  return null;
 }
 
 function legacyFirstVisitIndicators(appointment) {
@@ -53,16 +89,10 @@ function legacyFirstVisitIndicators(appointment) {
   return false;
 }
 
-/**
- * True only when we would show "first" without relying on metadata.visitType slug
- * (exported for callers that need the same rule).
- */
 function isFirstVisitAppointment(appointment) {
-  if (!appointment || typeof appointment !== "object") return false;
-  const metaSlug = norm(appointment.metadata?.visitType);
-  if (metaSlug) {
-    return FIRST_VISIT_SLUGS.has(metaSlug);
-  }
+  const resolved = resolveStructuredSlugs(appointment);
+  if (resolved === "first") return true;
+  if (resolved === "followup") return false;
   return legacyFirstVisitIndicators(appointment);
 }
 
@@ -77,18 +107,9 @@ function getVisitTypeDisplayForFe(appointment) {
     return LABEL_ONLINE;
   }
 
-  const metaSlug = norm(appointment.metadata?.visitType);
-
-  if (metaSlug) {
-    if (FIRST_VISIT_SLUGS.has(metaSlug)) {
-      return LABEL_FIRST;
-    }
-    if (REVISIT_SLUGS.has(metaSlug)) {
-      return LABEL_FOLLOWUP;
-    }
-    // Any other explicit FE slug (e.g. "re-visit" variants, procedure keys) → simplified "lekarska"
-    return LABEL_FOLLOWUP;
-  }
+  const resolved = resolveStructuredSlugs(appointment);
+  if (resolved === "first") return LABEL_FIRST;
+  if (resolved === "followup") return LABEL_FOLLOWUP;
 
   if (legacyFirstVisitIndicators(appointment)) {
     return LABEL_FIRST;
