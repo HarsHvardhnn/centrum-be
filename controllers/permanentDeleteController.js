@@ -656,10 +656,7 @@ exports.permanentlyDeleteInvoice = async (req, res) => {
       for (const bill of bills) {
         if (bill.invoiceUrl) {
           try {
-            // Extract public ID from Cloudinary URL if possible
-            const urlParts = bill.invoiceUrl.split('/');
-            const publicId = urlParts[urlParts.length - 1].split('.')[0];
-            await deleteFromCloudinary(publicId);
+            await deleteFromCloudinary(bill.invoiceUrl);
           } catch (cloudError) {
             console.error("Error deleting invoice from Cloudinary:", cloudError);
           }
@@ -691,10 +688,7 @@ exports.permanentlyDeleteInvoice = async (req, res) => {
       for (const bill of bills) {
         if (bill.invoiceUrl) {
           try {
-            // Extract public ID from Cloudinary URL if possible
-            const urlParts = bill.invoiceUrl.split('/');
-            const publicId = urlParts[urlParts.length - 1].split('.')[0];
-            await deleteFromCloudinary(publicId);
+            await deleteFromCloudinary(bill.invoiceUrl);
           } catch (cloudError) {
             console.error("Error deleting invoice from Cloudinary:", cloudError);
           }
@@ -729,9 +723,7 @@ exports.permanentlyDeleteInvoice = async (req, res) => {
       // Delete invoice PDF from Cloudinary if exists
       if (bill.invoiceUrl) {
         try {
-          const urlParts = bill.invoiceUrl.split('/');
-          const publicId = urlParts[urlParts.length - 1].split('.')[0];
-          await deleteFromCloudinary(publicId);
+          await deleteFromCloudinary(bill.invoiceUrl);
         } catch (cloudError) {
           console.error("Error deleting invoice from Cloudinary:", cloudError);
         }

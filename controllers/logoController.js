@@ -8,6 +8,7 @@ const cloudinary = require("../utils/cloudinary");
  */
 exports.uploadLogo = async (req, res) => {
   try {
+    req.cloudinaryCategory = "branding_logo";
     // Use the existing upload middleware
     upload.single("logo")(req, res, async (err) => {
       if (err) {

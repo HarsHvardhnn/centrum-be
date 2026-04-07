@@ -1,4 +1,5 @@
 const cloudinary = require('../utils/cloudinary');
+const { FOLDERS } = require('../constants/cloudinaryFolders');
 const path = require('path');
 const fs = require('fs');
 
@@ -24,7 +25,7 @@ const uploadLogoToCloudinaryFixed = async () => {
 
     // Upload to Cloudinary with explicit PNG extension
     const result = await cloudinary.uploader.upload(logoPath, {
-      folder: 'hospital_app/logos',
+      folder: FOLDERS.BRANDING_LOGOS,
       public_id: 'centrum_logo_email.png', // Explicitly add .png extension
       resource_type: 'image',
       format: 'png',
@@ -42,7 +43,7 @@ const uploadLogoToCloudinaryFixed = async () => {
     console.log(`  Size: ${(result.bytes / 1024).toFixed(2)} KB`);
 
     // Generate optimized URL for email (220px width) with proper extension
-    const optimizedUrl = cloudinary.url('hospital_app/logos/centrum_logo_email.png', {
+    const optimizedUrl = cloudinary.url(`${FOLDERS.BRANDING_LOGOS}/centrum_logo_email.png`, {
       width: 220,
       height: 'auto',
       crop: 'scale',
@@ -60,7 +61,7 @@ const uploadLogoToCloudinaryFixed = async () => {
       console.log(`  HTTPS URL: ${httpsUrl}`);
       
       // Also try without transformations for testing
-      const simpleUrl = cloudinary.url('hospital_app/logos/centrum_logo_email.png');
+      const simpleUrl = cloudinary.url(`${FOLDERS.BRANDING_LOGOS}/centrum_logo_email.png`);
       console.log(`  Simple URL: ${simpleUrl}`);
       
     } catch (testError) {

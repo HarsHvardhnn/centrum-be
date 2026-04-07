@@ -19,7 +19,7 @@ const {
 } = require("../controllers/specializationController");
 
 const authorizeRoles = require("../middlewares/authenticateRole");
-const {upload} = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const User = require("../models/user-entity/user");
 
 router.post("/receptionists", authorizeRoles(["admin"]), addReceptionist);
@@ -47,7 +47,7 @@ router.put("/specs/:id", authorizeRoles(["admin"]), updateSpecialization);
 router.delete("/specs/:id", authorizeRoles(["admin"]), deleteSpecialization);
 
 
-router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), upload.single("file"), async (req, res) => {
+router.post("/upload-file", authorizeRoles(["admin","doctor","receptionist"]), cloudinaryCategory("admin"), upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
 

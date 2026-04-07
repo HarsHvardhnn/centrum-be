@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const newsController = require("../controllers/newsController");
-const {upload} = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const { createCategory, getAllCategories, deleteCategory, getCategoriesWithNewsCount } = require("../controllers/categoryController");
 
@@ -12,6 +12,7 @@ const { createCategory, getAllCategories, deleteCategory, getCategoriesWithNewsC
 // Create with image upload
 router.post(
   "/",
+  cloudinaryCategory("news"),
   upload.single("file"),
   authorizeRoles(["admin"]),
  newsController.createNews
@@ -22,8 +23,9 @@ router.get("/slug/:slug", newsController.getNewsBySlug);
 router.get("/:id", newsController.getNewsById);
 router.put(
   "/:id",
-  upload.single("file")
-,  authorizeRoles(["admin"]),
+  cloudinaryCategory("news"),
+  upload.single("file"),
+  authorizeRoles(["admin"]),
   newsController.updateNews
 );
 router.delete("/:id",   authorizeRoles(["admin"]),

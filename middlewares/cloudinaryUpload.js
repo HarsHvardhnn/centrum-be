@@ -1,83 +1,98 @@
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../utils/cloudinary");
+const { FOLDERS, CLOUDINARY_CATEGORIES } = require("../constants/cloudinaryFolders");
 
-// Create different storage configurations based on file type
-const createStorage = (folderName, fileType) => {
+function isDocumentFile(file) {
+  return (
+    file.mimetype === "application/pdf" ||
+    file.mimetype?.includes("document") ||
+    file.mimetype === "text/plain" ||
+    file.type === "application/pdf" ||
+    file.type?.includes("document") ||
+    file.type === "text/plain"
+  );
+}
+
+function folderForCategory(req, file) {
+  const key = req.cloudinaryCategory || "misc";
+  const def = CLOUDINARY_CATEGORIES[key] || CLOUDINARY_CATEGORIES.misc;
+  const doc = isDocumentFile(file);
+  return doc ? def.document : def.image;
+}
+
+const sharedStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: (req, file) => {
+    const folderPath = folderForCategory(req, file);
+    const isDocument = isDocumentFile(file);
+    const params = {
+      folder: folderPath,
+      resource_type: isDocument ? "raw" : "image",
+      allowed_formats: isDocument
+        ? ["pdf", "doc", "docx", "txt"]
+        : ["jpg", "jpeg", "png", "webp"],
+      use_filename: false,
+      unique_filename: true,
+    };
+
+    if (isDocument) {
+      const parts = String(file.originalname || "").split(".");
+      const fileExtension =
+        parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "pdf";
+      params.public_id = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
+    }
+
+    return params;
+  },
+});
+
+/**
+ * Set Cloudinary folder category for the next multer upload (must run before upload middleware).
+ * @param {string} category - key of CLOUDINARY_CATEGORIES (e.g. "patient_record", "check_in")
+ */
+function cloudinaryCategory(category) {
+  return (req, res, next) => {
+    req.cloudinaryCategory = category;
+    next();
+  };
+}
+
+const upload = multer({
+  storage: sharedStorage,
+});
+
+function createFixedStorage(folderName, fileType) {
   const params = {
-    folder: `hospital_app/${folderName}`,
+    folder: folderName.startsWith("hospital_app") ? folderName : `hospital_app/${folderName}`,
     allowed_formats:
       fileType === "document"
         ? ["pdf", "doc", "docx", "txt"]
         : ["jpg", "jpeg", "png", "webp"],
     resource_type: fileType === "document" ? "raw" : "image",
-    // Prevent Cloudinary from embedding unicode filenames into public_id/URLs.
-    // We'll rely on Cloudinary's generated IDs (or our explicit public_id for `upload`).
     use_filename: false,
     unique_filename: true,
   };
-
-  // No transformations applied to preserve original image quality
 
   return new CloudinaryStorage({
     cloudinary: cloudinary,
     params: params,
   });
-};
+}
 
-// Create specialized upload instances
 const imageUpload = multer({
-  storage: createStorage("images", "image"),
+  storage: createFixedStorage(FOLDERS.MISC_IMAGES, "image"),
 });
 
 const documentUpload = multer({
-  storage: createStorage("visit_cards", "document"),
-});
-
-// General purpose upload with type detection
-const upload = multer({
-  storage: new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: (req, file) => {
-      // Determine file type based on mimetype
-      const isDocument =
-        file.mimetype === "application/pdf" ||
-        file.mimetype?.includes("document") ||
-        file.mimetype === "text/plain" ||
-        file.type === "application/pdf" ||
-        file.type?.includes("document") ||
-        file.type === "text/plain";
-
-      const folderPath = isDocument
-        ? "hospital_app/documents"
-        : "hospital_app/images";
-      const resourceType = isDocument ? "raw" : "image";
-      const params = {
-        folder: folderPath,
-        resource_type: resourceType,
-        allowed_formats: isDocument
-          ? ["pdf", "doc", "docx", "txt"]
-          : ["jpg", "jpeg", "png", "webp"],
-      };
-
-      // For documents, preserve the original filename and extension
-      if (isDocument) {
-        // Extract file extension
-        const parts = String(file.originalname || "").split(".");
-        const fileExtension =
-          parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "pdf";
-        params.public_id = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
-      }
-
-      // No transformations applied to preserve original image quality
-
-      return params;
-    },
-  }),
+  storage: createFixedStorage(FOLDERS.APPOINTMENT_REPORTS_DOCUMENTS, "document"),
 });
 
 module.exports = {
-  upload, // General purpose upload
-  imageUpload, // Specialized for images
-  documentUpload, // Specialized for PDFs and other documents
+  upload,
+  cloudinaryCategory,
+  imageUpload,
+  documentUpload,
+  FOLDERS,
+  CLOUDINARY_CATEGORIES,
 };

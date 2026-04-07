@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const patientController = require("../controllers/patientController");
-const {upload} = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const User = require("../models/user-entity/user");
 const { format } = require("date-fns");
 const authorizeRoles = require("../middlewares/authenticateRole");
@@ -11,8 +11,18 @@ const appointment = require("../models/appointment");
 // Import the standardized document helper
 const { createStandardizedDocument } = require("../controllers/patientController");
 
-router.post("/", upload.array("files", 10), patientController.createPatient);
-router.put("/:id", upload.array("files", 10), patientController.updatePatient);
+router.post(
+  "/",
+  cloudinaryCategory("patient_record"),
+  upload.array("files", 10),
+  patientController.createPatient
+);
+router.put(
+  "/:id",
+  cloudinaryCategory("patient_record"),
+  upload.array("files", 10),
+  patientController.updatePatient
+);
 
 
 router.get("/by-pesel", patientController.checkPeselExists);
@@ -100,6 +110,7 @@ router.get("/by-doctor/:doctorId", patientController.getPatientsByDoctorId);
 router.put(
   "/details/:id",
   authorizeRoles(["doctor", "admin","receptionist"]),
+  cloudinaryCategory("patient_details"),
   upload.array("files"),
 patientController.updatePatientDetails
 );
@@ -108,6 +119,7 @@ patientController.updatePatientDetails
 
 router.post(
   "/documents/:patientId/upload/:appointmentId",
+  cloudinaryCategory("check_in"),
   upload.array("files"),
   async (req, res) => {
     try {

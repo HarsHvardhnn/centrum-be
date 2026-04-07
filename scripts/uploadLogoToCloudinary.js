@@ -1,4 +1,5 @@
 const cloudinary = require('../utils/cloudinary');
+const { FOLDERS } = require('../constants/cloudinaryFolders');
 const path = require('path');
 const fs = require('fs');
 
@@ -24,7 +25,7 @@ const uploadLogoToCloudinary = async () => {
 
     // Upload to Cloudinary
     const result = await cloudinary.uploader.upload(logoPath, {
-      folder: 'hospital_app/logos',
+      folder: FOLDERS.BRANDING_LOGOS,
       public_id: 'centrum_logo_email',
       resource_type: 'image',
       format: 'png',

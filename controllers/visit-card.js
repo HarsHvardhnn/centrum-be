@@ -4,6 +4,7 @@ const path = require("path");
 const Patient = require("../models/user-entity/patient");
 const Appointment = require("../models/appointment");
 const cloudinary = require("../utils/cloudinary");
+const { FOLDERS } = require("../constants/cloudinaryFolders");
 const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
 const mongoose = require("mongoose");
@@ -732,7 +733,7 @@ exports.generateVisitCard = async (req, res) => {
     try {
       // Upload to Cloudinary
       const result = await cloudinary.uploader.upload(tempFilePath, {
-        folder: "hospital_app/images",
+        folder: FOLDERS.VISIT_CARDS,
         resource_type: "raw",
         type: "upload",
         use_filename: true,

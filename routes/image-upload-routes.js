@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { upload } = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
 
 /**
@@ -8,7 +8,7 @@ const authorizeRoles = require("../middlewares/authenticateRole");
  * @desc Upload a single image and return its URL
  * @access Public (no authentication required for testing)
  */
-router.post("/upload", upload.single("image"), async (req, res) => {
+router.post("/upload", cloudinaryCategory("image_gallery"), upload.single("image"), async (req, res) => {
   try {
     const file = req.file;
 
@@ -57,7 +57,7 @@ router.post("/upload", upload.single("image"), async (req, res) => {
  * @desc Upload multiple images and return their URLs
  * @access Public (no authentication required for testing)
  */
-router.post("/upload-multiple", upload.array("images", 10), async (req, res) => {
+router.post("/upload-multiple", cloudinaryCategory("image_gallery"), upload.array("images", 10), async (req, res) => {
   try {
     const files = req.files;
 

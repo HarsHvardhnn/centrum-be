@@ -19,7 +19,7 @@ const {
   copyLastWeekSchedule,
   copyScheduleFromDateRange,
 } = require("../controllers/doctorController");
-const {upload} = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const userServicesController = require("../controllers/userServicesController");
 
@@ -30,7 +30,7 @@ function aliasDoctorServicesParams(req, res, next) {
   next();
 }
 
-router.post("/", upload.single("file"), addDoctor);
+router.post("/", cloudinaryCategory("doctor"), upload.single("file"), addDoctor);
 
 router.get("/", getAllDoctors);
 
@@ -125,6 +125,7 @@ router.get(
 router.patch(
   "/details/:id",
   authorizeRoles(["doctor", "admin","receptionist"]),
+  cloudinaryCategory("doctor"),
   upload.single("file"),
   updateDoctor
 );

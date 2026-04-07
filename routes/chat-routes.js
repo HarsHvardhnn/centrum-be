@@ -4,7 +4,7 @@ const router = express.Router();
 const authorizeRoles = require("../middlewares/authenticateRole");
 const user = require("../models/user-entity/user");
 const chatRoom = require("../models/chatRoom");
-const { upload } = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 
 // Get chat for regular user
 router.get("/user-chat", authorizeRoles(["admin","doctor","receptionist"]), async (req, res) => {
@@ -72,7 +72,7 @@ router.get(
 );
 
 
-router.post("/upload", authorizeRoles(["admin","doctor","receptionist"]), upload.single("file"), async (req, res) => {
+router.post("/upload", authorizeRoles(["admin","doctor","receptionist"]), cloudinaryCategory("chat"), upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });

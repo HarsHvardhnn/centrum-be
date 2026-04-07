@@ -8,7 +8,7 @@ const visitDiagnosisController = require("../controllers/visitDiagnosisControlle
 const visitProcedureController = require("../controllers/visitProcedureController");
 const authorizeRoles = require("../middlewares/authenticateRole");
 const { bookAppointment } = require("../controllers/gmeetController");
-const { upload } = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const {createRecaptchaMiddleware} = require("../middlewares/recaptchaVerification");
 
 
@@ -93,6 +93,7 @@ router.patch(
 router.post(
   "/:visitId/complete-registration",
   authorizeRoles(["doctor", "receptionist", "admin"]),
+  cloudinaryCategory("visit_registration"),
   upload.array("files", 10),
   appointmentController.completeRegistration
 );
@@ -177,6 +178,7 @@ router.get(
 router.post(
   "/rep/:id/upload-report",
   authorizeRoles(["doctor", "receptionist", "admin"]),
+  cloudinaryCategory("appointment_report"),
   upload.single("file"), // Using single file upload
   appointmentController.uploadAppointmentReport
 );

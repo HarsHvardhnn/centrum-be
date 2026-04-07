@@ -25,7 +25,7 @@ const {
   migratePlainPasswords,
 } = require("../controllers/authController");
 const authorizeRoles = require("../middlewares/authenticateRole");
-const {upload} = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const { 
   getGoogleAuthUrl, 
   handleGoogleCallback, 
@@ -54,6 +54,7 @@ router.get("/profile", authorizeRoles([]), getUserPublicInfo);
 router.get("/profile/user",authorizeRoles(["admin","doctor","receptionist","patient"]), getProfile);
 router.put(
   "/profile",
+  cloudinaryCategory("user_profile"),
   upload.single("file"),
   authorizeRoles(["admin", "doctor", "receptionist","patient"]),
   updateProfile

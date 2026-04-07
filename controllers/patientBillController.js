@@ -6,6 +6,7 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 const cloudinary = require("../utils/cloudinary");
+const { FOLDERS } = require("../constants/cloudinaryFolders");
 const { v4: uuidv4 } = require("uuid");
 const User = require("../models/user-entity/user");
 const { generateNextInvoiceId } = require("./invoiceName");
@@ -1167,9 +1168,9 @@ exports.generateInvoice = async (req, res) => {
     try {
       // Upload to cloudinary
       const result = await cloudinary.uploader.upload(tempFilePath, {
-        folder: "invoices",
+        folder: FOLDERS.BILLING_INVOICES,
         resource_type: "raw",
-        public_id: bill.invoiceId?.replace(/\//g, '_') || safeInvoiceId
+        public_id: bill.invoiceId?.replace(/\//g, "_") || safeInvoiceId,
       });
 
       // Remove the temp file

@@ -2,12 +2,13 @@ const express = require("express");
 const router = express.Router();
 const serviceController = require("../controllers/serviceController");
 const authorizeRoles = require("../middlewares/authenticateRole");
-const {upload} = require("../middlewares/cloudinaryUpload");
+const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 
 // Create
 router.post(
   "/",
   authorizeRoles(["admin"]),
+  cloudinaryCategory("service"),
   upload.array("images"),
   serviceController.createService
 );
@@ -23,6 +24,7 @@ router.get("/:id", serviceController.getServiceById);
 router.put(
   "/:id",
     authorizeRoles(["admin"]),
+  cloudinaryCategory("service"),
   upload.array("images"),
   serviceController.updateService
 );
