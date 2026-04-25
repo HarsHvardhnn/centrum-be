@@ -1,4 +1,6 @@
 const Service = require("../models/services");
+const mongoose = require("mongoose");
+const UserService = require("../models/userServices");
 const { generateSlug, ensureUniqueSlug } = require("../utils/slugUtils");
 const { updateServicePricesInRelatedModels } = require("../utils/updateServicePrices");
 const { deleteServiceFromRelatedModels } = require("../utils/deleteServiceFromRelatedModels");
@@ -47,8 +49,39 @@ exports.createService = async (req, res) => {
 
 exports.getAllServices = async (req, res) => {
   try {
-    const services = await Service.find({ isDeleted: false })
-      .select('title slug description shortDescription images price bulletPoints redirectionUrl createdAt updatedAt');
+    const { doctorId } = req.query;
+    const selectFields =
+      "title slug description shortDescription images price bulletPoints redirectionUrl createdAt updatedAt";
+
+    // Optional doctorId filter: return only services assigned to the given doctor.
+    if (doctorId) {
+      if (!mongoose.Types.ObjectId.isValid(doctorId)) {
+        return res.status(400).json({ message: "Invalid doctorId format" });
+      }
+
+      const doctorServices = await UserService.findOne({
+        user: doctorId,
+        userType: "doctor",
+        isDeleted: false,
+      }).select("services.service");
+
+      const serviceIds = doctorServices
+        ? [...new Set((doctorServices.services || []).map((s) => String(s.service)).filter(Boolean))]
+        : [];
+
+      if (serviceIds.length === 0) {
+        return res.json([]);
+      }
+
+      const services = await Service.find({
+        isDeleted: false,
+        _id: { $in: serviceIds },
+      }).select(selectFields);
+
+      return res.json(services);
+    }
+
+    const services = await Service.find({ isDeleted: false }).select(selectFields);
     res.json(services);
   } catch (error) {
     console.error('Error getting services:', error);

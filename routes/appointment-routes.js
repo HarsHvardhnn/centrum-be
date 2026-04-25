@@ -82,6 +82,15 @@ router.patch(
   appointmentController.updateAppointmentStatus
 );
 
+// @route   PATCH /api/appointments/admin/:appointmentId/status
+// @desc    Admin-only direct status update
+// @access  Private (admin only)
+router.patch(
+  "/admin/:appointmentId/status",
+  authorizeRoles(["admin"]),
+  appointmentController.adminUpdateAppointmentStatus
+);
+
 // Reschedule appointment
 router.patch(
   "/:appointmentId/reschedule",

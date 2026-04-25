@@ -2,6 +2,10 @@ const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../utils/cloudinary");
 const { FOLDERS, CLOUDINARY_CATEGORIES } = require("../constants/cloudinaryFolders");
+const {
+  getFileExtensionFromName,
+  buildSafeStorageBaseName,
+} = require("../utils/filenameUtils");
 
 function isDocumentFile(file) {
   return (
@@ -37,10 +41,11 @@ const sharedStorage = new CloudinaryStorage({
     };
 
     if (isDocument) {
-      const parts = String(file.originalname || "").split(".");
-      const fileExtension =
-        parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "pdf";
-      params.public_id = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
+      const fileExtension = getFileExtensionFromName(file.originalname, "pdf");
+      const safeBase = buildSafeStorageBaseName(file.originalname, "document");
+      params.public_id = `${safeBase}_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExtension}`;
     }
 
     return params;

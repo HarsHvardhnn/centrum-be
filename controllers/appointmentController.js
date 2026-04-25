@@ -2,6 +2,7 @@
 
 const { validationResult } = require("express-validator");
 const Appointment = require("../models/appointment");
+const PatientBill = require("../models/patientBill");
 const doctor = require("../models/user-entity/doctor");
 const user = require("../models/user-entity/user");
 const MessageReceipt = require("../models/smsData");
@@ -379,6 +380,16 @@ const processCancellationEmail = (data) => {
   
   return html;
 };
+
+async function hasActiveBillForAppointment(appointmentId) {
+  const bill = await PatientBill.findOne({
+    appointment: appointmentId,
+    isDeleted: false,
+  })
+    .select("_id")
+    .lean();
+  return Boolean(bill);
+}
 
 // Helper function to replace hardcoded values in reschedule email
 const processRescheduleEmail = (data) => {
@@ -2536,6 +2547,19 @@ exports.updateAppointmentStatus = async (req, res) => {
       appointment.consultation.visitTypeVerified = true;
     }
 
+    // Business rule: doctor cannot complete visit without generating a bill.
+    if (status === "completed" && req.user?.role === "doctor") {
+      const hasBill = await hasActiveBillForAppointment(appointmentId);
+      if (!hasBill) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Lekarz nie może zakończyć wizyty bez wystawienia faktury. Najpierw wygeneruj fakturę.",
+          code: "BILL_REQUIRED_FOR_DOCTOR_COMPLETION",
+        });
+      }
+    }
+
     // Before completing: at least one of visit-reason or visit-type must be verified.
     if (status === "completed") {
       const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
@@ -2591,6 +2615,77 @@ exports.updateAppointmentStatus = async (req, res) => {
   } catch (error) {
     console.error("Error updating appointment status:", error);
     res.status(500).json({
+      success: false,
+      message: "Failed to update appointment status",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Admin-only status update endpoint.
+ * Lets admin set appointment status directly to any allowed appointment status.
+ */
+exports.adminUpdateAppointmentStatus = async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+    const rawStatus = req.body?.status;
+
+    if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid appointment ID format",
+      });
+    }
+
+    if (rawStatus == null || String(rawStatus).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    const STATUS_ALIASES = {
+      checkedin: "checkedIn",
+      "checked-in": "checkedIn",
+      no_show: "no-show",
+      noshow: "no-show",
+    };
+    const allowedStatuses = ["booked", "cancelled", "completed", "checkedIn", "no-show"];
+    const normalizedInput = String(rawStatus).trim();
+    const lowered = normalizedInput.toLowerCase();
+    const statusToSet = STATUS_ALIASES[lowered] || normalizedInput;
+
+    if (!allowedStatuses.includes(statusToSet)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+        availableStatuses: allowedStatuses,
+      });
+    }
+
+    const updated = await Appointment.findByIdAndUpdate(
+      appointmentId,
+      { $set: { status: statusToSet } },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Appointment status updated successfully",
+      data: decorateAppointmentResponseForFe(updated),
+      availableStatuses: allowedStatuses,
+    });
+  } catch (error) {
+    console.error("Error updating appointment status (admin):", error);
+    return res.status(500).json({
       success: false,
       message: "Failed to update appointment status",
       error: error.message,
@@ -3338,6 +3433,19 @@ exports.updateAppointmentDetails = async (req, res) => {
 
     if (completingByAppointmentStatus) {
       updateData.status = "completed";
+    }
+
+    // Business rule: doctor cannot complete visit without generating a bill.
+    if ((completingByAppointmentStatus || completingByConsultation) && req.user?.role === "doctor") {
+      const hasBill = await hasActiveBillForAppointment(id);
+      if (!hasBill) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Lekarz nie może zakończyć wizyty bez wystawienia faktury. Najpierw wygeneruj fakturę.",
+          code: "BILL_REQUIRED_FOR_DOCTOR_COMPLETION",
+        });
+      }
     }
 
     if (completingByAppointmentStatus || completingByConsultation) {
@@ -4528,6 +4636,10 @@ exports.getAppointments = async (req, res) => {
       });
     }
 
+    const isDoctorRole = req.user?.role === "doctor";
+    // Doctor tokens are always scoped to their own appointments.
+    const effectiveDoctorId = isDoctorRole ? req.user?.id : doctorId;
+
     // Build query
     const query = {};
 
@@ -4547,8 +4659,8 @@ exports.getAppointments = async (req, res) => {
 
     // Doctor filter: accept doctorId as User _id or as doctor d_id (resolve to User _id for appointment query)
     let resolvedDoctorId = null;
-    if (doctorId && String(doctorId).trim()) {
-      const idStr = String(doctorId).trim();
+    if (effectiveDoctorId && String(effectiveDoctorId).trim()) {
+      const idStr = String(effectiveDoctorId).trim();
       if (mongoose.Types.ObjectId.isValid(idStr)) {
         const doctorUser = await user.findOne(
           { role: "doctor", $or: [{ _id: new mongoose.Types.ObjectId(idStr) }, { d_id: idStr }] },
@@ -4852,11 +4964,11 @@ exports.getAppointments = async (req, res) => {
       });
     } else {
       // For non-clinic mode, get patients based on doctorId
-      const patientQuery = doctorId
+      const patientQuery = resolvedDoctorId
         ? {
             $or: [
-              { consultingDoctor: new mongoose.Types.ObjectId(doctorId) },
-              { attendingPhysician: new mongoose.Types.ObjectId(doctorId) },
+              { consultingDoctor: resolvedDoctorId },
+              { attendingPhysician: resolvedDoctorId },
             ],
           }
         : {};

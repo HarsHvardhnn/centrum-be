@@ -10,6 +10,10 @@ const VisitDiagnosis = require("../models/visitDiagnosis");
 const user = require("../models/user-entity/user");
 const Specialization = require("../models/specialization");
 const sendWelcomeEmail = require("../utils/welcomeEmail");
+const {
+  normalizeDisplayFilename,
+  getFileExtensionFromName,
+} = require("../utils/filenameUtils");
 const { ObjectId } = mongoose.Types;
 
 // Helper function to create standardized document structure
@@ -21,12 +25,13 @@ exports.createStandardizedDocument = (fileData, documentType = "general") => {
   if (fileData.originalname || fileData.name) {
     // This is a file upload from multer
     const isPdf = fileData.mimetype === "application/pdf";
+    const displayName = normalizeDisplayFilename(fileData.originalname || fileData.name);
     let downloadUrl = fileData.path;
     
     // For PDFs, ensure we have a proper download URL with file extension
     if (isPdf && downloadUrl && !downloadUrl.includes('.pdf')) {
       // Extract the file extension and add it to the URL
-      const fileExtension = fileData.originalname.split('.').pop().toLowerCase();
+      const fileExtension = getFileExtensionFromName(displayName, "pdf");
       if (downloadUrl.includes('cloudinary.com')) {
         // For Cloudinary URLs, add the extension as a query parameter for proper content-type
         downloadUrl = `${fileData.path}.${fileExtension}`;
@@ -36,8 +41,8 @@ exports.createStandardizedDocument = (fileData, documentType = "general") => {
     return {
       _id: documentId,
       documentId: documentId,
-      fileName: fileData.originalname || fileData.name,
-      originalName: fileData.originalname || fileData.name,
+      fileName: displayName,
+      originalName: displayName,
       path: fileData.path,
       preview: downloadUrl, // Use the processed URL for preview
       url: downloadUrl, // Use the processed URL for download
@@ -48,28 +53,32 @@ exports.createStandardizedDocument = (fileData, documentType = "general") => {
       documentType: documentType,
       uploadDate: timestamp,
       size: fileData.size || null,
-      fileExtension: fileData.originalname ? fileData.originalname.split('.').pop().toLowerCase() : null,
+      fileExtension: getFileExtensionFromName(displayName, null),
       createdAt: timestamp,
       updatedAt: timestamp,
     };
   } else {
     // This is an existing document object being updated
     const isPdfType = (fileData.mimeType || fileData.type || fileData.mimetype) === "application/pdf";
+    const existingDisplayName = normalizeDisplayFilename(
+      fileData.originalName || fileData.fileName || fileData.name || "Unknown"
+    );
     let processedUrl = fileData.url || fileData.path;
     
     // Process URL for existing documents too
     if (isPdfType && processedUrl && !processedUrl.includes('.pdf')) {
-      const fileExtension = (fileData.fileName || fileData.name || "").split('.').pop()?.toLowerCase();
+      const fileExtension = getFileExtensionFromName(existingDisplayName, "pdf");
       if (fileExtension && processedUrl.includes('cloudinary.com')) {
         processedUrl = `${processedUrl}.${fileExtension}`;
       }
     }
     
     return {
+      ...fileData, // Keep additional properties but allow normalized fields below to win
       _id: documentId,
       documentId: documentId,
-      fileName: fileData.fileName || fileData.name || "Unknown",
-      originalName: fileData.originalName || fileData.fileName || fileData.name || "Unknown",
+      fileName: existingDisplayName,
+      originalName: existingDisplayName,
       path: fileData.path || fileData.url,
       preview: processedUrl,
       url: processedUrl,
@@ -80,10 +89,9 @@ exports.createStandardizedDocument = (fileData, documentType = "general") => {
       documentType: fileData.documentType || fileData.document_type || documentType,
       uploadDate: fileData.uploadDate || timestamp,
       size: fileData.size || null,
-      fileExtension: (fileData.fileName || fileData.name || "").split('.').pop()?.toLowerCase(),
+      fileExtension: getFileExtensionFromName(existingDisplayName, null),
       createdAt: fileData.createdAt || timestamp,
       updatedAt: timestamp,
-      ...fileData // Spread any additional properties
     };
   }
 };
