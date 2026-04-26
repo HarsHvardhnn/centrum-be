@@ -118,9 +118,8 @@ console.log("frontendOrigins", frontendOrigins);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? frontendOrigins
-      : ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
+    // Temporary: allow any origin
+    origin: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS","PATCH"],
     credentials: true
   },
@@ -128,19 +127,8 @@ const io = new Server(server, {
 
 // Configure CORS for Express
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    const normalizedOrigin = normalizeOrigin(origin);
-    console.log("normalizedOrigin", normalizedOrigin);
-
-    if (frontendOrigins.includes(normalizedOrigin)) {
-      return callback(null, true);
-    }
-    console.log("CORS blocked:", normalizedOrigin, "expected one of:", frontendOrigins);
-    callback(new Error("Not allowed by CORS"));
-  },
+  // Temporary: allow any origin
+  origin: true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: [
