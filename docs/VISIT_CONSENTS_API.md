@@ -62,6 +62,36 @@ Consents are taken from the visit’s registration data (`source: "registration"
     "sex": "Male",
     "dateOfBirth": "1990-01-15T00:00:00.000Z",
     "govtId": "90011512345"
+  },
+  "appointmentData": {
+    "visitId": "6999b34b6c043f2a3ebd4bcd",
+    "status": "booked",
+    "date": "2026-01-03T00:00:00.000Z",
+    "startTime": "15:00",
+    "endTime": "15:15",
+    "notes": "Patient note written during registration...",
+    "reservation": {
+      "createdBy": "Online",
+      "createdAt": "2026-01-01T08:00:00.000Z",
+      "createdAtDisplay": "01.01, 08:00",
+      "wasRescheduled": true,
+      "latestRescheduledBy": "Reception",
+      "latestRescheduledAt": "03.01, 15:00",
+      "history": [
+        {
+          "action": "rescheduled",
+          "by": "Reception",
+          "at": "03.01, 15:00",
+          "previousDate": "2026-01-01T00:00:00.000Z",
+          "previousStartTime": "08:00",
+          "previousEndTime": "08:15",
+          "newDate": "2026-01-03T00:00:00.000Z",
+          "newStartTime": "15:00",
+          "newEndTime": "15:15"
+        }
+      ],
+      "summaryText": "Created by: Online (01.01, 08:00); rescheduled by: Reception (03.01, 15:00)"
+    }
   }
 }
 ```
@@ -73,6 +103,7 @@ Consents are taken from the visit’s registration data (`source: "registration"
 | `source` | string | `"patient"` if consents (and data) come from the linked patient; `"registration"` if from visit-only registration data. |
 | `consents` | array | List of consent objects. Each item can have `id`, `text`, `agreed` (and other fields the backend stores). |
 | `patientData` | object | Basic contact/identity data for the visit. All fields are `null` when not available. See table below. |
+| `appointmentData` | object | Reservation-level details for this visit (who created, when, reschedule info, notes). |
 
 **`patientData` fields** (all nullable; use for display and to know what to send when updating):
 
@@ -126,6 +157,11 @@ If there are no consents (e.g. visit-only with no registration consents saved), 
 - Use **`source`** to know where consents/data came from (patient vs registration).
 - Use **`consents`** to render the consent list (text + agreed yes/no).
 - Use **`patientData`** to show name, email, phone, sex, DOB, etc. (all nullable – show empty or "—" when null).
+- Use **`appointmentData`** to show reservation summary:
+  - created by + created time
+  - whether rescheduled and who/when
+  - note/problem text from the reservation
+  - full reschedule history if needed for timeline UI
 - Handle **empty `consents`** for visit-only visits that have no stored consents.
 
 **Example (fetch)**

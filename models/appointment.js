@@ -247,7 +247,24 @@ const appointmentSchema = new mongoose.Schema(
       reminderSentAt: {
         type: Date,
         default: null
-      }
+      },
+      // Reservation lifecycle history (reschedules/time changes) for FE summary.
+      rescheduleHistory: [
+        {
+          action: { type: String, default: "rescheduled" }, // rescheduled | time_updated
+          byRole: { type: String, default: null }, // admin | receptionist | doctor | patient | online
+          byUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+          changedAt: { type: Date, default: Date.now },
+          previousDate: { type: Date, default: null },
+          previousStartTime: { type: String, default: null },
+          previousEndTime: { type: String, default: null },
+          newDate: { type: Date, default: null },
+          newStartTime: { type: String, default: null },
+          newEndTime: { type: String, default: null },
+          previousDoctorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+          newDoctorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        },
+      ],
     }
   },
   {

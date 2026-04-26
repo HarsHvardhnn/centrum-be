@@ -381,6 +381,28 @@ const processCancellationEmail = (data) => {
   return html;
 };
 
+function formatReservationActorLabel(value) {
+  const v = String(value || "").toLowerCase();
+  if (v === "receptionist") return "Reception";
+  if (v === "online" || v === "patient") return "Online";
+  if (v === "admin") return "Admin";
+  if (v === "doctor") return "Doctor";
+  return value || "Unknown";
+}
+
+function toDisplayDateTime(input) {
+  if (!input) return null;
+  const dt = new Date(input);
+  if (isNaN(dt.getTime())) return null;
+  return dt.toLocaleString("pl-PL", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 async function hasActiveBillForAppointment(appointmentId) {
   const bill = await PatientBill.findOne({
     appointment: appointmentId,
@@ -2830,11 +2852,28 @@ exports.rescheduleAppointment = async (req, res) => {
     const oldEndTime = appointment.endTime;
 
     // Update appointment with new details
+    const previousDoctorId = appointment.doctor?._id || appointment.doctor || null;
     appointment.date = appointmentDate;
     appointment.startTime = newStartTime;
     appointment.endTime = finalNewEndTime;
     appointment.mode = consultationType || appointment.mode;
     appointment.status = "booked"; // Ensure status is booked after rescheduling
+    appointment.metadata = appointment.metadata || {};
+    appointment.metadata.rescheduleHistory = appointment.metadata.rescheduleHistory || [];
+    appointment.metadata.rescheduleHistory.push({
+      action: "rescheduled",
+      byRole: req.user?.role || "online",
+      byUserId: req.user?.id || req.user?._id || null,
+      changedAt: new Date(),
+      previousDate: oldDate || null,
+      previousStartTime: oldStartTime || null,
+      previousEndTime: oldEndTime || null,
+      newDate: appointmentDate,
+      newStartTime,
+      newEndTime: finalNewEndTime,
+      previousDoctorId: previousDoctorId || null,
+      newDoctorId: previousDoctorId || null,
+    });
 
     await appointment.save();
 
@@ -3829,7 +3868,7 @@ exports.getVisitConsents = async (req, res) => {
     }
 
     const appointment = await Appointment.findById(visitId)
-      .select("patient registrationData")
+      .select("patient registrationData createdBy createdByRole createdAt date startTime endTime status notes metadata.rescheduleHistory")
       .lean();
 
     if (!appointment) {
@@ -3905,12 +3944,71 @@ exports.getVisitConsents = async (req, res) => {
       };
     }
 
+    const reservationCreatedBy = formatReservationActorLabel(
+      appointment.createdByRole || appointment.createdBy || "online"
+    );
+    const reservationCreatedAt = toDisplayDateTime(appointment.createdAt);
+    const rescheduleHistoryRaw = Array.isArray(appointment.metadata?.rescheduleHistory)
+      ? appointment.metadata.rescheduleHistory
+      : [];
+    const rescheduleHistory = rescheduleHistoryRaw
+      .slice()
+      .sort((a, b) => new Date(a.changedAt || 0) - new Date(b.changedAt || 0))
+      .map((h) => ({
+        action: h.action || "rescheduled",
+        by: formatReservationActorLabel(h.byRole || "unknown"),
+        at: toDisplayDateTime(h.changedAt),
+        previousDate: h.previousDate || null,
+        previousStartTime: h.previousStartTime || null,
+        previousEndTime: h.previousEndTime || null,
+        newDate: h.newDate || null,
+        newStartTime: h.newStartTime || null,
+        newEndTime: h.newEndTime || null,
+      }));
+    const latestReschedule = rescheduleHistory.length
+      ? rescheduleHistory[rescheduleHistory.length - 1]
+      : null;
+    const notesForSummary =
+      appointment.notes != null && String(appointment.notes).trim()
+        ? String(appointment.notes).trim()
+        : (appointment.registrationData?.message != null &&
+           String(appointment.registrationData.message).trim())
+          ? String(appointment.registrationData.message).trim()
+          : null;
+    const summaryParts = [
+      `Created by: ${reservationCreatedBy}${reservationCreatedAt ? ` (${reservationCreatedAt})` : ""}`,
+    ];
+    if (latestReschedule) {
+      summaryParts.push(
+        `rescheduled by: ${latestReschedule.by}${latestReschedule.at ? ` (${latestReschedule.at})` : ""}`
+      );
+    }
+    const summaryText = summaryParts.join("; ");
+
     return res.status(200).json({
       success: true,
       visitId,
       source,
       consents,
       patientData,
+      appointmentData: {
+        visitId,
+        status: appointment.status || null,
+        date: appointment.date || null,
+        startTime: appointment.startTime || null,
+        endTime: appointment.endTime || null,
+        notes: notesForSummary,
+        reservation: {
+          createdBy: reservationCreatedBy,
+          createdAt: appointment.createdAt || null,
+          createdAtDisplay: reservationCreatedAt,
+          wasRescheduled: rescheduleHistory.length > 0,
+          latestRescheduledBy: latestReschedule?.by || null,
+          latestRescheduledAt: latestReschedule?.at || null,
+          history: rescheduleHistory,
+          summaryText,
+        },
+      },
     });
   } catch (error) {
     console.error("Error fetching visit consents:", error);
@@ -4169,6 +4267,10 @@ exports.updateAppointmentTime = async (req, res) => {
     // Removed check for existing appointments at the new time to allow double-booking
 
     // Update the appointment
+    const oldDate = appointment.date;
+    const oldStartTime = appointment.startTime;
+    const oldEndTime = appointment.endTime;
+    const oldDoctorId = appointment.doctor;
     appointment.date = appointmentDate;
     appointment.startTime = startTime;
     appointment.endTime = finalEndTime;
@@ -4177,6 +4279,22 @@ exports.updateAppointmentTime = async (req, res) => {
     if (doctorId) {
       appointment.doctor = doctorToAssign;
     }
+    appointment.metadata = appointment.metadata || {};
+    appointment.metadata.rescheduleHistory = appointment.metadata.rescheduleHistory || [];
+    appointment.metadata.rescheduleHistory.push({
+      action: "time_updated",
+      byRole: req.user?.role || "online",
+      byUserId: req.user?.id || req.user?._id || null,
+      changedAt: new Date(),
+      previousDate: oldDate || null,
+      previousStartTime: oldStartTime || null,
+      previousEndTime: oldEndTime || null,
+      newDate: appointmentDate,
+      newStartTime: startTime,
+      newEndTime: finalEndTime,
+      previousDoctorId: oldDoctorId || null,
+      newDoctorId: doctorToAssign || oldDoctorId || null,
+    });
     
     console.log("Before save - appointment date:", appointment.date);
     
@@ -4188,7 +4306,8 @@ exports.updateAppointmentTime = async (req, res) => {
           date: appointmentDate,
           startTime: startTime,
           endTime: finalEndTime,
-          ...(doctorId ? { doctor: doctorToAssign } : {})
+          ...(doctorId ? { doctor: doctorToAssign } : {}),
+          metadata: appointment.metadata,
         } 
       }
     );
