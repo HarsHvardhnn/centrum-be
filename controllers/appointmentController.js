@@ -2727,8 +2727,12 @@ exports.rescheduleAppointment = async (req, res) => {
       startTime,
       endTime,
       consultationType,
-      smsToBeSent, // Used for this reschedule's notifications (one-time use)
-      persistSmsConsent = false, // If true, skip sending all notifications (email and SMS); if false, send notifications based on smsToBeSent
+      isBackdated = false, // Same override behavior as booking flow
+      overrideConflicts = false, // Same override behavior as booking flow
+      sendSMSNotification, // New: decoupled SMS toggle
+      sendEmailNotification, // New: decoupled email toggle
+      smsToBeSent, // Legacy compatibility (deprecated)
+      persistSmsConsent = false, // Legacy compatibility (deprecated)
     } = req.body;
 
     // Accept both naming conventions: newDate/newStartTime/newEndTime or date/startTime/endTime
@@ -2753,12 +2757,13 @@ exports.rescheduleAppointment = async (req, res) => {
       });
     }
 
-    // Check if the new date is in the past
+    // Check if the new date/time is in the past (unless explicitly overridden)
     const now = new Date();
-    if (appointmentDate <= now) {
+    if (appointmentDate <= now && !isBackdated) {
       return res.status(400).json({
         success: false,
-        message: "Nie można przełożyć wizyty na przeszłą datę/godzinę",
+        message:
+          "Nie można przełożyć wizyty na przeszłą datę/godzinę. Set isBackdated to true to override this restriction.",
       });
     }
 
@@ -2823,27 +2828,30 @@ exports.rescheduleAppointment = async (req, res) => {
       finalNewEndTime = `${endTimeHour}:${endTimeMinute}`;
     }
 
-    // Check for existing appointments at the new time
-    const startOfDay = new Date(appointmentDate);
-    startOfDay.setHours(0, 0, 0, 0);
+    // Check for existing appointments at the new time (only if not overriding conflicts)
+    if (!overrideConflicts) {
+      const startOfDay = new Date(appointmentDate);
+      startOfDay.setHours(0, 0, 0, 0);
 
-    const endOfDay = new Date(appointmentDate);
-    endOfDay.setHours(23, 59, 59, 999);
+      const endOfDay = new Date(appointmentDate);
+      endOfDay.setHours(23, 59, 59, 999);
 
-    const existingAppointment = await Appointment.findOne({
-      doctor: doctorId,
-      date: { $gte: startOfDay, $lte: endOfDay },
-      startTime: newStartTime,
-      status: "booked",
-      _id: { $ne: appointmentId }, // Exclude current appointment
-    });
-
-    if (existingAppointment) {
-      return res.status(409).json({
-        success: false,
-        message: "Jest już umówiona wizyta u tego lekarza w tym czasie.",
-        conflict: true,
+      const existingAppointment = await Appointment.findOne({
+        doctor: doctorId,
+        date: { $gte: startOfDay, $lte: endOfDay },
+        startTime: newStartTime,
+        status: "booked",
+        _id: { $ne: appointmentId }, // Exclude current appointment
       });
+
+      if (existingAppointment) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Jest już umówiona wizyta u tego lekarza w tym czasie. Set overrideConflicts to true to override this restriction.",
+          conflict: true,
+        });
+      }
     }
 
     // Store old appointment details for notification
@@ -2859,6 +2867,8 @@ exports.rescheduleAppointment = async (req, res) => {
     appointment.mode = consultationType || appointment.mode;
     appointment.status = "booked"; // Ensure status is booked after rescheduling
     appointment.metadata = appointment.metadata || {};
+    appointment.metadata.overrideConflicts = Boolean(overrideConflicts);
+    appointment.metadata.isBackdated = Boolean(isBackdated);
     appointment.metadata.rescheduleHistory = appointment.metadata.rescheduleHistory || [];
     appointment.metadata.rescheduleHistory.push({
       action: "rescheduled",
@@ -2877,19 +2887,33 @@ exports.rescheduleAppointment = async (req, res) => {
 
     await appointment.save();
 
-    // Send email notification if patient has email
-    // If persistSmsConsent is true, skip all notifications. If no patient (visit-only), skip.
+    // Send notifications (SMS/email decoupled)
     let emailSent = false;
     let smsResult = null;
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-    if (persistSmsConsent) {
-      console.log("Skipping all notifications for reschedule: persistSmsConsent is true");
-    } else if (!patientDetails) {
+    if (!patientDetails) {
       console.log("Skipping notifications for reschedule: no patient (visit-only or patient not found)");
     } else {
-      // patientDetails is non-null here
-      if (patientDetails.email && emailRegex.test(patientDetails.email)) {
+      // Backward compatibility:
+      // - sendEmailNotification undefined => keep old behavior: send email unless persistSmsConsent=true
+      // - sendSMSNotification undefined => fallback to legacy smsToBeSent, then to DB consent
+      const wantsEmail =
+        sendEmailNotification !== undefined
+          ? Boolean(sendEmailNotification)
+          : !persistSmsConsent;
+      const wantsSMS =
+        sendSMSNotification !== undefined
+          ? Boolean(sendSMSNotification)
+          : (smsToBeSent !== undefined
+              ? Boolean(smsToBeSent)
+              : Boolean(patientDetails.smsConsentAgreed));
+
+      const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email || "");
+      const hasPhone = Boolean(patientDetails.phone);
+      const hasSmsConsent = Boolean(patientDetails.smsConsentAgreed);
+
+      if (wantsEmail && hasValidEmail) {
         try {
           const formattedDate = formatDateForSMS(appointmentDate);
           const formattedTime = formatTimeForSMS(newStartTime);
@@ -2918,20 +2942,25 @@ exports.rescheduleAppointment = async (req, res) => {
         } catch (emailError) {
           console.error("Failed to send reschedule email:", emailError);
         }
+      } else if (wantsEmail && !hasValidEmail) {
+        console.log("Email not sent - invalid/missing email.");
       }
 
-      // Send SMS notification based on smsToBeSent (one-time use) or patient's DB consent
-      const shouldSendSMS =
-        smsToBeSent !== undefined
-          ? Boolean(smsToBeSent)
-          : Boolean(patientDetails.smsConsentAgreed);
-      const hasPhone = Boolean(patientDetails.phone);
-      const hasValidEmail = Boolean(patientDetails.email) && emailRegex.test(patientDetails.email || "");
-      const shouldSendBoth = shouldSendSMS && hasPhone && hasValidEmail;
+      // SMS sends only when requested + phone exists + patient consent is true.
+      console.log(
+        "Reschedule notifications:",
+        {
+          sendSMSNotification,
+          sendEmailNotification,
+          legacySmsToBeSent: smsToBeSent,
+          legacyPersistSmsConsent: persistSmsConsent,
+          wantsSMS,
+          wantsEmail,
+          hasSmsConsent,
+        }
+      );
 
-      console.log("SMS sending check - smsToBeSent:", smsToBeSent, "shouldSendSMS:", shouldSendSMS, "patientConsent (db):", patientDetails.smsConsentAgreed, "persistSmsConsent:", persistSmsConsent);
-
-      if (shouldSendBoth) {
+      if (wantsSMS && hasPhone && hasSmsConsent) {
         console.log("Sending SMS notification for rescheduled appointment");
         try {
           const formattedDate = formatDateForSMS(appointmentDate);
@@ -2958,12 +2987,12 @@ exports.rescheduleAppointment = async (req, res) => {
           );
         }
       } else {
-        if (!shouldSendSMS) {
-          console.log(`SMS not sent - consent not given for this reschedule (smsToBeSent: ${smsToBeSent}).`);
+        if (!wantsSMS) {
+          console.log("SMS not sent - sendSMSNotification=false (or equivalent legacy value).");
         } else if (!hasPhone) {
           console.log("SMS not sent - phone number missing.");
-        } else if (!hasValidEmail) {
-          console.log("SMS not sent - email invalid/missing, enforcing both-or-neither policy.");
+        } else if (!hasSmsConsent) {
+          console.log("SMS not sent - patient consent not given.");
         }
       }
     }
@@ -2982,6 +3011,10 @@ exports.rescheduleAppointment = async (req, res) => {
         newEndTime: finalNewEndTime,
         emailSent,
         smsSent: smsResult ? true : false,
+        overrideInfo: {
+          overrideConflicts: Boolean(overrideConflicts),
+          isBackdated: Boolean(isBackdated),
+        },
       },
     });
   } catch (error) {
@@ -4188,7 +4221,14 @@ exports.getPatientAppointments = async (req, res) => {
 exports.updateAppointmentTime = async (req, res) => {
   try {
     const { id } = req.params;
-    const { date, startTime, endTime, doctorId } = req.body;
+    const {
+      date,
+      startTime,
+      endTime,
+      doctorId,
+      isBackdated = false, // Same override behavior as booking flow
+      overrideConflicts = false, // Same override behavior as booking flow
+    } = req.body;
 
     // Validate required fields
     if (!date || !startTime) {
@@ -4223,6 +4263,15 @@ exports.updateAppointmentTime = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid date or time format",
+      });
+    }
+
+    const now = new Date();
+    if (appointmentDate <= now && !isBackdated) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cannot move appointment to past date/time. Set isBackdated to true to override this restriction.",
       });
     }
     
@@ -4264,7 +4313,31 @@ exports.updateAppointmentTime = async (req, res) => {
       finalEndTime = `${endTimeHour}:${endTimeMinute}`;
     }
 
-    // Removed check for existing appointments at the new time to allow double-booking
+    // Check for existing appointments at the new time (only if not overriding conflicts)
+    if (!overrideConflicts) {
+      const startOfDay = new Date(appointmentDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(appointmentDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const existingAppointment = await Appointment.findOne({
+        doctor: doctorToAssign,
+        date: { $gte: startOfDay, $lte: endOfDay },
+        startTime: startTime,
+        status: "booked",
+        _id: { $ne: id },
+      });
+
+      if (existingAppointment) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Jest już umówiona wizyta u tego lekarza w tym czasie. Set overrideConflicts to true to override this restriction.",
+          conflict: true,
+        });
+      }
+    }
 
     // Update the appointment
     const oldDate = appointment.date;
@@ -4280,6 +4353,8 @@ exports.updateAppointmentTime = async (req, res) => {
       appointment.doctor = doctorToAssign;
     }
     appointment.metadata = appointment.metadata || {};
+    appointment.metadata.overrideConflicts = Boolean(overrideConflicts);
+    appointment.metadata.isBackdated = Boolean(isBackdated);
     appointment.metadata.rescheduleHistory = appointment.metadata.rescheduleHistory || [];
     appointment.metadata.rescheduleHistory.push({
       action: "time_updated",
@@ -4327,6 +4402,10 @@ exports.updateAppointmentTime = async (req, res) => {
         date: updatedAppointment.date,
         startTime: updatedAppointment.startTime,
         endTime: updatedAppointment.endTime,
+        overrideInfo: {
+          overrideConflicts: Boolean(overrideConflicts),
+          isBackdated: Boolean(isBackdated),
+        },
         doctor: doctorDetails ? {
           id: doctorDetails._id,
           name: doctorDetails.name ? `${doctorDetails.name.first} ${doctorDetails.name.last}` : "Unknown"
