@@ -220,7 +220,7 @@ const processCancellationEmail = (data) => {
         .text-lg { font-size: 1rem; line-height: 1.5rem; }
         .w-32 { width: 6rem; min-width: 6rem; }
         .gap-4 { gap: 0.75rem; }
-        .flex { flex-wrap: wrap; }
+        .flex { flex-wrap: nowrap; }
         #email-container { max-width: 100% !important; }
         .space-y-5 > * + * { margin-top: 0.75rem; }
       }
@@ -574,7 +574,7 @@ const processRescheduleEmail = (data) => {
         .text-lg { font-size: 1rem; line-height: 1.5rem; }
         .w-32 { width: 6rem; min-width: 6rem; }
         .gap-4 { gap: 0.75rem; }
-        .flex { flex-wrap: wrap; }
+        .flex { flex-wrap: nowrap; }
         #email-container { max-width: 100% !important; }
         .space-y-5 > * + * { margin-top: 0.75rem; }
       }
@@ -906,7 +906,7 @@ const processConfirmationEmail = (data) => {
         .text-lg { font-size: 1rem; line-height: 1.5rem; }
         .w-32 { width: 6rem; min-width: 6rem; }
         .gap-4 { gap: 0.75rem; }
-        .flex { flex-wrap: wrap; }
+        .flex { flex-wrap: nowrap; }
         #email-container { max-width: 100% !important; }
         .space-y-5 > * + * { margin-top: 0.75rem; }
       }
