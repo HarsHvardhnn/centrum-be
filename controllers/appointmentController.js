@@ -2726,6 +2726,8 @@ exports.rescheduleAppointment = async (req, res) => {
       date,
       startTime,
       endTime,
+      doctorId: bodyDoctorId,
+      newDoctorId,
       consultationType,
       isBackdated = false, // Same override behavior as booking flow
       overrideConflicts = false, // Same override behavior as booking flow
@@ -2739,6 +2741,7 @@ exports.rescheduleAppointment = async (req, res) => {
     const newDate = bodyNewDate || date;
     const newStartTime = bodyNewStartTime || startTime;
     const newEndTime = bodyNewEndTime || endTime;
+    const requestedDoctorId = newDoctorId || bodyDoctorId || null;
 
     // Validate required fields
     if (!newDate || !newStartTime) {
@@ -2796,8 +2799,27 @@ exports.rescheduleAppointment = async (req, res) => {
       });
     }
 
-    const doctorId = appointment.doctor._id || appointment.doctor;
-    const doctorDetails = await doctor.findById(doctorId);
+    const currentDoctorId = appointment.doctor._id || appointment.doctor;
+    let targetDoctorId = currentDoctorId;
+    if (requestedDoctorId) {
+      if (!mongoose.Types.ObjectId.isValid(requestedDoctorId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Nieprawidłowy format ID lekarza",
+        });
+      }
+      targetDoctorId = new mongoose.Types.ObjectId(requestedDoctorId);
+    }
+
+    const oldDoctorDetails = await doctor.findById(currentDoctorId);
+    if (!oldDoctorDetails) {
+      return res.status(404).json({
+        success: false,
+        message: "Nie znaleziono szczegółów lekarza",
+      });
+    }
+
+    const doctorDetails = await doctor.findById(targetDoctorId);
     if (!doctorDetails) {
       return res.status(404).json({
         success: false,
@@ -2837,7 +2859,7 @@ exports.rescheduleAppointment = async (req, res) => {
       endOfDay.setHours(23, 59, 59, 999);
 
       const existingAppointment = await Appointment.findOne({
-        doctor: doctorId,
+        doctor: targetDoctorId,
         date: { $gte: startOfDay, $lte: endOfDay },
         startTime: newStartTime,
         status: "booked",
@@ -2861,9 +2883,11 @@ exports.rescheduleAppointment = async (req, res) => {
 
     // Update appointment with new details
     const previousDoctorId = appointment.doctor?._id || appointment.doctor || null;
+    const nextDoctorId = targetDoctorId || previousDoctorId;
     appointment.date = appointmentDate;
     appointment.startTime = newStartTime;
     appointment.endTime = finalNewEndTime;
+    appointment.doctor = nextDoctorId;
     appointment.mode = consultationType || appointment.mode;
     appointment.status = "booked"; // Ensure status is booked after rescheduling
     appointment.metadata = appointment.metadata || {};
@@ -2882,7 +2906,7 @@ exports.rescheduleAppointment = async (req, res) => {
       newStartTime,
       newEndTime: finalNewEndTime,
       previousDoctorId: previousDoctorId || null,
-      newDoctorId: previousDoctorId || null,
+      newDoctorId: nextDoctorId || previousDoctorId || null,
     });
 
     await appointment.save();
@@ -3009,6 +3033,18 @@ exports.rescheduleAppointment = async (req, res) => {
         newDate: appointmentDate,
         newStartTime: newStartTime,
         newEndTime: finalNewEndTime,
+        oldDoctor: oldDoctorDetails
+          ? {
+              id: oldDoctorDetails._id,
+              name: `${oldDoctorDetails.name?.first || ""} ${oldDoctorDetails.name?.last || ""}`.trim(),
+            }
+          : null,
+        newDoctor: doctorDetails
+          ? {
+              id: doctorDetails._id,
+              name: `${doctorDetails.name?.first || ""} ${doctorDetails.name?.last || ""}`.trim(),
+            }
+          : null,
         emailSent,
         smsSent: smsResult ? true : false,
         overrideInfo: {
@@ -3984,6 +4020,29 @@ exports.getVisitConsents = async (req, res) => {
     const rescheduleHistoryRaw = Array.isArray(appointment.metadata?.rescheduleHistory)
       ? appointment.metadata.rescheduleHistory
       : [];
+    const doctorIdsFromHistory = [
+      ...new Set(
+        rescheduleHistoryRaw
+          .flatMap((h) => [h.previousDoctorId, h.newDoctorId])
+          .filter((id) => id && mongoose.Types.ObjectId.isValid(String(id)))
+          .map((id) => String(id))
+      ),
+    ];
+    const doctorNameMap = new Map();
+    if (doctorIdsFromHistory.length > 0) {
+      const historyDoctors = await user
+        .find(
+          { _id: { $in: doctorIdsFromHistory.map((id) => new mongoose.Types.ObjectId(id)) } },
+          { "name.first": 1, "name.last": 1 }
+        )
+        .lean();
+      historyDoctors.forEach((d) => {
+        doctorNameMap.set(
+          String(d._id),
+          `${d.name?.first || ""} ${d.name?.last || ""}`.trim() || "Unknown"
+        );
+      });
+    }
     const rescheduleHistory = rescheduleHistoryRaw
       .slice()
       .sort((a, b) => new Date(a.changedAt || 0) - new Date(b.changedAt || 0))
@@ -3997,6 +4056,18 @@ exports.getVisitConsents = async (req, res) => {
         newDate: h.newDate || null,
         newStartTime: h.newStartTime || null,
         newEndTime: h.newEndTime || null,
+        previousDoctor: h.previousDoctorId
+          ? {
+              id: h.previousDoctorId,
+              name: doctorNameMap.get(String(h.previousDoctorId)) || null,
+            }
+          : null,
+        newDoctor: h.newDoctorId
+          ? {
+              id: h.newDoctorId,
+              name: doctorNameMap.get(String(h.newDoctorId)) || null,
+            }
+          : null,
       }));
     const latestReschedule = rescheduleHistory.length
       ? rescheduleHistory[rescheduleHistory.length - 1]

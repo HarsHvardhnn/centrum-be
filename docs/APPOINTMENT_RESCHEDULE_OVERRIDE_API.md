@@ -15,6 +15,9 @@ This document explains override behavior for reschedule APIs, aligned with booki
 You can send either naming convention:
 - `newDate`, `newStartTime`, `newEndTime`
 - or `date`, `startTime`, `endTime`
+- optional doctor change:
+  - `newDoctorId` (preferred)
+  - `doctorId` (legacy-compatible alias)
 
 Override fields:
 - `overrideConflicts` (boolean, optional, default `false`)
@@ -27,6 +30,7 @@ Override fields:
   "newDate": "2026-05-10",
   "newStartTime": "14:30",
   "newEndTime": "14:45",
+  "newDoctorId": "6845a07e7d8e37e04d8f1d15",
   "overrideConflicts": true,
   "isBackdated": false,
   "consultationType": "offline",
@@ -40,6 +44,7 @@ Override fields:
 - If `isBackdated` is `false`, moving to past datetime is blocked (`400`).
 - If `overrideConflicts` is `false`, same-doctor/same-day/same-startTime booked-slot conflict is blocked (`409`).
 - If `overrideConflicts` is `true`, conflict check is bypassed.
+- If `newDoctorId`/`doctorId` is provided, appointment is reassigned to that doctor as part of reschedule.
 - Notifications are decoupled:
   - `sendSMSNotification=true` can send SMS (only when patient has phone **and** SMS consent in DB is true).
   - `sendEmailNotification=true` can send email (only when email is valid/present).
@@ -74,6 +79,21 @@ Notification result fields remain:
 {
   "emailSent": true,
   "smsSent": false
+}
+```
+
+Doctor change info is also returned:
+
+```json
+{
+  "oldDoctor": {
+    "id": "6845a07e7d8e37e04d8f1d15",
+    "name": "Jan Kowalski"
+  },
+  "newDoctor": {
+    "id": "6845a07e7d8e37e04d8f1d99",
+    "name": "Anna Nowak"
+  }
 }
 ```
 

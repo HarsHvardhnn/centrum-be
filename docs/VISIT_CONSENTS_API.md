@@ -87,7 +87,15 @@ Consents are taken from the visit’s registration data (`source: "registration"
           "previousEndTime": "08:15",
           "newDate": "2026-01-03T00:00:00.000Z",
           "newStartTime": "15:00",
-          "newEndTime": "15:15"
+          "newEndTime": "15:15",
+          "previousDoctor": {
+            "id": "6845a07e7d8e37e04d8f1d15",
+            "name": "Jan Kowalski"
+          },
+          "newDoctor": {
+            "id": "6845a07e7d8e37e04d8f1d99",
+            "name": "Anna Nowak"
+          }
         }
       ],
       "summaryText": "Created by: Online (01.01, 08:00); rescheduled by: Reception (03.01, 15:00)"
@@ -161,7 +169,7 @@ If there are no consents (e.g. visit-only with no registration consents saved), 
   - created by + created time
   - whether rescheduled and who/when
   - note/problem text from the reservation
-  - full reschedule history if needed for timeline UI
+  - full reschedule history if needed for timeline UI (including `previousDoctor` and `newDoctor` per change)
 - Handle **empty `consents`** for visit-only visits that have no stored consents.
 
 **Example (fetch)**
