@@ -37,6 +37,9 @@ const {
 const { validatePesel } = require("../utils/peselValidation");
 const { validateInternationalDocument } = require("../utils/internationalDocumentValidation");
 
+const DOCTOR_BILL_COMPLETION_BLOCK_ENABLED =
+  String(process.env.DOCTOR_BILL_COMPLETION_BLOCK_ENABLED || "").toLowerCase() === "true";
+
 // Email icons as inline SVG (Font Awesome 6 style) for visibility in all email clients
 const { getIconImg } = require("../utils/emailIcons");
 
@@ -2570,7 +2573,11 @@ exports.updateAppointmentStatus = async (req, res) => {
     }
 
     // Business rule: doctor cannot complete visit without generating a bill.
-    if (status === "completed" && req.user?.role === "doctor") {
+    if (
+      status === "completed" &&
+      req.user?.role === "doctor" &&
+      DOCTOR_BILL_COMPLETION_BLOCK_ENABLED
+    ) {
       const hasBill = await hasActiveBillForAppointment(appointmentId);
       if (!hasBill) {
         return res.status(403).json({
@@ -3544,7 +3551,11 @@ exports.updateAppointmentDetails = async (req, res) => {
     }
 
     // Business rule: doctor cannot complete visit without generating a bill.
-    if ((completingByAppointmentStatus || completingByConsultation) && req.user?.role === "doctor") {
+    if (
+      (completingByAppointmentStatus || completingByConsultation) &&
+      req.user?.role === "doctor" &&
+      DOCTOR_BILL_COMPLETION_BLOCK_ENABLED
+    ) {
       const hasBill = await hasActiveBillForAppointment(id);
       if (!hasBill) {
         return res.status(403).json({
