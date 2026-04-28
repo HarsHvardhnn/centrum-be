@@ -416,6 +416,38 @@ async function hasActiveBillForAppointment(appointmentId) {
   return Boolean(bill);
 }
 
+function normalizeConsentSnapshot(consents) {
+  if (!Array.isArray(consents)) return [];
+  return consents
+    .filter((c) => c && typeof c === "object")
+    .map((c) => ({ ...c }));
+}
+
+async function appendBookingConsentSnapshotToUser({
+  patientId,
+  appointmentId,
+  consents,
+  source = "booking",
+}) {
+  if (!patientId) return;
+  const normalizedConsents = normalizeConsentSnapshot(consents);
+  if (!normalizedConsents.length) return;
+
+  await user.updateOne(
+    { _id: patientId, role: "patient" },
+    {
+      $push: {
+        bookingConsentSnapshots: {
+          appointmentId: appointmentId || null,
+          source,
+          capturedAt: new Date(),
+          consents: normalizedConsents,
+        },
+      },
+    }
+  );
+}
+
 // Helper function to replace hardcoded values in reschedule email
 const processRescheduleEmail = (data) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
@@ -1506,6 +1538,17 @@ exports.createAppointment = async (req, res) => {
         overrideConflicts: overrideConflicts,
         receptionistOverride: req.user && req.user.role === "receptionist",
         ...(resolvedVisitReason ? { visitType: resolvedVisitReason } : {}),
+        bookingConsentsSnapshot: normalizeConsentSnapshot(
+          Array.isArray(req.body.consents) && req.body.consents.length
+            ? req.body.consents
+            : [
+                {
+                  id: Date.now(),
+                  text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
+                  agreed: !!smsConsentAgreed,
+                },
+              ]
+        ),
         ...(isInternationalPatient
           ? {
               isInternationalPatient: true,
@@ -1535,6 +1578,12 @@ exports.createAppointment = async (req, res) => {
     });
 
     await appointment.save();
+    await appendBookingConsentSnapshotToUser({
+      patientId: patient?._id,
+      appointmentId: appointment._id,
+      consents: appointment.metadata?.bookingConsentsSnapshot,
+      source: "createAppointment",
+    });
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     let emailSent = false;
@@ -1802,9 +1851,26 @@ exports.createReceptionAppointment = async (req, res) => {
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
           ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+          bookingConsentsSnapshot: normalizeConsentSnapshot(
+            Array.isArray(req.body.consents) && req.body.consents.length
+              ? req.body.consents
+              : [
+                  {
+                    id: Date.now(),
+                    text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
+                    agreed: !!smsConsentAgreed,
+                  },
+                ]
+          ),
         },
       });
       await appointment.save();
+      await appendBookingConsentSnapshotToUser({
+        patientId: patient?._id,
+        appointmentId: appointment._id,
+        consents: appointment.metadata?.bookingConsentsSnapshot,
+        source: "createReceptionAppointment",
+      });
 
       const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
       if (!persistSmsConsent && patient) {
@@ -1910,6 +1976,19 @@ exports.createReceptionAppointment = async (req, res) => {
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
           ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+          bookingConsentsSnapshot: normalizeConsentSnapshot(
+            Array.isArray(req.body.consents) && req.body.consents.length
+              ? req.body.consents
+              : (smsConsentAgreed !== undefined
+                  ? [
+                      {
+                        id: Date.now(),
+                        text: "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
+                        agreed: !!smsConsentAgreed,
+                      },
+                    ]
+                  : [])
+          ),
           isInternational: isInternational,
           isWalkin,
           needsAttention,
@@ -2283,6 +2362,15 @@ exports.completeRegistration = async (req, res) => {
     appointment.patient = patientDocRef._id;
     appointment.bookedBy = patientDocRef._id;
     await appointment.save();
+    await appendBookingConsentSnapshotToUser({
+      patientId: patientDocRef._id,
+      appointmentId: appointment._id,
+      consents:
+        appointment.metadata?.bookingConsentsSnapshot ||
+        appointment.registrationData?.consents ||
+        req.body.consents,
+      source: "completeRegistration",
+    });
 
     const appointmentPopulated = await Appointment.findById(visitId)
       .populate("patient", "name govtId npesei patientId dateOfBirth phone phoneCode email sex address pinCode city documentCountry documentType documentNumber internationalPatientDocumentKey documents")
@@ -3959,6 +4047,9 @@ exports.getVisitConsents = async (req, res) => {
     }
 
     let consents = [];
+    let bookingConsentsAtBooking = normalizeConsentSnapshot(
+      appointment.metadata?.bookingConsentsSnapshot
+    );
     let source = "registration";
     let patientData = {
       name: null,
@@ -3975,7 +4066,7 @@ exports.getVisitConsents = async (req, res) => {
     if (appointment.patient && appointment.patient._id) {
       const patientDoc = await patient
         .findById(appointment.patient._id)
-        .select("consents name email phone phoneCode sex dateOfBirth govtId")
+        .select("consents bookingConsentSnapshots name email phone phoneCode sex dateOfBirth govtId")
         .lean();
       if (patientDoc) {
         source = "patient";
@@ -3987,6 +4078,16 @@ exports.getVisitConsents = async (req, res) => {
             consents = JSON.parse(raw) || [];
           } catch {
             consents = [];
+          }
+        }
+        if (!bookingConsentsAtBooking.length) {
+          const byAppointment = Array.isArray(patientDoc.bookingConsentSnapshots)
+            ? patientDoc.bookingConsentSnapshots
+                .filter((s) => String(s?.appointmentId || "") === String(visitId))
+                .sort((a, b) => new Date(b?.capturedAt || 0) - new Date(a?.capturedAt || 0))
+            : [];
+          if (byAppointment.length > 0) {
+            bookingConsentsAtBooking = normalizeConsentSnapshot(byAppointment[0].consents);
           }
         }
         const first = patientDoc.name?.first || "";
@@ -4022,6 +4123,9 @@ exports.getVisitConsents = async (req, res) => {
         dateOfBirth: rd.dateOfBirth ? rd.dateOfBirth : null,
         govtId: rd.govtId && String(rd.govtId).trim() ? rd.govtId : null,
       };
+    }
+    if (!bookingConsentsAtBooking.length && Array.isArray(appointment.registrationData?.consents)) {
+      bookingConsentsAtBooking = normalizeConsentSnapshot(appointment.registrationData.consents);
     }
 
     const reservationCreatedBy = formatReservationActorLabel(
@@ -4105,6 +4209,7 @@ exports.getVisitConsents = async (req, res) => {
       visitId,
       source,
       consents,
+      bookingConsentsAtBooking,
       patientData,
       appointmentData: {
         visitId,

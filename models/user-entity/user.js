@@ -77,6 +77,19 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Immutable-ish snapshots of consents captured at booking time (audit/history for FE timeline).
+    bookingConsentSnapshots: [
+      {
+        appointmentId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Appointment",
+          default: null,
+        },
+        source: { type: String, default: "booking" },
+        capturedAt: { type: Date, default: Date.now },
+        consents: [{ type: mongoose.Schema.Types.Mixed }],
+      },
+    ],
 
     deleted: {
       type: Boolean,

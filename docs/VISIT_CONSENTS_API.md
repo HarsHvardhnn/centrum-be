@@ -52,6 +52,13 @@ Consents are taken from the visit’s registration data (`source: "registration"
       "agreed": true
     }
   ],
+  "bookingConsentsAtBooking": [
+    {
+      "id": 1234567890,
+      "text": "Wyrażam zgodę na otrzymywanie powiadomień SMS i e-mail dotyczących mojej wizyty (np. przypomnienia, zmiany terminu).",
+      "agreed": true
+    }
+  ],
   "patientData": {
     "name": "Jan Kowalski",
     "firstName": "Jan",
@@ -110,6 +117,7 @@ Consents are taken from the visit’s registration data (`source: "registration"
 | `visitId` | string | The appointment/visit ID requested. |
 | `source` | string | `"patient"` if consents (and data) come from the linked patient; `"registration"` if from visit-only registration data. |
 | `consents` | array | List of consent objects. Each item can have `id`, `text`, `agreed` (and other fields the backend stores). |
+| `bookingConsentsAtBooking` | array | Snapshot of consents captured at booking time (immutable history view). |
 | `patientData` | object | Basic contact/identity data for the visit. All fields are `null` when not available. See table below. |
 | `appointmentData` | object | Reservation-level details for this visit (who created, when, reschedule info, notes). |
 
@@ -164,6 +172,7 @@ If there are no consents (e.g. visit-only with no registration consents saved), 
 - Call **after** you have a visit/appointment ID (e.g. from list or detail).
 - Use **`source`** to know where consents/data came from (patient vs registration).
 - Use **`consents`** to render the consent list (text + agreed yes/no).
+- Use **`bookingConsentsAtBooking`** to render "consents at booking time" history (do not overwrite with current edits).
 - Use **`patientData`** to show name, email, phone, sex, DOB, etc. (all nullable – show empty or "—" when null).
 - Use **`appointmentData`** to show reservation summary:
   - created by + created time

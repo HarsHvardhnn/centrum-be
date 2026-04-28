@@ -22,6 +22,38 @@ const { getOnlineRegistrationVisitReason } = require("../config/visitReasons");
 // const PatientService = require("../models/patientService");
 // const mongoose = require("mongoose");
 
+function normalizeConsentSnapshot(consents) {
+  if (!Array.isArray(consents)) return [];
+  return consents
+    .filter((c) => c && typeof c === "object")
+    .map((c) => ({ ...c }));
+}
+
+async function appendBookingConsentSnapshotToUser({
+  patientId,
+  appointmentId,
+  consents,
+  source = "bookAppointment",
+}) {
+  if (!patientId) return;
+  const normalizedConsents = normalizeConsentSnapshot(consents);
+  if (!normalizedConsents.length) return;
+
+  await User.updateOne(
+    { _id: patientId, role: "patient" },
+    {
+      $push: {
+        bookingConsentSnapshots: {
+          appointmentId: appointmentId || null,
+          source,
+          capturedAt: new Date(),
+          consents: normalizedConsents,
+        },
+      },
+    }
+  );
+}
+
 // Helper function to replace hardcoded values in confirmation email
 const processConfirmationEmail = (data) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
@@ -613,10 +645,17 @@ exports.bookAppointment = async (req, res) => {
         ...(linkedPatientId ? {} : { toBeCompleted: true }),
         ...(isInternational ? { isInternational: true } : {}),
         visitType: getOnlineRegistrationVisitReason(),
+        bookingConsentsSnapshot: normalizeConsentSnapshot(allConsents),
       },
     });
 
     await appointment.save();
+    await appendBookingConsentSnapshotToUser({
+      patientId: linkedPatientId,
+      appointmentId: appointment._id,
+      consents: allConsents,
+      source: "bookAppointment",
+    });
 
     // Prepare appointment data for email
     let meetingLink = "";
