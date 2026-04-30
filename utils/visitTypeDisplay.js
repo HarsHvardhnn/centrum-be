@@ -133,9 +133,21 @@ function getVisitTypeDisplayForFe(appointment) {
 function decorateAppointmentResponseForFe(plain) {
   if (!plain || typeof plain !== "object") return plain;
   const label = getVisitTypeDisplayForFe(plain);
-  const out = { ...plain, visitType: label };
+  const out = {
+    ...plain,
+    visitType: label,
+    visitTypeVerified: Boolean(plain.consultation?.visitTypeVerified),
+    // Legacy compatibility for FE places still reading this key.
+    visitReasonVerified: Boolean(plain.consultation?.visitTypeVerified),
+  };
   if (plain.consultation != null && typeof plain.consultation === "object") {
-    out.consultation = { ...plain.consultation, visitType: label };
+    out.consultation = {
+      ...plain.consultation,
+      visitType: label,
+      visitTypeVerified: Boolean(plain.consultation?.visitTypeVerified),
+      // Legacy compatibility mirror
+      visitReasonVerified: Boolean(plain.consultation?.visitTypeVerified),
+    };
   }
   return out;
 }
