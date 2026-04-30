@@ -19,6 +19,14 @@ router.post(
   appointmentController.migrateVisitReasonToVisitType
 );
 
+// @route   POST /api/appointments/maintenance/revert-visit-type-migration
+// @desc    Public best-effort rollback for visitType migration
+// @access  Public (no token)
+router.post(
+  "/maintenance/revert-visit-type-migration",
+  appointmentController.revertVisitTypeMigration
+);
+
 
 // @route   POST /api/appointments
 // @desc    Create a new appointment

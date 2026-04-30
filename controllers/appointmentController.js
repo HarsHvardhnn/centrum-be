@@ -5845,3 +5845,91 @@ exports.migrateVisitReasonToVisitType = async (req, res) => {
     });
   }
 };
+
+/**
+ * Public maintenance endpoint: best-effort rollback for legacy migration.
+ * Reverts records that look auto-migrated by migrateVisitReasonToVisitType:
+ * consultation.visitType equals consultation.visitReason.
+ *
+ * @route POST /api/appointments/maintenance/revert-visit-type-migration
+ */
+exports.revertVisitTypeMigration = async (req, res) => {
+  try {
+    const dryRunRaw = req.body?.dryRun ?? req.query?.dryRun;
+    const dryRun =
+      dryRunRaw === true ||
+      String(dryRunRaw || "").toLowerCase() === "true" ||
+      String(dryRunRaw || "") === "1";
+    const limitRaw = req.body?.limit ?? req.query?.limit;
+    const limitNum = Math.min(
+      Math.max(parseInt(limitRaw, 10) || 5000, 1),
+      50000
+    );
+
+    // Candidate set: legacy reason exists and visitType exists.
+    const baseCriteria = {
+      "consultation.visitReason": { $exists: true, $type: "string", $ne: "" },
+      "consultation.visitType": { $exists: true, $type: "string", $ne: "" },
+    };
+
+    const candidates = await Appointment.find(baseCriteria)
+      .select("_id consultation.visitReason consultation.visitType metadata.visitType")
+      .limit(limitNum)
+      .lean();
+
+    // Best-effort rollback signature:
+    // - consultation.visitType exactly matches legacy visitReason.
+    // - metadata.visitType is either missing OR equals the same value.
+    const operations = candidates
+      .map((doc) => {
+        const reason = String(doc?.consultation?.visitReason || "").trim();
+        const type = String(doc?.consultation?.visitType || "").trim();
+        if (!reason || !type) return null;
+        if (reason !== type) return null;
+
+        const unsetPayload = { "consultation.visitType": "" };
+        const metaType = doc?.metadata?.visitType;
+        if (
+          metaType == null ||
+          String(metaType).trim() === "" ||
+          String(metaType).trim() === reason
+        ) {
+          unsetPayload["metadata.visitType"] = "";
+        }
+
+        return {
+          updateOne: {
+            filter: { _id: doc._id },
+            update: { $unset: unsetPayload },
+          },
+        };
+      })
+      .filter(Boolean);
+
+    let modifiedCount = 0;
+    if (!dryRun && operations.length > 0) {
+      const bulkResult = await Appointment.bulkWrite(operations, { ordered: false });
+      modifiedCount = bulkResult?.modifiedCount || 0;
+    }
+
+    return res.status(200).json({
+      success: true,
+      dryRun,
+      scanned: candidates.length,
+      eligible: operations.length,
+      reverted: dryRun ? 0 : modifiedCount,
+      message: dryRun
+        ? "Dry run completed. No records were modified."
+        : "Best-effort rollback completed for eligible migrated records.",
+      note:
+        "Rollback is heuristic-based (visitType == legacy visitReason). Review with dryRun before executing.",
+    });
+  } catch (error) {
+    console.error("revertVisitTypeMigration error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to rollback visit type migration",
+      error: error.message,
+    });
+  }
+};
