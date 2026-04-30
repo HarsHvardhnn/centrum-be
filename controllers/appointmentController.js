@@ -5709,6 +5709,8 @@ exports.verifyVisitReason = async (req, res) => {
     return res.status(200).json({
       success: true,
       appointmentId: updated._id,
+      // Legacy FE compatibility: keep both keys in response.
+      visitReasonVerified: updated.consultation?.visitTypeVerified === true,
       visitTypeVerified: updated.consultation?.visitTypeVerified === true,
     });
   } catch (error) {
@@ -5753,6 +5755,8 @@ exports.getVisitReasonVerifiedStatus = async (req, res) => {
     return res.status(200).json({
       success: true,
       appointmentId: id,
+      // Legacy FE compatibility: keep both keys in response.
+      visitReasonVerified: Boolean(appointment.consultation?.visitTypeVerified),
       visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
     });
   } catch (error) {
