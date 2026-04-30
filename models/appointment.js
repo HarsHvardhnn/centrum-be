@@ -4,14 +4,20 @@ const mongoose = require("mongoose");
 
 // Define the consultation schema
 const consultationSchema = new mongoose.Schema({
-  consultationType: {
-    type: String,
-    // Do not hard-restrict values: FE can send dynamic visit reason types.
-    // Visit reasons are validated/controlled via the visit-reasons dictionary flow.
-    // Any string is accepted here to avoid blocking updates like "Iniekcja".
-  },
   /** Visit type display name (Polish), e.g. "Konsultacja pierwszorazowa". Primary field for Rodzaj wizyty. */
   visitType: { type: String, default: null },
+  /** Redundant mirror field kept for compatibility with older FE payloads. */
+  visitReason: { type: String, default: null },
+  /** Main consultation mode/type string used in existing flows. */
+  consultationType: {
+    type: String,
+  },
+  /** Backup of incoming raw consultationType value before propagation. */
+  backup_consultationtype: { type: String, default: null },
+  /** Backup of incoming raw visitType value before propagation. */
+  backup_visitType: { type: String, default: null },
+  /** Backup of incoming raw visitReason value before propagation. */
+  backup_visitReason: { type: String, default: null },
   /** True after doctor has confirmed or changed the visit type; required before completing the visit. */
   visitTypeVerified: { type: Boolean, default: true },
   consultationDate: Date,

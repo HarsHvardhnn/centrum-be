@@ -448,6 +448,48 @@ async function appendBookingConsentSnapshotToUser({
   );
 }
 
+function toTrimmedOrNull(value) {
+  if (value == null) return null;
+  const v = String(value).trim();
+  return v ? v : null;
+}
+
+/**
+ * Propagate any of consultationType / visitType / visitReason to all three fields.
+ * Also stores original incoming values in backup_* fields.
+ */
+function propagateVisitTypeFields({
+  existingConsultation = {},
+  consultationType,
+  visitType,
+  visitReason,
+}) {
+  const backupConsultationType = toTrimmedOrNull(consultationType);
+  const backupVisitType = toTrimmedOrNull(visitType);
+  const backupVisitReason = toTrimmedOrNull(visitReason);
+
+  const canonicalVisitType =
+    backupVisitType ||
+    backupVisitReason ||
+    backupConsultationType ||
+    toTrimmedOrNull(existingConsultation.visitType) ||
+    toTrimmedOrNull(existingConsultation.visitReason) ||
+    toTrimmedOrNull(existingConsultation.consultationType);
+
+  return {
+    ...existingConsultation,
+    visitType: canonicalVisitType,
+    visitReason: canonicalVisitType,
+    consultationType: canonicalVisitType,
+    backup_consultationtype:
+      backupConsultationType ?? existingConsultation.backup_consultationtype ?? null,
+    backup_visitType:
+      backupVisitType ?? existingConsultation.backup_visitType ?? null,
+    backup_visitReason:
+      backupVisitReason ?? existingConsultation.backup_visitReason ?? null,
+  };
+}
+
 // Helper function to replace hardcoded values in reschedule email
 const processRescheduleEmail = (data) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
@@ -1488,6 +1530,11 @@ exports.createAppointment = async (req, res) => {
       (req.body.visitReason && String(req.body.visitReason).trim()) ||
       req.body.metadata?.visitType?.trim() ||
       null;
+    const propagatedCreateConsultation = propagateVisitTypeFields({
+      consultationType: resolvedVisitType,
+      visitType: resolvedVisitType,
+      visitReason: req.body.visitReason,
+    });
     // International patient flags and document info (for online booking metadata/temp data)
     const isInternationalPatientRaw = req.body.isInternationalPatient;
     const isInternationalPatient =
@@ -1530,7 +1577,7 @@ exports.createAppointment = async (req, res) => {
       notes: message || "",
       consultation: resolvedVisitType
         ? {
-            visitType: resolvedVisitType,
+            ...propagatedCreateConsultation,
             // Default: doctor/admin must explicitly verify the visit type
             visitTypeVerified: true,
           }
@@ -1539,7 +1586,9 @@ exports.createAppointment = async (req, res) => {
         ...(req.body.metadata || {}),
         overrideConflicts: overrideConflicts,
         receptionistOverride: req.user && req.user.role === "receptionist",
-        ...(resolvedVisitType ? { visitType: resolvedVisitType } : {}),
+        ...(resolvedVisitType
+          ? { visitType: propagatedCreateConsultation.visitType }
+          : {}),
         bookingConsentsSnapshot: normalizeConsentSnapshot(
           Array.isArray(req.body.consents) && req.body.consents.length
             ? req.body.consents
@@ -1720,6 +1769,11 @@ exports.createReceptionAppointment = async (req, res) => {
       (req.body.visitReason && String(req.body.visitReason).trim()) ||
       req.body.metadata?.visitType?.trim() ||
       null;
+    const propagatedReceptionConsultation = propagateVisitTypeFields({
+      consultationType: resolvedVisitTypeReception,
+      visitType: resolvedVisitTypeReception,
+      visitReason: req.body.visitReason,
+    });
 
     let name = `${firstName} ${lastName}`;
     let time = startTime;
@@ -1846,7 +1900,7 @@ exports.createReceptionAppointment = async (req, res) => {
         notes: message || "",
         consultation: resolvedVisitTypeReception
           ? {
-              visitType: resolvedVisitTypeReception,
+              ...propagatedReceptionConsultation,
               visitTypeVerified: true,
             }
           : undefined,
@@ -1854,7 +1908,9 @@ exports.createReceptionAppointment = async (req, res) => {
           ...(req.body.metadata || {}),
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
-          ...(resolvedVisitTypeReception ? { visitType: resolvedVisitTypeReception } : {}),
+          ...(resolvedVisitTypeReception
+            ? { visitType: propagatedReceptionConsultation.visitType }
+            : {}),
           bookingConsentsSnapshot: normalizeConsentSnapshot(
             Array.isArray(req.body.consents) && req.body.consents.length
               ? req.body.consents
@@ -1970,7 +2026,7 @@ exports.createReceptionAppointment = async (req, res) => {
         registrationData,
         consultation: resolvedVisitTypeReception
         ? {
-            visitType: resolvedVisitTypeReception,
+            ...propagatedReceptionConsultation,
             visitTypeVerified: true,
           }
           : undefined,
@@ -1978,7 +2034,9 @@ exports.createReceptionAppointment = async (req, res) => {
           ...(req.body.metadata || {}),
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
-          ...(resolvedVisitTypeReception ? { visitType: resolvedVisitTypeReception } : {}),
+          ...(resolvedVisitTypeReception
+            ? { visitType: propagatedReceptionConsultation.visitType }
+            : {}),
           bookingConsentsSnapshot: normalizeConsentSnapshot(
             Array.isArray(req.body.consents) && req.body.consents.length
               ? req.body.consents
@@ -2842,6 +2900,7 @@ exports.rescheduleAppointment = async (req, res) => {
     const requestedVisitType =
       (visitType && String(visitType).trim()) ||
       (visitReason && String(visitReason).trim()) ||
+      (consultationType && String(consultationType).trim()) ||
       null;
 
     // Validate required fields
@@ -2990,11 +3049,16 @@ exports.rescheduleAppointment = async (req, res) => {
     appointment.endTime = finalNewEndTime;
     appointment.doctor = nextDoctorId;
     appointment.mode = consultationType || appointment.mode;
-    appointment.consultation = appointment.consultation || {};
-    if (requestedVisitType) {
-      appointment.consultation.visitType = requestedVisitType;
+    if (requestedVisitType || consultationType || visitReason) {
+      appointment.consultation = propagateVisitTypeFields({
+        existingConsultation: appointment.consultation || {},
+        consultationType,
+        visitType,
+        visitReason,
+      });
       appointment.metadata = appointment.metadata || {};
-      appointment.metadata.visitType = requestedVisitType;
+      appointment.metadata.visitType =
+        appointment.consultation.visitType || appointment.metadata.visitType || null;
     }
     appointment.status = "booked"; // Ensure status is booked after rescheduling
     appointment.metadata = appointment.metadata || {};
@@ -3548,23 +3612,28 @@ exports.updateAppointmentDetails = async (req, res) => {
           : consultationData.status !== undefined
             ? consultationData.status
             : existingConsult.consultationStatus || "Scheduled";
-      const visitTypeMerged =
-        consultationData.visitType !== undefined
-          ? (consultationData.visitType && String(consultationData.visitType).trim()) || null
-          : consultationData.visitReason !== undefined
-            ? (consultationData.visitReason && String(consultationData.visitReason).trim()) || null
-            : (existingConsult.visitType ?? existingConsult.visitReason ?? null);
       const visitTypeVerifiedMerged =
         consultationData.visitTypeVerified !== undefined
           ? Boolean(consultationData.visitTypeVerified)
           : existingConsult.visitTypeVerified ?? true;
-
-      updateData.consultation = {
-        ...existingConsult,
+      const propagatedConsultation = propagateVisitTypeFields({
+        existingConsultation: existingConsult,
         consultationType:
           consultationData.consultationType !== undefined
             ? consultationData.consultationType
             : existingConsult.consultationType,
+        visitType:
+          consultationData.visitType !== undefined
+            ? consultationData.visitType
+            : existingConsult.visitType,
+        visitReason:
+          consultationData.visitReason !== undefined
+            ? consultationData.visitReason
+            : existingConsult.visitReason,
+      });
+
+      updateData.consultation = {
+        ...propagatedConsultation,
         consultationNotes: notesVal,
         description:
           consultationData.description !== undefined
@@ -3610,8 +3679,15 @@ exports.updateAppointmentDetails = async (req, res) => {
           consultationData.time !== undefined
             ? consultationData.time || ""
             : existingConsult.time || "",
-        visitType: visitTypeMerged,
         visitTypeVerified: visitTypeVerifiedMerged,
+      };
+      updateData.metadata = {
+        ...(existingAppointment.metadata || {}),
+        ...(updateData.metadata || {}),
+        visitType:
+          propagatedConsultation.visitType ||
+          existingAppointment.metadata?.visitType ||
+          null,
       };
     }
 
@@ -4725,20 +4801,19 @@ exports.updateConsultation = async (req, res) => {
     }
 
     // Prepare consultation update data
+    const propagatedConsultation = propagateVisitTypeFields({
+      existingConsultation: appointment.consultation || {},
+      consultationType: consultationData.consultationType,
+      visitType: consultationData.visitType,
+      visitReason: consultationData.visitReason,
+    });
+
     const consultationUpdate = {
-      visitType:
-        consultationData.visitType !== undefined
-          ? (consultationData.visitType && consultationData.visitType.trim()) || null
-          : consultationData.visitReason !== undefined
-            ? (consultationData.visitReason && consultationData.visitReason.trim()) || null
-            : (appointment.consultation?.visitType ?? appointment.consultation?.visitReason ?? null),
+      ...propagatedConsultation,
       visitTypeVerified:
         consultationData.visitTypeVerified !== undefined
           ? Boolean(consultationData.visitTypeVerified)
           : appointment.consultation?.visitTypeVerified ?? true,
-      consultationType:
-        consultationData.consultationType ||
-        appointment.consultation?.consultationType,
       consultationNotes:
         consultationData.notes ||
         consultationData.consultationNotes ||

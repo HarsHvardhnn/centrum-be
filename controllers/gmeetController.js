@@ -54,6 +54,33 @@ async function appendBookingConsentSnapshotToUser({
   );
 }
 
+function toTrimmedOrNull(value) {
+  if (value == null) return null;
+  const v = String(value).trim();
+  return v ? v : null;
+}
+
+function propagateVisitTypeFields({
+  consultationType,
+  visitType,
+  visitReason,
+}) {
+  const backupConsultationType = toTrimmedOrNull(consultationType);
+  const backupVisitType = toTrimmedOrNull(visitType);
+  const backupVisitReason = toTrimmedOrNull(visitReason);
+  const canonicalVisitType =
+    backupVisitType || backupVisitReason || backupConsultationType || null;
+
+  return {
+    visitType: canonicalVisitType,
+    visitReason: canonicalVisitType,
+    consultationType: canonicalVisitType,
+    backup_consultationtype: backupConsultationType,
+    backup_visitType: backupVisitType,
+    backup_visitReason: backupVisitReason,
+  };
+}
+
 // Helper function to replace hardcoded values in confirmation email
 const processConfirmationEmail = (data) => {
   const logoUrl = 'https://res.cloudinary.com/dca740eqo/image/upload/v1760433101/hospital_app/images/guukmrukas8w9mcyeipv.png';
@@ -622,6 +649,13 @@ exports.bookAppointment = async (req, res) => {
     const createdByRole = (rawRole === "admin" || rawRole === "receptionist" || rawRole === "doctor") ? rawRole : "patient";
     const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "online").toLowerCase();
 
+    const onlineVisitType = getOnlineRegistrationVisitReason();
+    const propagatedConsultation = propagateVisitTypeFields({
+      consultationType: onlineVisitType,
+      visitType: onlineVisitType,
+      visitReason: onlineVisitType,
+    });
+
     const appointment = new Appointment({
       doctor: doctorId,
       patient: linkedPatientId,
@@ -638,13 +672,13 @@ exports.bookAppointment = async (req, res) => {
       registrationData,
       tempPesel: tempPesel,
       consultation: {
-        visitType: getOnlineRegistrationVisitReason(),
+        ...propagatedConsultation,
         visitTypeVerified: true,
       },
       metadata: {
         ...(linkedPatientId ? {} : { toBeCompleted: true }),
         ...(isInternational ? { isInternational: true } : {}),
-        visitType: getOnlineRegistrationVisitReason(),
+        visitType: propagatedConsultation.visitType,
         bookingConsentsSnapshot: normalizeConsentSnapshot(allConsents),
       },
     });
