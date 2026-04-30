@@ -1268,7 +1268,7 @@ exports.createAppointment = async (req, res) => {
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
       registrationType: registrationTypeBody, // Optional: "online registration" | "receptionist registration" | "admin registration" | "offline registration"
-      visitReason, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
+      visitType, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
     } = req.body;
 
     let name = `${firstName} ${lastName}`;
@@ -1483,8 +1483,11 @@ exports.createAppointment = async (req, res) => {
     const registrationTypeResolved = registrationTypeBody && validRegistrationTypes.includes(registrationTypeBody)
       ? registrationTypeBody
       : (createdBy === "admin" ? "admin registration" : createdBy === "receptionist" ? "receptionist registration" : createdBy === "doctor" ? "offline registration" : "online registration");
-    const resolvedVisitReason =
-      (visitReason && visitReason.trim()) || req.body.metadata?.visitType?.trim() || null;
+    const resolvedVisitType =
+      (visitType && visitType.trim()) ||
+      (req.body.visitReason && String(req.body.visitReason).trim()) ||
+      req.body.metadata?.visitType?.trim() ||
+      null;
     // International patient flags and document info (for online booking metadata/temp data)
     const isInternationalPatientRaw = req.body.isInternationalPatient;
     const isInternationalPatient =
@@ -1525,11 +1528,10 @@ exports.createAppointment = async (req, res) => {
       createdByRole: createdByRole,
       mode: visitMode,
       notes: message || "",
-      consultation: resolvedVisitReason
+      consultation: resolvedVisitType
         ? {
-            visitReason: resolvedVisitReason,
-            // Default: doctor/admin must explicitly verify the visit reason
-            visitReasonVerified: false,
+            visitType: resolvedVisitType,
+            // Default: doctor/admin must explicitly verify the visit type
             visitTypeVerified: true,
           }
         : undefined,
@@ -1537,7 +1539,7 @@ exports.createAppointment = async (req, res) => {
         ...(req.body.metadata || {}),
         overrideConflicts: overrideConflicts,
         receptionistOverride: req.user && req.user.role === "receptionist",
-        ...(resolvedVisitReason ? { visitType: resolvedVisitReason } : {}),
+        ...(resolvedVisitType ? { visitType: resolvedVisitType } : {}),
         bookingConsentsSnapshot: normalizeConsentSnapshot(
           Array.isArray(req.body.consents) && req.body.consents.length
             ? req.body.consents
@@ -1710,11 +1712,14 @@ exports.createReceptionAppointment = async (req, res) => {
       customDuration, // New field for custom appointment duration
       isBackdated = false, // New field to indicate if appointment is for past date
       overrideConflicts = false, // New field to allow overriding time conflicts
-      visitReason, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
+      visitType, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
     } = req.body;
 
-    const resolvedVisitReasonReception =
-      (visitReason && visitReason.trim()) || req.body.metadata?.visitType?.trim() || null;
+    const resolvedVisitTypeReception =
+      (visitType && visitType.trim()) ||
+      (req.body.visitReason && String(req.body.visitReason).trim()) ||
+      req.body.metadata?.visitType?.trim() ||
+      null;
 
     let name = `${firstName} ${lastName}`;
     let time = startTime;
@@ -1839,10 +1844,9 @@ exports.createReceptionAppointment = async (req, res) => {
         createdByRole: createdByRole,
         mode: visitMode,
         notes: message || "",
-        consultation: resolvedVisitReasonReception
+        consultation: resolvedVisitTypeReception
           ? {
-              visitReason: resolvedVisitReasonReception,
-              visitReasonVerified: false,
+              visitType: resolvedVisitTypeReception,
               visitTypeVerified: true,
             }
           : undefined,
@@ -1850,7 +1854,7 @@ exports.createReceptionAppointment = async (req, res) => {
           ...(req.body.metadata || {}),
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
-          ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+          ...(resolvedVisitTypeReception ? { visitType: resolvedVisitTypeReception } : {}),
           bookingConsentsSnapshot: normalizeConsentSnapshot(
             Array.isArray(req.body.consents) && req.body.consents.length
               ? req.body.consents
@@ -1964,10 +1968,9 @@ exports.createReceptionAppointment = async (req, res) => {
         mode: visitMode,
         notes: message || "",
         registrationData,
-        consultation: resolvedVisitReasonReception
+        consultation: resolvedVisitTypeReception
         ? {
-            visitReason: resolvedVisitReasonReception,
-            visitReasonVerified: false,
+            visitType: resolvedVisitTypeReception,
             visitTypeVerified: true,
           }
           : undefined,
@@ -1975,7 +1978,7 @@ exports.createReceptionAppointment = async (req, res) => {
           ...(req.body.metadata || {}),
           overrideConflicts: overrideConflicts,
           receptionistOverride: req.user && req.user.role === "receptionist",
-          ...(resolvedVisitReasonReception ? { visitType: resolvedVisitReasonReception } : {}),
+          ...(resolvedVisitTypeReception ? { visitType: resolvedVisitTypeReception } : {}),
           bookingConsentsSnapshot: normalizeConsentSnapshot(
             Array.isArray(req.body.consents) && req.body.consents.length
               ? req.body.consents
@@ -2562,7 +2565,6 @@ exports.getAppointmentsByDoctor = async (req, res) => {
         endTime: appt.endTime || null,
         consultationType,
         visitType: consultationType,
-        visitReason: consultationType,
         visitTypeVerified: Boolean(appt.consultation?.visitTypeVerified),
       };
     });
@@ -2677,17 +2679,15 @@ exports.updateAppointmentStatus = async (req, res) => {
       }
     }
 
-    // Before completing: at least one of visit-reason or visit-type must be verified.
+    // Before completing: visit type must be verified.
     if (status === "completed") {
-      const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
       const visitTypeVerified = appointment.consultation?.visitTypeVerified === true;
-      if (!visitReasonVerified && !visitTypeVerified) {
+      if (!visitTypeVerified) {
         return res.status(400).json({
           success: false,
           message:
-            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację (rodzaj wizyty lub przyczyna wizyty) przed zamknięciem.",
+            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić visitType przed zamknięciem.",
           code: "VISIT_TYPE_NOT_VERIFIED",
-          visitReasonVerified,
           visitTypeVerified,
         });
       }
@@ -2824,6 +2824,8 @@ exports.rescheduleAppointment = async (req, res) => {
       doctorId: bodyDoctorId,
       newDoctorId,
       consultationType,
+      visitType,
+      visitReason, // legacy alias; mapped to visitType
       isBackdated = false, // Same override behavior as booking flow
       overrideConflicts = false, // Same override behavior as booking flow
       sendSMSNotification, // New: decoupled SMS toggle
@@ -2837,6 +2839,10 @@ exports.rescheduleAppointment = async (req, res) => {
     const newStartTime = bodyNewStartTime || startTime;
     const newEndTime = bodyNewEndTime || endTime;
     const requestedDoctorId = newDoctorId || bodyDoctorId || null;
+    const requestedVisitType =
+      (visitType && String(visitType).trim()) ||
+      (visitReason && String(visitReason).trim()) ||
+      null;
 
     // Validate required fields
     if (!newDate || !newStartTime) {
@@ -2984,6 +2990,12 @@ exports.rescheduleAppointment = async (req, res) => {
     appointment.endTime = finalNewEndTime;
     appointment.doctor = nextDoctorId;
     appointment.mode = consultationType || appointment.mode;
+    appointment.consultation = appointment.consultation || {};
+    if (requestedVisitType) {
+      appointment.consultation.visitType = requestedVisitType;
+      appointment.metadata = appointment.metadata || {};
+      appointment.metadata.visitType = requestedVisitType;
+    }
     appointment.status = "booked"; // Ensure status is booked after rescheduling
     appointment.metadata = appointment.metadata || {};
     appointment.metadata.overrideConflicts = Boolean(overrideConflicts);
@@ -3140,6 +3152,10 @@ exports.rescheduleAppointment = async (req, res) => {
               name: `${doctorDetails.name?.first || ""} ${doctorDetails.name?.last || ""}`.trim(),
             }
           : null,
+        visitType:
+          appointment.consultation?.visitType ||
+          appointment.metadata?.visitType ||
+          null,
         emailSent,
         smsSent: smsResult ? true : false,
         overrideInfo: {
@@ -3453,7 +3469,6 @@ exports.updateAppointmentDetails = async (req, res) => {
       reports,
       status: bodyStatus,
       visitTypeVerified: bodyVisitTypeVerified,
-      visitReasonVerified: bodyVisitReasonVerified,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -3515,7 +3530,7 @@ exports.updateAppointmentDetails = async (req, res) => {
       }
     }
 
-    // Handle consultation data if provided (merge with existing — do not wipe visitReason / verification flags)
+    // Handle consultation data if provided (merge with existing — do not wipe visitType / verification flags)
     if (consultationData) {
       const existingConsult = existingAppointment.consultation || {};
       const consultDate = new Date(
@@ -3533,14 +3548,12 @@ exports.updateAppointmentDetails = async (req, res) => {
           : consultationData.status !== undefined
             ? consultationData.status
             : existingConsult.consultationStatus || "Scheduled";
-      const visitReasonMerged =
-        consultationData.visitReason !== undefined
-          ? (consultationData.visitReason && String(consultationData.visitReason).trim()) || null
-          : existingConsult.visitReason;
-      const visitReasonVerifiedMerged =
-        consultationData.visitReasonVerified !== undefined
-          ? Boolean(consultationData.visitReasonVerified)
-          : existingConsult.visitReasonVerified ?? false;
+      const visitTypeMerged =
+        consultationData.visitType !== undefined
+          ? (consultationData.visitType && String(consultationData.visitType).trim()) || null
+          : consultationData.visitReason !== undefined
+            ? (consultationData.visitReason && String(consultationData.visitReason).trim()) || null
+            : (existingConsult.visitType ?? existingConsult.visitReason ?? null);
       const visitTypeVerifiedMerged =
         consultationData.visitTypeVerified !== undefined
           ? Boolean(consultationData.visitTypeVerified)
@@ -3597,14 +3610,13 @@ exports.updateAppointmentDetails = async (req, res) => {
           consultationData.time !== undefined
             ? consultationData.time || ""
             : existingConsult.time || "",
-        visitReason: visitReasonMerged,
-        visitReasonVerified: visitReasonVerifiedMerged,
+        visitType: visitTypeMerged,
         visitTypeVerified: visitTypeVerifiedMerged,
       };
     }
 
     // Same as PATCH /appointments/:id/status: allow verifying in the same request when completing.
-    if (bodyVisitTypeVerified === true || bodyVisitReasonVerified === true) {
+    if (bodyVisitTypeVerified === true) {
       if (!updateData.consultation) {
         updateData.consultation = {
           ...(existingAppointment.consultation || {}),
@@ -3612,9 +3624,6 @@ exports.updateAppointmentDetails = async (req, res) => {
       }
       if (bodyVisitTypeVerified === true) {
         updateData.consultation.visitTypeVerified = true;
-      }
-      if (bodyVisitReasonVerified === true) {
-        updateData.consultation.visitReasonVerified = true;
       }
     }
 
@@ -3657,15 +3666,13 @@ exports.updateAppointmentDetails = async (req, res) => {
 
     if (completingByAppointmentStatus || completingByConsultation) {
       const c = updateData.consultation || existingAppointment.consultation || {};
-      const visitReasonVerified = c.visitReasonVerified === true;
       const visitTypeVerified = c.visitTypeVerified === true;
-      if (!visitReasonVerified && !visitTypeVerified) {
+      if (!visitTypeVerified) {
         return res.status(400).json({
           success: false,
           message:
-            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Potwierdź weryfikację (visit reason lub visit type) przed zapisem.",
+            "Nie można zamknąć wizyty bez weryfikacji rodzaju wizyty. Potwierdź visitType przed zapisem.",
           code: "VISIT_TYPE_NOT_VERIFIED",
-          visitReasonVerified,
           visitTypeVerified,
         });
       }
@@ -4719,14 +4726,12 @@ exports.updateConsultation = async (req, res) => {
 
     // Prepare consultation update data
     const consultationUpdate = {
-      visitReason:
-        consultationData.visitReason !== undefined
-          ? (consultationData.visitReason && consultationData.visitReason.trim()) || null
-          : appointment.consultation?.visitReason,
-      visitReasonVerified:
-        consultationData.visitReasonVerified !== undefined
-          ? Boolean(consultationData.visitReasonVerified)
-          : appointment.consultation?.visitReasonVerified ?? false,
+      visitType:
+        consultationData.visitType !== undefined
+          ? (consultationData.visitType && consultationData.visitType.trim()) || null
+          : consultationData.visitReason !== undefined
+            ? (consultationData.visitReason && consultationData.visitReason.trim()) || null
+            : (appointment.consultation?.visitType ?? appointment.consultation?.visitReason ?? null),
       visitTypeVerified:
         consultationData.visitTypeVerified !== undefined
           ? Boolean(consultationData.visitTypeVerified)
@@ -4799,10 +4804,10 @@ exports.updateConsultation = async (req, res) => {
     }
 
     const updatePayload = { consultation: consultationUpdate };
-    if (consultationUpdate.visitReason) {
+    if (consultationUpdate.visitType) {
       updatePayload.metadata = {
         ...(appointment.metadata && typeof appointment.metadata === "object" ? appointment.metadata : {}),
-        visitType: consultationUpdate.visitReason,
+        visitType: consultationUpdate.visitType,
       };
     }
     const updatedAppointment = await Appointment.findByIdAndUpdate(
@@ -4977,15 +4982,15 @@ exports.getAppointments = async (req, res) => {
       isClinicIp,
       // Clinic-only filter: when true and isClinicIp=true, return only patient-less (visit-only) appointments
       patientLessOnly,
-      // Appointment type (visit reason): filter by consultation.visitReason / metadata.visitType (e.g. "Konsultacja pierwszorazowa" or "Badanie USG")
+      // Appointment type: filter by consultation.visitType / metadata.visitType (e.g. "Konsultacja pierwszorazowa" or "Badanie USG")
       visitType: visitTypeParam,
       visitReason: visitReasonParam,
       // Consultation form: "online" | "offline" – filter by appointment.mode
       mode: modeParam,
     } = req.query;
 
-    // Support both visitReason and visitType query params (same filter)
-    const visitReasonOrType =
+    // Support both visitReason and visitType query params (visitReason kept as legacy alias)
+    const visitTypeFilter =
       (visitReasonParam && String(visitReasonParam).trim()) ||
       (visitTypeParam && String(visitTypeParam).trim());
 
@@ -5124,14 +5129,14 @@ exports.getAppointments = async (req, res) => {
         matchConditions._id = new mongoose.Types.ObjectId(appointmentId);
       }
 
-      // Visit type / visit reason filter (Rodzaj wizyty): match consultation.visitReason or metadata.visitType
-      if (visitReasonOrType) {
-        const vt = String(visitReasonOrType).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Visit type filter (Rodzaj wizyty): match consultation.visitType or metadata.visitType
+      if (visitTypeFilter) {
+        const vt = String(visitTypeFilter).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const vtRe = new RegExp(vt, "i");
         matchConditions.$and = matchConditions.$and || [];
         matchConditions.$and.push({
           $or: [
-            { "consultation.visitReason": vtRe },
+            { "consultation.visitType": vtRe },
             { "metadata.visitType": vtRe },
             { "consultation.consultationType": vtRe },
           ],
@@ -5310,7 +5315,7 @@ exports.getAppointments = async (req, res) => {
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
           role: appointment.createdByRole != null ? appointment.createdByRole : "online",
           visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
-          visitReason: getVisitTypeDisplayForFe(appointment),
+          visitType: getVisitTypeDisplayForFe(appointment),
           visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         };
       });
@@ -5396,13 +5401,13 @@ exports.getAppointments = async (req, res) => {
       // Build appointment query. Non-clinic: only appointments with a patient (exclude visit-only). Clinic (isClinicIp true) includes visit-only in its branch above.
       let appointmentQuery;
       try {
-        const visitReasonMatch = visitReasonOrType
+        const visitReasonMatch = visitTypeFilter
           ? (() => {
-              const vt = String(visitReasonOrType).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const vt = String(visitTypeFilter).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const vtRe = new RegExp(vt, "i");
               return {
                 $or: [
-                  { "consultation.visitReason": vtRe },
+                  { "consultation.visitType": vtRe },
                   { "metadata.visitType": vtRe },
                   { "consultation.consultationType": vtRe },
                 ],
@@ -5521,7 +5526,7 @@ exports.getAppointments = async (req, res) => {
           isInternational: !!(appointment.metadata?.isInternational || appointment.registrationData?.isInternationalPatient),
           role: appointment.createdByRole != null ? appointment.createdByRole : "online",
           visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
-          visitReason: getVisitTypeDisplayForFe(appointment),
+          visitType: getVisitTypeDisplayForFe(appointment),
           visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         });
       });
@@ -5647,7 +5652,7 @@ exports.getAppointments = async (req, res) => {
 
 /**
  * Get visit reason dictionary (categories + types) for registration and doctor verification.
- * All values are in Polish. FE: show category dropdown → then type dropdown; send displayName as visitReason.
+ * All values are in Polish. FE: show category dropdown → then type dropdown; send displayName as visitType.
  * @route GET /api/appointments/visit-reasons
  */
 exports.getVisitReasons = async (req, res) => {
@@ -5668,8 +5673,8 @@ exports.getVisitReasons = async (req, res) => {
 };
 
 /**
- * Set consultation visit reason / visit type verification flags (doctor/admin).
- * Does not require visitReason to be populated.
+ * Set consultation visit type verification flag (doctor/admin).
+ * Does not require visitType to be populated.
  *
  * @route PATCH /api/appointments/visit-reason/verify/:id
  */
@@ -5688,12 +5693,11 @@ exports.verifyVisitReason = async (req, res) => {
       { _id: id },
       {
         $set: {
-          "consultation.visitReasonVerified": true,
           "consultation.visitTypeVerified": true,
         },
       },
       { new: true }
-    ).select("consultation.visitReasonVerified consultation.visitTypeVerified");
+    ).select("consultation.visitTypeVerified");
 
     if (!updated) {
       return res.status(404).json({
@@ -5705,7 +5709,6 @@ exports.verifyVisitReason = async (req, res) => {
     return res.status(200).json({
       success: true,
       appointmentId: updated._id,
-      visitReasonVerified: updated.consultation?.visitReasonVerified === true,
       visitTypeVerified: updated.consultation?.visitTypeVerified === true,
     });
   } catch (error) {
@@ -5719,7 +5722,7 @@ exports.verifyVisitReason = async (req, res) => {
 };
 
 /**
- * Get visitReasonVerified status for a single appointment.
+ * Get visitTypeVerified status for a single appointment.
  * Any authenticated role can call.
  *
  * @route GET /api/appointments/visit-reason/verify/:id/status
@@ -5737,7 +5740,7 @@ exports.getVisitReasonVerifiedStatus = async (req, res) => {
 
     const appointment = await Appointment.findById(id)
       .read("primary")
-      .select("consultation.visitReasonVerified consultation.visitTypeVerified")
+      .select("consultation.visitTypeVerified")
       .lean();
 
     if (!appointment) {
@@ -5750,7 +5753,6 @@ exports.getVisitReasonVerifiedStatus = async (req, res) => {
     return res.status(200).json({
       success: true,
       appointmentId: id,
-      visitReasonVerified: Boolean(appointment.consultation?.visitReasonVerified),
       visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
     });
   } catch (error) {
@@ -5758,6 +5760,87 @@ exports.getVisitReasonVerifiedStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Public maintenance endpoint: migrate legacy consultation.visitReason -> consultation.visitType.
+ * No auth by request. Use carefully.
+ *
+ * @route POST /api/appointments/maintenance/migrate-visit-reason-to-visit-type
+ */
+exports.migrateVisitReasonToVisitType = async (req, res) => {
+  try {
+    const dryRunRaw = req.body?.dryRun ?? req.query?.dryRun;
+    const dryRun =
+      dryRunRaw === true ||
+      String(dryRunRaw || "").toLowerCase() === "true" ||
+      String(dryRunRaw || "") === "1";
+    const limitRaw = req.body?.limit ?? req.query?.limit;
+    const limitNum = Math.min(
+      Math.max(parseInt(limitRaw, 10) || 5000, 1),
+      50000
+    );
+
+    const criteria = {
+      "consultation.visitReason": { $exists: true, $type: "string", $ne: "" },
+      $or: [
+        { "consultation.visitType": { $exists: false } },
+        { "consultation.visitType": null },
+        { "consultation.visitType": "" },
+      ],
+    };
+
+    const candidates = await Appointment.find(criteria)
+      .select("_id consultation.visitReason consultation.visitType metadata.visitType")
+      .limit(limitNum)
+      .lean();
+
+    const operations = candidates
+      .map((doc) => {
+        const reason = String(doc?.consultation?.visitReason || "").trim();
+        if (!reason) return null;
+        const setPayload = {
+          "consultation.visitType": reason,
+        };
+        if (!doc?.metadata?.visitType || !String(doc.metadata.visitType).trim()) {
+          setPayload["metadata.visitType"] = reason;
+        }
+        return {
+          updateOne: {
+            filter: { _id: doc._id },
+            update: { $set: setPayload },
+          },
+        };
+      })
+      .filter(Boolean);
+
+    let modifiedCount = 0;
+    if (!dryRun && operations.length > 0) {
+      const bulkResult = await Appointment.bulkWrite(operations, { ordered: false });
+      modifiedCount = bulkResult?.modifiedCount || 0;
+    }
+
+    const remaining = await Appointment.countDocuments(criteria);
+
+    return res.status(200).json({
+      success: true,
+      dryRun,
+      scanned: candidates.length,
+      eligible: operations.length,
+      migrated: dryRun ? 0 : modifiedCount,
+      remainingLegacyRecords: remaining,
+      message: dryRun
+        ? "Dry run completed. No records were modified."
+        : "Legacy visitReason -> visitType migration completed.",
+    });
+  } catch (error) {
+    console.error("migrateVisitReasonToVisitType error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to migrate legacy visit reason data",
       error: error.message,
     });
   }

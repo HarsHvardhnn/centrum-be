@@ -4,11 +4,11 @@
  * - First visit → "Konsultacja pierwszorazowa"
  * - Otherwise → "Konsultacja lekarska"
  *
- * Slugs are read in order: metadata.visitType → consultation.visitReason → consultation.consultationType
- * (so visitReason: "re-visit" works even when metadata.visitType is empty).
+ * Slugs are read in order: metadata.visitType → consultation.visitType → consultation.consultationType
+ * (legacy fallback for consultation.visitReason is kept for old records).
  *
  * metadata.visitType: any non-empty value not in first-visit slugs → lekarska (unchanged).
- * visitReason / consultationType: first-visit / re-visit slugs, or short hyphenated technical slugs → mapped;
+ * visitType / consultationType: first-visit / re-visit slugs, or short hyphenated technical slugs → mapped;
  *   Polish sentences fall through to legacy (pierwszorazowa in text, isNewPatient).
  */
 
@@ -38,7 +38,7 @@ function norm(s) {
   return String(s ?? "").trim().toLowerCase();
 }
 
-/** Technical slug on visitReason / consultationType (not Polish sentence). */
+/** Technical slug on visitType / consultationType (not Polish sentence). */
 function isHyphenTechnicalSlug(s) {
   if (!s || s.length >= 60) return false;
   if (s.includes("konsultacja")) return false;
@@ -57,11 +57,13 @@ function resolveStructuredSlugs(appointment) {
     return "followup";
   }
 
-  const visitReason = norm(appointment.consultation?.visitReason);
-  if (visitReason) {
-    if (FIRST_VISIT_SLUGS.has(visitReason)) return "first";
-    if (REVISIT_SLUGS.has(visitReason)) return "followup";
-    if (isHyphenTechnicalSlug(visitReason)) return "followup";
+  const visitType = norm(
+    appointment.consultation?.visitType ?? appointment.consultation?.visitReason
+  );
+  if (visitType) {
+    if (FIRST_VISIT_SLUGS.has(visitType)) return "first";
+    if (REVISIT_SLUGS.has(visitType)) return "followup";
+    if (isHyphenTechnicalSlug(visitType)) return "followup";
   }
 
   const ctype = norm(appointment.consultation?.consultationType);
@@ -80,7 +82,9 @@ function legacyFirstVisitIndicators(appointment) {
   const meta = appointment.metadata || {};
   if (meta.isNewPatient === true) return true;
 
-  const reason = norm(appointment.consultation?.visitReason);
+  const reason = norm(
+    appointment.consultation?.visitType ?? appointment.consultation?.visitReason
+  );
   const ctype = norm(appointment.consultation?.consultationType);
   if (reason.includes("pierwszorazowa") || ctype.includes("pierwszorazowa")) return true;
   if (reason === "konsultacja pierwszorazowa" || ctype === "konsultacja pierwszorazowa")
@@ -120,7 +124,7 @@ function getVisitTypeDisplayForFe(appointment) {
 
 /**
  * Shapes a plain appointment object for JSON responses: sets visitType and
- * consultation.visitReason to the same display label as getVisitTypeDisplayForFe.
+ * consultation.visitType to the same display label as getVisitTypeDisplayForFe.
  * Does not persist; safe for API output only.
  *
  * @param {object|null|undefined} plain - toObject() / lean appointment
@@ -131,7 +135,7 @@ function decorateAppointmentResponseForFe(plain) {
   const label = getVisitTypeDisplayForFe(plain);
   const out = { ...plain, visitType: label };
   if (plain.consultation != null && typeof plain.consultation === "object") {
-    out.consultation = { ...plain.consultation, visitReason: label };
+    out.consultation = { ...plain.consultation, visitType: label };
   }
   return out;
 }

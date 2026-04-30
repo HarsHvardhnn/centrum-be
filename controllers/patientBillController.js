@@ -83,16 +83,14 @@ exports.generateBill = async (req, res) => {
       });
     }
 
-    // Same rule as PATCH /appointments/:id/status → completed: require at least one verification flag.
-    const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
+    // Same rule as PATCH /appointments/:id/status → completed: require visitType verification.
     const visitTypeVerified = appointment.consultation?.visitTypeVerified === true;
-    if (!visitReasonVerified && !visitTypeVerified) {
+    if (!visitTypeVerified) {
       return res.status(400).json({
         success: false,
         message:
-          "Nie można wystawić faktury i zamknąć wizyty bez weryfikacji rodzaju wizyty. Potwierdź weryfikację (PATCH visit-reason/verify lub konsultacja) przed kontynuacją.",
+          "Nie można wystawić faktury i zamknąć wizyty bez weryfikacji rodzaju wizyty (visitType).",
         code: "VISIT_TYPE_NOT_VERIFIED",
-        visitReasonVerified,
         visitTypeVerified,
       });
     }
@@ -679,16 +677,16 @@ exports.generateInvoice = async (req, res) => {
       });
     }
 
-    // Do not allow generating an invoice unless the doctor/admin verified the visit reason.
+    // Do not allow generating an invoice unless the doctor/admin verified the visit type.
     // Existing invoiceUrl is handled above; this check only blocks generation.
-    const visitReasonVerified =
-      Boolean(bill.appointment?.consultation?.visitReasonVerified);
-    if (!visitReasonVerified) {
+    const visitTypeVerified =
+      Boolean(bill.appointment?.consultation?.visitTypeVerified);
+    if (!visitTypeVerified) {
       return res.status(400).json({
         success: false,
         message:
           "Nie można wygenerować faktury bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację.",
-        code: "VISIT_REASON_NOT_VERIFIED",
+        code: "VISIT_TYPE_NOT_VERIFIED",
       });
     }
 

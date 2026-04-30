@@ -2358,7 +2358,7 @@ exports.getAppointmentsList = async (req, res) => {
         internationalPatientDocumentKey,
         role: appointment.createdByRole != null ? appointment.createdByRole : "online",
         visitMode: appointment.mode != null && appointment.mode !== "" ? appointment.mode : "offline",
-        visitReason: getVisitTypeDisplayForFe(appointment),
+        visitType: getVisitTypeDisplayForFe(appointment),
         consultationType: getVisitTypeDisplayForFe(appointment),
         visitTypeVerified: Boolean(appointment.consultation?.visitTypeVerified),
         registrationData: fromReg || null,

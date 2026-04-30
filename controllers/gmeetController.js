@@ -638,7 +638,7 @@ exports.bookAppointment = async (req, res) => {
       registrationData,
       tempPesel: tempPesel,
       consultation: {
-        visitReason: getOnlineRegistrationVisitReason(),
+        visitType: getOnlineRegistrationVisitReason(),
         visitTypeVerified: true,
       },
       metadata: {

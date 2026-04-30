@@ -379,7 +379,7 @@ const getAllDoctors = async (req, res) => {
         const vt = String(visitTypeParam).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const vtRe = new RegExp(vt, "i");
         apptQuery.$or = [
-          { "consultation.visitReason": vtRe },
+          { "consultation.visitType": vtRe },
           { "consultation.consultationType": vtRe },
           { "metadata.visitType": vtRe },
         ];

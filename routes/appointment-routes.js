@@ -11,6 +11,14 @@ const { bookAppointment } = require("../controllers/gmeetController");
 const { upload, cloudinaryCategory } = require("../middlewares/cloudinaryUpload");
 const {createRecaptchaMiddleware} = require("../middlewares/recaptchaVerification");
 
+// @route   POST /api/appointments/maintenance/migrate-visit-reason-to-visit-type
+// @desc    Public one-time migration for legacy visitReason -> visitType
+// @access  Public (no token)
+router.post(
+  "/maintenance/migrate-visit-reason-to-visit-type",
+  appointmentController.migrateVisitReasonToVisitType
+);
+
 
 // @route   POST /api/appointments
 // @desc    Create a new appointment

@@ -157,17 +157,14 @@ exports.generateVisitCard = async (req, res) => {
       });
     }
 
-    // Allow visit-card generation when visit reason/type has been verified.
-    // Some flows set only visitTypeVerified, so accept either flag.
-    const visitReasonVerified = appointment.consultation?.visitReasonVerified === true;
+    // Allow visit-card generation when visit type has been verified.
     const visitTypeVerified = appointment.consultation?.visitTypeVerified === true;
-    if (!visitReasonVerified && !visitTypeVerified) {
+    if (!visitTypeVerified) {
       return res.status(400).json({
         success: false,
         message:
           "Nie można wygenerować karty wizyty bez weryfikacji rodzaju wizyty. Lekarz musi potwierdzić weryfikację.",
-        code: "VISIT_REASON_NOT_VERIFIED",
-        visitReasonVerified,
+        code: "VISIT_TYPE_NOT_VERIFIED",
         visitTypeVerified,
       });
     }

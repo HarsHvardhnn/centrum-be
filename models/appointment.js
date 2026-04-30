@@ -10,10 +10,8 @@ const consultationSchema = new mongoose.Schema({
     // Visit reasons are validated/controlled via the visit-reasons dictionary flow.
     // Any string is accepted here to avoid blocking updates like "Iniekcja".
   },
-  /** Visit reason display name (Polish), e.g. "Konsultacja pierwszorazowa". Primary field for Rodzaj wizyty. */
-  visitReason: { type: String, default: null },
-  /** True only after doctor/admin confirms/validates the selected visit reason. */
-  visitReasonVerified: { type: Boolean, default: false },
+  /** Visit type display name (Polish), e.g. "Konsultacja pierwszorazowa". Primary field for Rodzaj wizyty. */
+  visitType: { type: String, default: null },
   /** True after doctor has confirmed or changed the visit type; required before completing the visit. */
   visitTypeVerified: { type: Boolean, default: true },
   consultationDate: Date,
