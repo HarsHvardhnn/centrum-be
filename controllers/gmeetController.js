@@ -16,7 +16,10 @@ const { validateInternationalDocument } = require("../utils/internationalDocumen
 
 // Import centralized appointment configuration
 const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
-const { getOnlineRegistrationVisitReason } = require("../config/visitReasons");
+const {
+  getOnlineRegistrationVisitReason,
+  getVisitTypeForRadiologDoctor,
+} = require("../config/visitReasons");
 // const doctor = require("../models/user-entity/doctor");
 // const Service = require("../models/service");
 // const PatientService = require("../models/patientService");
@@ -649,7 +652,9 @@ exports.bookAppointment = async (req, res) => {
     const createdByRole = (rawRole === "admin" || rawRole === "receptionist" || rawRole === "doctor") ? rawRole : "patient";
     const visitMode = (createdByRole === "admin" || createdByRole === "receptionist" || createdByRole === "doctor") ? "offline" : (consultationType || "online").toLowerCase();
 
-    const onlineVisitType = getOnlineRegistrationVisitReason();
+    const radiologVisitTypeOnline = getVisitTypeForRadiologDoctor(doctorDetails);
+    const onlineVisitType =
+      radiologVisitTypeOnline || getOnlineRegistrationVisitReason();
     const propagatedConsultation = propagateVisitTypeFields({
       consultationType: onlineVisitType,
       visitType: onlineVisitType,

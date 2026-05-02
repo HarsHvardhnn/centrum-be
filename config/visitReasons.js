@@ -68,6 +68,25 @@ const VISIT_REASONS = [
 /** Display name used when patient registers online (patient portal). */
 const ONLINE_REGISTRATION_VISIT_REASON = "Konsultacja online";
 
+/** Specialization _id (Mongo ObjectId string) for Radiolog — visits must use USG visit type. */
+const RADIOLOG_SPECIALIZATION_ID = "6983cd6e8c9720360735fc96";
+
+/** Forced visit type (Rodzaj wizyty) for doctors with {@link RADIOLOG_SPECIALIZATION_ID}. */
+const RADIOLOG_DEFAULT_VISIT_TYPE = "Badanie USG";
+
+/**
+ * If doctor document includes Radiolog specialization, all new visits use {@link RADIOLOG_DEFAULT_VISIT_TYPE}.
+ * @param {{ specialization?: unknown[] }} doctorDoc - doctor user document
+ * @returns {string|null} displayName or null
+ */
+function getVisitTypeForRadiologDoctor(doctorDoc) {
+  if (!doctorDoc || !Array.isArray(doctorDoc.specialization)) return null;
+  const hasRadiolog = doctorDoc.specialization.some(
+    (id) => id != null && String(id) === RADIOLOG_SPECIALIZATION_ID
+  );
+  return hasRadiolog ? RADIOLOG_DEFAULT_VISIT_TYPE : null;
+}
+
 /** All valid display names (for validation). */
 const ALL_DISPLAY_NAMES = VISIT_REASONS.flatMap((cat) =>
   cat.types.map((t) => t.displayName)
@@ -90,7 +109,10 @@ module.exports = {
   VISIT_REASONS,
   ONLINE_REGISTRATION_VISIT_REASON,
   ALL_DISPLAY_NAMES,
+  RADIOLOG_SPECIALIZATION_ID,
+  RADIOLOG_DEFAULT_VISIT_TYPE,
   getVisitReasons,
   getOnlineRegistrationVisitReason,
+  getVisitTypeForRadiologDoctor,
   isValidVisitReason,
 };

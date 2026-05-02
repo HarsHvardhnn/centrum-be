@@ -12,7 +12,7 @@ const mongoose = require("mongoose");
 // Import the standardized document helper from patient controller
 const { createStandardizedDocument } = require("./patientController");
 const { getVisitMedicalCodes } = require("../services/visitMedicalCodesService");
-const { getVisitTypeDisplayForFe } = require("../utils/visitTypeDisplay");
+const { getVisitTypeCanonicalForDocuments } = require("../utils/visitTypeDisplay");
 
 // Function to convert logo to base64
 const getLogoBase64 = async () => {
@@ -252,7 +252,7 @@ exports.generateVisitCard = async (req, res) => {
         ? addressParts.join(", ")
         : null;
 
-    const visitTypeLabel = getVisitTypeDisplayForFe(appointment);
+    const visitTypeLabel = getVisitTypeCanonicalForDocuments(appointment);
 
     // Get patient's phone (no placeholder – show nothing or "—" when missing)
     let phone = (patient.phone || patient.phoneFormatted || "").trim() || null;

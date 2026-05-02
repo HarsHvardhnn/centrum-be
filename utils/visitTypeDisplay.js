@@ -123,6 +123,34 @@ function getVisitTypeDisplayForFe(appointment) {
 }
 
 /**
+ * Stored rodzaj wizyty for PDFs and formal documents (dictionary displayName, e.g. "Badanie USG").
+ * Does not map to simplified FE labels. Priority matches persisted consultation + metadata.
+ *
+ * @param {object|null|undefined} appointment
+ * @returns {string} Non-empty text or "" if none
+ */
+function getVisitTypeCanonicalForDocuments(appointment) {
+  if (!appointment || typeof appointment !== "object") return "";
+  const c = appointment.consultation;
+  const metaType =
+    appointment.metadata && typeof appointment.metadata === "object"
+      ? appointment.metadata.visitType
+      : undefined;
+  const parts = [
+    c && c.visitType,
+    c && c.visitReason,
+    c && c.consultationType,
+    metaType,
+  ];
+  for (const v of parts) {
+    if (v == null) continue;
+    const t = String(v).trim();
+    if (t) return t;
+  }
+  return "";
+}
+
+/**
  * Shapes a plain appointment object for JSON responses: sets visitType and
  * consultation.visitType to the same display label as getVisitTypeDisplayForFe.
  * Does not persist; safe for API output only.
@@ -154,6 +182,7 @@ function decorateAppointmentResponseForFe(plain) {
 
 module.exports = {
   getVisitTypeDisplayForFe,
+  getVisitTypeCanonicalForDocuments,
   decorateAppointmentResponseForFe,
   isFirstVisitAppointment,
   VISIT_TYPE_LABELS: {

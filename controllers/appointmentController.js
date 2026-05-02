@@ -29,6 +29,7 @@ const APPOINTMENT_CONFIG = require("../config/appointmentConfig");
 const {
   getVisitReasons: getVisitReasonsConfig,
   getOnlineRegistrationVisitReason,
+  getVisitTypeForRadiologDoctor,
 } = require("../config/visitReasons");
 const {
   getVisitTypeDisplayForFe,
@@ -452,6 +453,16 @@ function toTrimmedOrNull(value) {
   if (value == null) return null;
   const v = String(value).trim();
   return v ? v : null;
+}
+
+/** Canonical rodzaj wizyty for equality checks (matches propagateVisitTypeFields priority). */
+function getCanonicalVisitTypeFromConsult(consult) {
+  if (!consult) return null;
+  return (
+    toTrimmedOrNull(consult.visitType) ||
+    toTrimmedOrNull(consult.visitReason) ||
+    toTrimmedOrNull(consult.consultationType)
+  );
 }
 
 /**
@@ -1525,11 +1536,15 @@ exports.createAppointment = async (req, res) => {
     const registrationTypeResolved = registrationTypeBody && validRegistrationTypes.includes(registrationTypeBody)
       ? registrationTypeBody
       : (createdBy === "admin" ? "admin registration" : createdBy === "receptionist" ? "receptionist registration" : createdBy === "doctor" ? "offline registration" : "online registration");
-    const resolvedVisitType =
+    let resolvedVisitType =
       (visitType && visitType.trim()) ||
       (req.body.visitReason && String(req.body.visitReason).trim()) ||
       req.body.metadata?.visitType?.trim() ||
       null;
+    const radiologVisitTypeCreate = getVisitTypeForRadiologDoctor(doctorDetails);
+    if (radiologVisitTypeCreate) {
+      resolvedVisitType = radiologVisitTypeCreate;
+    }
     const propagatedCreateConsultation = propagateVisitTypeFields({
       consultationType: resolvedVisitType,
       visitType: resolvedVisitType,
@@ -1764,17 +1779,6 @@ exports.createReceptionAppointment = async (req, res) => {
       visitType, // Rodzaj wizyty display name (e.g. "Konsultacja pierwszorazowa"); from GET /visit-reasons
     } = req.body;
 
-    const resolvedVisitTypeReception =
-      (visitType && visitType.trim()) ||
-      (req.body.visitReason && String(req.body.visitReason).trim()) ||
-      req.body.metadata?.visitType?.trim() ||
-      null;
-    const propagatedReceptionConsultation = propagateVisitTypeFields({
-      consultationType: resolvedVisitTypeReception,
-      visitType: resolvedVisitTypeReception,
-      visitReason: req.body.visitReason,
-    });
-
     let name = `${firstName} ${lastName}`;
     let time = startTime;
     console.log("whats missing", smsConsentAgreed);
@@ -1795,6 +1799,21 @@ exports.createReceptionAppointment = async (req, res) => {
         message: "Doctor not found",
       });
     }
+
+    let resolvedVisitTypeReception =
+      (visitType && visitType.trim()) ||
+      (req.body.visitReason && String(req.body.visitReason).trim()) ||
+      req.body.metadata?.visitType?.trim() ||
+      null;
+    const radiologVisitTypeReception = getVisitTypeForRadiologDoctor(doctorDetails);
+    if (radiologVisitTypeReception) {
+      resolvedVisitTypeReception = radiologVisitTypeReception;
+    }
+    const propagatedReceptionConsultation = propagateVisitTypeFields({
+      consultationType: resolvedVisitTypeReception,
+      visitType: resolvedVisitTypeReception,
+      visitReason: req.body.visitReason,
+    });
 
     // Calculate appointment dates and times
     const appointmentDate = new Date(`${date}T${time}:00`);
@@ -3050,12 +3069,21 @@ exports.rescheduleAppointment = async (req, res) => {
     appointment.doctor = nextDoctorId;
     appointment.mode = consultationType || appointment.mode;
     if (requestedVisitType || consultationType || visitReason) {
+      const prevCanonicalReschedule = getCanonicalVisitTypeFromConsult(
+        appointment.consultation || {}
+      );
       appointment.consultation = propagateVisitTypeFields({
         existingConsultation: appointment.consultation || {},
         consultationType,
         visitType,
         visitReason,
       });
+      const nextCanonicalReschedule = getCanonicalVisitTypeFromConsult(
+        appointment.consultation
+      );
+      if (prevCanonicalReschedule !== nextCanonicalReschedule) {
+        appointment.consultation.visitTypeVerified = false;
+      }
       appointment.metadata = appointment.metadata || {};
       appointment.metadata.visitType =
         appointment.consultation.visitType || appointment.metadata.visitType || null;
@@ -3612,10 +3640,6 @@ exports.updateAppointmentDetails = async (req, res) => {
           : consultationData.status !== undefined
             ? consultationData.status
             : existingConsult.consultationStatus || "Scheduled";
-      const visitTypeVerifiedMerged =
-        consultationData.visitTypeVerified !== undefined
-          ? Boolean(consultationData.visitTypeVerified)
-          : existingConsult.visitTypeVerified ?? true;
       const propagatedConsultation = propagateVisitTypeFields({
         existingConsultation: existingConsult,
         consultationType:
@@ -3631,6 +3655,15 @@ exports.updateAppointmentDetails = async (req, res) => {
             ? consultationData.visitReason
             : existingConsult.visitReason,
       });
+      const prevCanonicalMerge = getCanonicalVisitTypeFromConsult(existingConsult);
+      const nextCanonicalMerge = getCanonicalVisitTypeFromConsult(propagatedConsultation);
+      const visitTypeChangedMerge = prevCanonicalMerge !== nextCanonicalMerge;
+      const visitTypeVerifiedMerged =
+        consultationData.visitTypeVerified !== undefined
+          ? Boolean(consultationData.visitTypeVerified)
+          : visitTypeChangedMerge
+            ? false
+            : existingConsult.visitTypeVerified ?? true;
 
       updateData.consultation = {
         ...propagatedConsultation,
@@ -4801,19 +4834,25 @@ exports.updateConsultation = async (req, res) => {
     }
 
     // Prepare consultation update data
+    const prevCanonicalUpdate = getCanonicalVisitTypeFromConsult(appointment.consultation);
     const propagatedConsultation = propagateVisitTypeFields({
       existingConsultation: appointment.consultation || {},
       consultationType: consultationData.consultationType,
       visitType: consultationData.visitType,
       visitReason: consultationData.visitReason,
     });
+    const nextCanonicalUpdate = getCanonicalVisitTypeFromConsult(propagatedConsultation);
+    const visitTypeChangedUpdate = prevCanonicalUpdate !== nextCanonicalUpdate;
+    const visitTypeVerifiedResolved =
+      consultationData.visitTypeVerified !== undefined
+        ? Boolean(consultationData.visitTypeVerified)
+        : visitTypeChangedUpdate
+          ? false
+          : appointment.consultation?.visitTypeVerified ?? true;
 
     const consultationUpdate = {
       ...propagatedConsultation,
-      visitTypeVerified:
-        consultationData.visitTypeVerified !== undefined
-          ? Boolean(consultationData.visitTypeVerified)
-          : appointment.consultation?.visitTypeVerified ?? true,
+      visitTypeVerified: visitTypeVerifiedResolved,
       consultationNotes:
         consultationData.notes ||
         consultationData.consultationNotes ||
