@@ -5,6 +5,24 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
+/** Prefer title snapshotted on PatientBill; catalog ref only for legacy rows. */
+function billLineTitle(line) {
+  const t = line?.title;
+  if (t != null && String(t).trim() !== '') return String(t).trim();
+  return line?.serviceId?.title || 'Usługa';
+}
+
+/** Prefer price snapshotted on the bill line; catalog Service.price only if snapshot missing. */
+function billLinePrice(line) {
+  const raw = line?.price;
+  if (raw != null && String(raw).trim() !== '') {
+    const n = parseFloat(String(raw).replace(',', '.'));
+    if (!Number.isNaN(n)) return n;
+  }
+  const cat = parseFloat(line?.serviceId?.price);
+  return Number.isNaN(cat) ? 0 : cat;
+}
+
 /**
  * Generate dynamic report from existing appointment and billing data
  * @param {Object} req - Request object
@@ -119,10 +137,10 @@ const generateReport = async (req, res) => {
         // Use actual bill total
         earnings = parseFloat(bill.totalAmount) || 0;
         
-        // Get service details from bill
+        // Get service details from bill (snapshot on bill; not live catalogue)
         services = bill.services.map(service => ({
-          title: service.title,
-          price: parseFloat(service.price) || 0,
+          title: billLineTitle(service),
+          price: billLinePrice(service),
           status: service.status
         }));
       } else if (apt.status === 'completed') {
@@ -648,8 +666,8 @@ const generateReportData = async (queryParams, userId, userRole) => {
       if (bill) {
         earnings = parseFloat(bill.totalAmount) || 0;
         services = bill.services.map(service => ({
-          title: service.serviceId?.title || service.title || 'Usługa',
-          price: parseFloat(service.serviceId?.price || service.price) || 0,
+          title: billLineTitle(service),
+          price: billLinePrice(service),
           status: service.status
         }));
       } else if (apt.status === 'completed') {
